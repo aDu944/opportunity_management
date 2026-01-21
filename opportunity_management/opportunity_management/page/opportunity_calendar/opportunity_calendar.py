@@ -13,6 +13,12 @@ def get_calendar_events(start, end, filters=None):
 
     filters = filters or {}
 
+    # Check which custom fields exist
+    meta = frappe.get_meta("Opportunity")
+    has_resp_eng = meta.has_field("custom_resp_eng")
+    has_urgency = meta.has_field("custom_urgency_level")
+    has_closing_date = meta.has_field("custom_closing_date")
+
     # Base filters
     conditions = ["o.transaction_date >= %(start)s", "o.transaction_date <= %(end)s"]
     values = {"start": start, "end": end}
@@ -26,30 +32,42 @@ def get_calendar_events(start, end, filters=None):
         conditions.append("o.opportunity_owner = %(opportunity_owner)s")
         values["opportunity_owner"] = filters["opportunity_owner"]
 
-    if filters.get("custom_resp_eng"):
+    if filters.get("custom_resp_eng") and has_resp_eng:
         conditions.append("o.custom_resp_eng = %(custom_resp_eng)s")
         values["custom_resp_eng"] = filters["custom_resp_eng"]
 
-    if filters.get("urgency_level"):
+    if filters.get("urgency_level") and has_urgency:
         conditions.append("o.custom_urgency_level = %(urgency_level)s")
         values["urgency_level"] = filters["urgency_level"]
 
     where_clause = " AND ".join(conditions)
 
+    # Build dynamic field list
+    fields = [
+        "o.name as id",
+        "o.name as title",
+        "o.transaction_date as start",
+        "o.transaction_date as end",
+        "o.status",
+        "o.opportunity_owner",
+        "o.opportunity_amount",
+        "o.party_name"
+    ]
+
+    if has_resp_eng:
+        fields.append("o.custom_resp_eng")
+    if has_urgency:
+        fields.append("o.custom_urgency_level as urgency_level")
+    if has_closing_date:
+        fields.append("o.custom_closing_date as closing_date")
+    else:
+        # Use expected_closing as fallback
+        fields.append("o.expected_closing as closing_date")
+
     # Query opportunities
     query = f"""
         SELECT
-            o.name as id,
-            o.name as title,
-            o.transaction_date as start,
-            o.transaction_date as end,
-            o.status,
-            o.opportunity_owner,
-            o.custom_resp_eng,
-            o.custom_urgency_level as urgency_level,
-            o.opportunity_amount,
-            o.party_name,
-            o.custom_closing_date as closing_date
+            {', '.join(fields)}
         FROM
             `tabOpportunity` o
         WHERE
@@ -115,20 +133,29 @@ def get_filter_options():
         ORDER BY opportunity_owner
     """, as_dict=True)
 
-    # Get unique responsible engineers
-    resp_engs = frappe.db.sql("""
-        SELECT DISTINCT custom_resp_eng
-        FROM `tabOpportunity`
-        WHERE custom_resp_eng IS NOT NULL
-        ORDER BY custom_resp_eng
-    """, as_dict=True)
+    # Get unique responsible engineers (check if field exists)
+    resp_engs = []
+    meta = frappe.get_meta("Opportunity")
+    has_resp_eng_field = meta.has_field("custom_resp_eng")
+
+    if has_resp_eng_field:
+        try:
+            resp_engs = frappe.db.sql("""
+                SELECT DISTINCT custom_resp_eng
+                FROM `tabOpportunity`
+                WHERE custom_resp_eng IS NOT NULL
+                ORDER BY custom_resp_eng
+            """, as_dict=True)
+        except Exception as e:
+            frappe.log_error(f"Error fetching responsible engineers: {str(e)}")
+            resp_engs = []
 
     # Get statuses
     statuses = frappe.get_meta("Opportunity").get_field("status").options.split("\n")
 
     return {
         "owners": [o.opportunity_owner for o in owners],
-        "resp_engs": [r.custom_resp_eng for r in resp_engs],
+        "resp_engs": [r.custom_resp_eng for r in resp_engs] if resp_engs else [],
         "statuses": statuses,
         "urgency_levels": ["Urgent", "High", "Medium", "Low"]
     }
