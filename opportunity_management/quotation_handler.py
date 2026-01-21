@@ -6,32 +6,66 @@ from frappe.utils import nowdate, getdate
 def on_quotation_submit(doc, method):
     """
     When a Quotation is submitted, close all related ToDos
-    for the linked Opportunity.
+    and the Opportunity for the linked Opportunity.
     """
     opportunity_name = doc.get("opportunity")
-    
+
     if not opportunity_name:
         # Try to find opportunity from items or other links
         opportunity_name = find_linked_opportunity(doc)
-    
+
     if opportunity_name:
+        close_opportunity(opportunity_name, doc.name)
         close_opportunity_todos(opportunity_name, doc.name)
         update_assignment_log(opportunity_name, doc.name)
 
 
 def find_linked_opportunity(doc):
     """Try to find linked opportunity from various sources"""
-    
+
     # Check quotation items for opportunity reference
     for item in doc.items:
         if item.get("prevdoc_docname") and item.get("prevdoc_doctype") == "Opportunity":
             return item.prevdoc_docname
-    
+
     # Check if there's a direct opportunity field
     if doc.get("opportunity"):
         return doc.opportunity
-    
+
     return None
+
+
+def close_opportunity(opportunity_name, quotation_name):
+    """Close the Opportunity by updating its status"""
+
+    try:
+        opportunity = frappe.get_doc("Opportunity", opportunity_name)
+
+        # Update status to Closed or Converted based on your workflow
+        # Check if 'Converted' status exists, otherwise use 'Closed'
+        if "Converted" in [d.get("option") for d in frappe.get_meta("Opportunity").get_field("status").options.split("\n") if d]:
+            opportunity.status = "Converted"
+        else:
+            opportunity.status = "Closed"
+
+        # Add reference to the quotation
+        opportunity.add_comment("Comment", f"Converted to Quotation {quotation_name}")
+
+        # Save the opportunity
+        opportunity.save(ignore_permissions=True)
+
+        frappe.msgprint(
+            _(f"Opportunity {opportunity_name} has been closed."),
+            alert=True
+        )
+
+    except Exception as e:
+        frappe.log_error(f"Failed to close Opportunity {opportunity_name}: {str(e)}")
+        frappe.msgprint(
+            _(f"Warning: Could not close Opportunity {opportunity_name}. Please check manually."),
+            alert=True,
+            indicator="orange"
+        )
 
 
 def close_opportunity_todos(opportunity_name, quotation_name):
