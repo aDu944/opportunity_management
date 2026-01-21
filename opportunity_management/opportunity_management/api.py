@@ -43,34 +43,47 @@ def get_my_opportunities(user=None):
         closing_date = getdate(opp.expected_closing) if opp.expected_closing else None
         days_remaining = date_diff(closing_date, today) if closing_date else None
         
-        # Determine status color
+        # Determine urgency level (matching frontend expectations)
         if days_remaining is None:
-            status_color = "gray"
-            status_label = "No closing date"
+            urgency = "unknown"
         elif days_remaining < 0:
-            status_color = "red"
-            status_label = f"Overdue by {abs(days_remaining)} days"
+            urgency = "overdue"
         elif days_remaining == 0:
-            status_color = "red"
-            status_label = "Due today"
+            urgency = "due_today"
+        elif days_remaining == 1:
+            urgency = "critical"
         elif days_remaining <= 3:
-            status_color = "orange"
-            status_label = f"{days_remaining} days remaining"
+            urgency = "high"
         elif days_remaining <= 7:
-            status_color = "yellow"
-            status_label = f"{days_remaining} days remaining"
+            urgency = "medium"
         else:
-            status_color = "green"
-            status_label = f"{days_remaining} days remaining"
+            urgency = "low"
+        
+        # Get items for this opportunity
+        items = []
+        if opp.get("items"):
+            for item in opp.items:
+                items.append({
+                    "item_code": item.item_code,
+                    "item_name": item.item_name,
+                    "qty": item.qty,
+                    "uom": item.uom,
+                    "description": item.description
+                })
         
         opportunities.append({
             "todo_name": todo.name,
-            "opportunity_name": opp.name,
-            "party_name": opp.party_name,
-            "expected_closing": opp.expected_closing,
+            "opportunity": opp.name,  # Frontend expects 'opportunity'
+            "opportunity_name": opp.name,  # Keep for backward compatibility
+            "customer": opp.party_name,  # Frontend expects 'customer'
+            "party_name": opp.party_name,  # Keep for backward compatibility
+            "closing_date": opp.expected_closing,  # Frontend expects 'closing_date'
+            "expected_closing": opp.expected_closing,  # Keep for backward compatibility
             "days_remaining": days_remaining,
-            "status_color": status_color,
-            "status_label": status_label,
+            "urgency": urgency,  # Frontend expects 'urgency'
+            "items": items,  # Frontend expects 'items'
+            "status_color": "gray" if days_remaining is None else ("red" if days_remaining < 0 else ("red" if days_remaining == 0 else ("orange" if days_remaining <= 3 else ("yellow" if days_remaining <= 7 else "green")))),
+            "status_label": "No closing date" if days_remaining is None else (f"Overdue by {abs(days_remaining)} days" if days_remaining < 0 else ("Due today" if days_remaining == 0 else f"{days_remaining} days remaining")),
             "opportunity_status": opp.status,
             "priority": todo.priority,
             "assigned_by": todo.assigned_by,
@@ -86,13 +99,15 @@ def get_my_opportunities(user=None):
 
 
 @frappe.whitelist()
-def get_opportunity_kpi(user=None, date_range="all"):
+def get_opportunity_kpi(user=None, date_range="all", from_date=None, to_date=None):
     """
     Get KPI metrics for opportunity completion.
     
     Args:
         user: Optional - filter by specific user, otherwise shows all
-        date_range: 'all', 'month', 'quarter', 'year'
+        date_range: 'all', 'month', 'quarter', 'year' (deprecated, use from_date/to_date)
+        from_date: Optional - start date for filtering
+        to_date: Optional - end date for filtering
     
     Returns:
         Dictionary with KPI metrics including on-time completion rate
@@ -101,20 +116,37 @@ def get_opportunity_kpi(user=None, date_range="all"):
         "status": ["in", ["Converted", "Closed", "Lost"]]
     }
     
-    # Apply date range filter
-    today = getdate(nowdate())
-    if date_range == "month":
-        filters["modified"] = [">=", frappe.utils.add_months(today, -1)]
-    elif date_range == "quarter":
-        filters["modified"] = [">=", frappe.utils.add_months(today, -3)]
-    elif date_range == "year":
-        filters["modified"] = [">=", frappe.utils.add_months(today, -12)]
+    # Apply date filter - prioritize from_date/to_date over date_range
+    if from_date and to_date:
+        filters["modified"] = ["between", [getdate(from_date), getdate(to_date)]]
+    elif date_range and date_range != "all":
+        today = getdate(nowdate())
+        if date_range == "month":
+            filters["modified"] = [">=", frappe.utils.add_months(today, -1)]
+        elif date_range == "quarter":
+            filters["modified"] = [">=", frappe.utils.add_months(today, -3)]
+        elif date_range == "year":
+            filters["modified"] = [">=", frappe.utils.add_months(today, -12)]
     
     # Get closed opportunities
     opportunities = frappe.get_all(
         "Opportunity",
         filters=filters,
         fields=["name", "expected_closing", "modified", "status", "party_name"]
+    )
+    
+    # Get all open opportunities (for still_open count)
+    open_filters = {
+        "status": ["not in", ["Converted", "Closed", "Lost"]]
+    }
+    if from_date and to_date:
+        # For open opportunities, check if they have expected_closing in range
+        open_filters["expected_closing"] = ["between", [getdate(from_date), getdate(to_date)]]
+    
+    open_opportunities = frappe.get_all(
+        "Opportunity",
+        filters=open_filters,
+        fields=["name"]
     )
     
     # Calculate metrics
@@ -132,15 +164,23 @@ def get_opportunity_kpi(user=None, date_range="all"):
             else:
                 completed_late += 1
     
+    # Calculate total assigned (closed + open)
+    total_assigned = total_closed + len(open_opportunities)
+    completed = total_closed
+    still_open = len(open_opportunities)
+    
     # Calculate per-user metrics if needed
     user_metrics = {}
     if not user:
-        user_metrics = calculate_user_metrics(date_range)
+        user_metrics = calculate_user_metrics(date_range, from_date, to_date)
     
     on_time_rate = (completed_on_time / total_closed * 100) if total_closed > 0 else 0
     
     return {
-        "total_closed": total_closed,
+        "total": total_assigned,  # Frontend expects 'total'
+        "completed": completed,  # Frontend expects 'completed'
+        "still_open": still_open,  # Frontend expects 'still_open'
+        "total_closed": total_closed,  # Keep for backward compatibility
         "completed_on_time": completed_on_time,
         "completed_late": completed_late,
         "on_time_rate": round(on_time_rate, 1),
@@ -149,15 +189,200 @@ def get_opportunity_kpi(user=None, date_range="all"):
     }
 
 
-def calculate_user_metrics(date_range="all"):
-    """Calculate KPI metrics per user."""
-    # Get all users who have been assigned opportunities
+@frappe.whitelist()
+def get_kpi_by_employee(from_date=None, to_date=None):
+    """
+    Get KPI metrics broken down by employee.
+    
+    Args:
+        from_date: Optional - start date for filtering
+        to_date: Optional - end date for filtering
+    
+    Returns:
+        List of employee metrics
+    """
+    return get_kpi_breakdown("employee", from_date, to_date)
+
+
+@frappe.whitelist()
+def get_kpi_by_team(from_date=None, to_date=None):
+    """
+    Get KPI metrics broken down by team.
+    
+    Args:
+        from_date: Optional - start date for filtering
+        to_date: Optional - end date for filtering
+    
+    Returns:
+        List of team metrics
+    """
+    return get_kpi_breakdown("team", from_date, to_date)
+
+
+def get_kpi_breakdown(breakdown_type="employee", from_date=None, to_date=None):
+    """
+    Calculate KPI breakdown by employee or team.
+    
+    Args:
+        breakdown_type: 'employee' or 'team'
+        from_date: Optional - start date for filtering
+        to_date: Optional - end date for filtering
+    """
+    # Get all closed ToDos for opportunities
+    todo_filters = {
+        "reference_type": "Opportunity",
+        "status": "Closed"
+    }
+    
     todos = frappe.get_all(
+        "ToDo",
+        filters=todo_filters,
+        fields=["name", "allocated_to", "reference_name", "modified"],
+        group_by="allocated_to, reference_name"
+    )
+    
+    # Get all open ToDos for opportunities
+    open_todos = frappe.get_all(
         "ToDo",
         filters={
             "reference_type": "Opportunity",
-            "status": "Closed"
+            "status": "Open"
         },
+        fields=["name", "allocated_to", "reference_name"]
+    )
+    
+    # Group by employee or team
+    breakdown_data = {}
+    
+    # Process closed todos
+    for todo in todos:
+        # Apply date filter if provided
+        if from_date and to_date:
+            todo_date = getdate(todo.modified)
+            if not (getdate(from_date) <= todo_date <= getdate(to_date)):
+                continue
+        
+        user = todo.allocated_to
+        if not user:
+            continue
+        
+        # Get user details
+        user_doc = frappe.get_doc("User", user)
+        employee_name = user_doc.full_name or user
+        
+        # For team breakdown, get team from employee
+        if breakdown_type == "team":
+            # Try to get team from Employee doctype
+            employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
+            if employee:
+                emp_doc = frappe.get_doc("Employee", employee)
+                team = getattr(emp_doc, "department", None) or getattr(emp_doc, "designation", None) or "Unassigned"
+            else:
+                team = "Unassigned"
+            key = team
+            name_field = "team"
+        else:
+            key = user
+            name_field = "employee_name"
+        
+        if key not in breakdown_data:
+            breakdown_data[key] = {
+                name_field: employee_name if breakdown_type == "employee" else team,
+                "total": 0,
+                "completed": 0,
+                "completed_on_time": 0,
+                "completed_late": 0,
+                "still_open": 0,
+                "on_time_rate": 0
+            }
+        
+        # Get opportunity details
+        opp = frappe.db.get_value(
+            "Opportunity",
+            todo.reference_name,
+            ["expected_closing", "status"],
+            as_dict=True
+        )
+        
+        if opp and opp.status in ["Converted", "Closed", "Lost"]:
+            breakdown_data[key]["total"] += 1
+            breakdown_data[key]["completed"] += 1
+            
+            if opp.expected_closing:
+                closing_date = getdate(opp.expected_closing)
+                completed_date = getdate(todo.modified)
+                
+                if completed_date <= closing_date:
+                    breakdown_data[key]["completed_on_time"] += 1
+                else:
+                    breakdown_data[key]["completed_late"] += 1
+    
+    # Process open todos
+    for todo in open_todos:
+        user = todo.allocated_to
+        if not user:
+            continue
+        
+        # Get user details
+        user_doc = frappe.get_doc("User", user)
+        employee_name = user_doc.full_name or user
+        
+        # For team breakdown, get team from employee
+        if breakdown_type == "team":
+            employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
+            if employee:
+                emp_doc = frappe.get_doc("Employee", employee)
+                team = getattr(emp_doc, "department", None) or getattr(emp_doc, "designation", None) or "Unassigned"
+            else:
+                team = "Unassigned"
+            key = team
+        else:
+            key = user
+        
+        if key not in breakdown_data:
+            breakdown_data[key] = {
+                name_field: employee_name if breakdown_type == "employee" else team,
+                "total": 0,
+                "completed": 0,
+                "completed_on_time": 0,
+                "completed_late": 0,
+                "still_open": 0,
+                "on_time_rate": 0
+            }
+        
+        breakdown_data[key]["total"] += 1
+        breakdown_data[key]["still_open"] += 1
+    
+    # Calculate percentages and prepare result
+    result = []
+    for key, data in breakdown_data.items():
+        if data["completed"] > 0:
+            data["on_time_rate"] = round(data["completed_on_time"] / data["completed"] * 100, 1)
+        else:
+            data["on_time_rate"] = 0
+        
+        result.append(data)
+    
+    # Sort by on-time rate descending
+    result.sort(key=lambda x: x["on_time_rate"], reverse=True)
+    
+    return result
+
+
+def calculate_user_metrics(date_range="all", from_date=None, to_date=None):
+    """Calculate KPI metrics per user."""
+    # Get all users who have been assigned opportunities
+    filters = {
+        "reference_type": "Opportunity",
+        "status": "Closed"
+    }
+    
+    if from_date and to_date:
+        filters["modified"] = ["between", [getdate(from_date), getdate(to_date)]]
+    
+    todos = frappe.get_all(
+        "ToDo",
+        filters=filters,
         fields=["allocated_to", "reference_name", "modified"],
         group_by="allocated_to, reference_name"
     )
