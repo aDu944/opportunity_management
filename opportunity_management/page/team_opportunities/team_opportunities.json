@@ -1,0 +1,25 @@
+{
+    "content": null,
+    "creation": "2024-01-01 00:00:00",
+    "docstatus": 0,
+    "doctype": "Page",
+    "icon": "fa fa-users",
+    "idx": 0,
+    "modified": "2024-01-01 00:00:00",
+    "modified_by": "Administrator",
+    "module": "Opportunity Management",
+    "name": "team-opportunities",
+    "owner": "Administrator",
+    "page_name": "team-opportunities",
+    "roles": [
+        {
+            "role": "System Manager"
+        },
+        {
+            "role": "Sales Manager"
+        }
+    ],
+    "standard": "Yes",
+    "system_page": 0,
+    "title": "Team Opportunities"
+}

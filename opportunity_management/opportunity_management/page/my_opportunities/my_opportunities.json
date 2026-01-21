@@ -1,0 +1,19 @@
+{
+    "name": "my_opportunities",
+    "label": "My Opportunities",
+    "module": "Opportunity Management",
+    "roles": [
+        {
+            "role": "System Manager"
+        },
+        {
+            "role": "Sales User"
+        },
+        {
+            "role": "Sales Manager"
+        }
+    ],
+    "page_name": "my_opportunities",
+    "icon": "fa fa-tasks",
+    "route": "my-opportunities"
+}

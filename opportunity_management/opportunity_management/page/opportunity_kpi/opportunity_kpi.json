@@ -1,0 +1,16 @@
+{
+    "name": "opportunity_kpi",
+    "label": "Opportunity KPI",
+    "module": "Opportunity Management",
+    "roles": [
+        {
+            "role": "System Manager"
+        },
+        {
+            "role": "Sales Manager"
+        }
+    ],
+    "page_name": "opportunity_kpi",
+    "icon": "fa fa-chart-bar",
+    "route": "opportunity-kpi"
+}
