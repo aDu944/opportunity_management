@@ -1,0 +1,178 @@
+================================================================================
+WORKSPACE FIX - COPY AND PASTE THESE COMMANDS EXACTLY
+================================================================================
+
+STEP 1: Go to your main repository and pull latest code
+--------------------------------------------------------------------------------
+cd /Users/adu94/opportunity_management
+git pull origin main
+
+
+STEP 2: Go to your frappe bench directory
+--------------------------------------------------------------------------------
+cd ~/frappe-bench
+# Or if your bench is elsewhere: cd /path/to/your/bench
+
+
+STEP 3: Copy the install script to your bench
+--------------------------------------------------------------------------------
+cp /Users/adu94/opportunity_management/install_workspace.py apps/opportunity_management/opportunity_management/
+
+
+STEP 4: Open bench console
+--------------------------------------------------------------------------------
+bench --site [YOUR-SITE-NAME] console
+
+# Replace [YOUR-SITE-NAME] with your actual site name, like:
+# bench --site mysite.localhost console
+
+
+STEP 5: In the console, paste these commands one by one
+--------------------------------------------------------------------------------
+from opportunity_management.install_workspace import install_workspace
+install_workspace()
+exit()
+
+
+STEP 6: Clear cache and restart
+--------------------------------------------------------------------------------
+bench --site [YOUR-SITE-NAME] clear-cache
+bench restart
+
+
+STEP 7: Refresh your browser
+--------------------------------------------------------------------------------
+Press: Ctrl + Shift + R  (or Cmd + Shift + R on Mac)
+
+
+================================================================================
+EXPECTED RESULT:
+================================================================================
+
+In the sidebar, you should now see:
+
+💼 Opportunity Management  <-- Briefcase icon appears!
+
+When you click it, you should see:
+
+  📋 Opportunity (shortcut)
+
+  My Opportunities           <-- Click to open page
+  Team Opportunities         <-- Click to open page
+  Opportunity Calendar       <-- Click to open page
+  KPI Dashboard             <-- Click to open page
+
+  Assignment Log            <-- Click to open list
+
+  Employee Team Assignment  <-- Click to open page
+  Email Templates           <-- Click to open list
+
+
+================================================================================
+TROUBLESHOOTING:
+================================================================================
+
+If it still doesn't work:
+
+1. Check if the workspace exists in database:
+
+   bench --site [YOUR-SITE-NAME] console
+   >>> import frappe
+   >>> frappe.db.exists("Workspace", "Opportunity Management")
+
+   Should return: 'Opportunity Management'
+
+
+2. Check workspace details:
+
+   >>> ws = frappe.get_doc("Workspace", "Opportunity Management")
+   >>> print(f"Icon: {ws.icon}")
+   >>> print(f"Links: {len(ws.links)}")
+   >>> print(f"Public: {ws.public}")
+
+   Should show:
+   Icon: briefcase
+   Links: 7
+   Public: 1
+
+
+3. If workspace doesn't exist or has wrong values:
+
+   >>> from opportunity_management.install_workspace import install_workspace
+   >>> install_workspace()
+   >>> exit()
+
+   Then:
+   bench --site [YOUR-SITE-NAME] clear-cache
+   bench restart
+
+
+4. Nuclear option (delete everything and start fresh):
+
+   bench --site [YOUR-SITE-NAME] console
+   >>> import frappe
+   >>> if frappe.db.exists("Workspace", "Opportunity Management"):
+   ...     frappe.delete_doc("Workspace", "Opportunity Management", force=True)
+   ...     frappe.db.commit()
+   >>> from opportunity_management.install_workspace import install_workspace
+   >>> install_workspace()
+   >>> exit()
+
+   bench --site [YOUR-SITE-NAME] clear-cache
+   bench --site [YOUR-SITE-NAME] rebuild-global-search
+   bench restart
+
+
+================================================================================
+STILL NOT WORKING? CHECK THESE:
+================================================================================
+
+1. Verify pages exist:
+
+   bench --site [YOUR-SITE-NAME] console
+   >>> import frappe
+   >>> pages = ["my-opportunities", "team-opportunities", "opportunity-calendar",
+   ...          "opportunity-kpi", "employee-team-assignment"]
+   >>> for p in pages:
+   ...     print(f"{p}: {frappe.db.exists('Page', p)}")
+
+   All should return True
+
+
+2. If any pages are missing:
+
+   bench --site [YOUR-SITE-NAME] migrate
+
+
+3. Check browser console for JavaScript errors:
+   - Open browser DevTools (F12)
+   - Go to Console tab
+   - Refresh page
+   - Look for errors
+
+
+4. Try different browser or incognito mode
+   - Sometimes browser cache causes issues
+
+
+================================================================================
+QUICK COPY-PASTE VERSION (All at once):
+================================================================================
+
+cd ~/frappe-bench
+bench --site [YOUR-SITE-NAME] console
+
+Paste this:
+
+from opportunity_management.install_workspace import install_workspace
+install_workspace()
+exit()
+
+Then run:
+
+bench --site [YOUR-SITE-NAME] clear-cache
+bench restart
+
+Then refresh browser (Ctrl+Shift+R)
+
+================================================================================
