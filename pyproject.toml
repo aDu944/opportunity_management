@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opportunity_management"
+version = "1.0.0"
+description = "Custom Opportunity Assignment and Notification Management for ERPNext"
+authors = [
+    {name = "ALKHORA", email = "as@alkhora.com"}
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = []
+
+[project.optional-dependencies]
+dev = []
+
+[tool.setuptools]
+packages = ["opportunity_management"]
+
+[tool.setuptools.package-data]
+opportunity_management = ["**/*.json", "**/*.js", "**/*.html", "**/*.css"]
