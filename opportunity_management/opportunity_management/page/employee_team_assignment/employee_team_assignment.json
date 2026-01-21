@@ -1,0 +1,25 @@
+{
+    "content": null,
+    "creation": "2026-01-21 00:00:00",
+    "docstatus": 0,
+    "doctype": "Page",
+    "icon": "fa fa-users",
+    "idx": 0,
+    "modified": "2026-01-21 00:00:00",
+    "modified_by": "Administrator",
+    "module": "Opportunity Management",
+    "name": "employee-team-assignment",
+    "owner": "Administrator",
+    "page_name": "employee-team-assignment",
+    "roles": [
+        {
+            "role": "System Manager"
+        },
+        {
+            "role": "HR Manager"
+        }
+    ],
+    "standard": "Yes",
+    "system_page": 0,
+    "title": "Employee Team Assignment"
+}

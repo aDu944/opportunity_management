@@ -13,6 +13,9 @@ doc_events = {
     "Opportunity": {
         "on_update": "opportunity_management.opportunity_management.utils.assignment.on_opportunity_update",
         "after_insert": "opportunity_management.opportunity_management.utils.assignment.on_opportunity_insert",
+    },
+    "Quotation": {
+        "on_submit": "opportunity_management.quotation_handler.on_quotation_submit",
     }
 }
 
@@ -56,6 +59,10 @@ fixtures = [
     {
         "doctype": "Email Template",
         "filters": [["name", "in", ["Opportunity Assignment", "Opportunity Reminder"]]]
+    },
+    {
+        "doctype": "Workspace",
+        "filters": [["name", "in", ["Opportunity Management"]]]
     }
 ]
 

@@ -1,0 +1,28 @@
+{
+    "content": null,
+    "creation": "2026-01-21 00:00:00",
+    "docstatus": 0,
+    "doctype": "Page",
+    "icon": "fa fa-calendar",
+    "idx": 0,
+    "modified": "2026-01-21 00:00:00",
+    "modified_by": "Administrator",
+    "module": "Opportunity Management",
+    "name": "opportunity-calendar",
+    "owner": "Administrator",
+    "page_name": "opportunity-calendar",
+    "roles": [
+        {
+            "role": "System Manager"
+        },
+        {
+            "role": "Sales Manager"
+        },
+        {
+            "role": "Sales User"
+        }
+    ],
+    "standard": "Yes",
+    "system_page": 0,
+    "title": "Opportunity Calendar"
+}
