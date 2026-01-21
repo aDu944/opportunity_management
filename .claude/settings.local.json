@@ -3,7 +3,9 @@
     "allow": [
       "Bash(python3 -m py_compile:*)",
       "Bash(git push:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git merge:*)"
     ]
   }
 }
