@@ -3,14 +3,14 @@
     "creation": "2024-01-01 00:00:00",
     "docstatus": 0,
     "doctype": "Page",
-    "icon": "fa fa-bar-chart",
+    "icon": "fa fa-users",
     "idx": 0,
     "modified": "2024-01-01 00:00:00",
     "modified_by": "Administrator",
     "module": "Opportunity Management",
-    "name": "opportunity-kpi",
+    "name": "team-opportunities",
     "owner": "Administrator",
-    "page_name": "opportunity-kpi",
+    "page_name": "team-opportunities",
     "roles": [
         {
             "role": "System Manager"
@@ -21,5 +21,5 @@
     ],
     "standard": "Yes",
     "system_page": 0,
-    "title": "Opportunity KPI Dashboard"
+    "title": "Team Opportunities"
 }

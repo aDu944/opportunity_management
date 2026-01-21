@@ -1,57 +1,80 @@
-frappe.pages['my-opportunities'].on_page_load = function(wrapper) {
+frappe.pages['team-opportunities'].on_page_load = function(wrapper) {
     var page = frappe.ui.make_app_page({
         parent: wrapper,
-        title: 'My Opportunities',
+        title: 'Team Opportunities',
         single_column: true
     });
 
     // Add refresh button
     page.add_button('Refresh', () => {
-        load_opportunities(page);
+        load_team_opportunities(page);
     }, 'primary');
 
-    // Add filter for urgency
+    // Add team filter
     page.add_field({
-        fieldname: 'urgency_filter',
-        label: 'Filter by Urgency',
+        fieldname: 'team_filter',
+        label: 'Filter by Team',
         fieldtype: 'Select',
-        options: '\nAll\nOverdue\nDue Today\nCritical (1 day)\nHigh (3 days)\nMedium (7 days)\nLow',
+        options: '\nAll Teams',
         change: function() {
-            filter_opportunities(page);
+            load_team_opportunities(page);
         }
     });
 
     page.main.html(`
-        <div class="opportunities-container">
+        <div class="team-opportunities-container">
             <div class="summary-cards"></div>
             <div class="opportunities-list"></div>
         </div>
     `);
 
-    load_opportunities(page);
+    // Load available teams first
+    load_teams(page);
+    load_team_opportunities(page);
 };
 
-function load_opportunities(page) {
+function load_teams(page) {
     frappe.call({
-        method: 'opportunity_management.opportunity_management.api.get_my_opportunities',
-        freeze: true,
-        freeze_message: 'Loading opportunities...',
+        method: 'opportunity_management.opportunity_management.api.get_available_teams',
         callback: function(r) {
             if (r.message) {
-                page.opportunities = r.message;
-                render_summary(page);
-                render_opportunities(page);
+                let options = '\nAll Teams';
+                r.message.forEach(team => {
+                    options += '\n' + team;
+                });
+                page.fields_dict.team_filter.df.options = options;
+                page.fields_dict.team_filter.refresh();
             }
         }
     });
 }
 
-function render_summary(page) {
+function load_team_opportunities(page) {
+    const team = page.fields_dict.team_filter.get_value();
+    
+    frappe.call({
+        method: 'opportunity_management.opportunity_management.api.get_team_opportunities',
+        args: {
+            team: team && team !== 'All Teams' ? team : null
+        },
+        freeze: true,
+        freeze_message: 'Loading team opportunities...',
+        callback: function(r) {
+            if (r.message) {
+                page.opportunities = r.message;
+                render_team_summary(page);
+                render_team_opportunities(page);
+            }
+        }
+    });
+}
+
+function render_team_summary(page) {
     const opportunities = page.opportunities;
     
     const overdue = opportunities.filter(o => o.urgency === 'overdue').length;
     const dueToday = opportunities.filter(o => o.urgency === 'due_today').length;
-    const critical = opportunities.filter(o => o.urgency === 'critical').length;
+    const dueSoon = opportunities.filter(o => ['critical', 'high'].includes(o.urgency)).length;
     const total = opportunities.length;
 
     const summaryHtml = `
@@ -76,8 +99,8 @@ function render_summary(page) {
             </div>
             <div class="col-md-3">
                 <div class="card" style="background: #ffc107; padding: 15px; border-radius: 8px;">
-                    <h3 style="margin: 0;">${critical}</h3>
-                    <p style="margin: 0;">Due Tomorrow</p>
+                    <h3 style="margin: 0;">${dueSoon}</h3>
+                    <p style="margin: 0;">Due in 3 days</p>
                 </div>
             </div>
         </div>
@@ -86,14 +109,13 @@ function render_summary(page) {
     page.main.find('.summary-cards').html(summaryHtml);
 }
 
-function render_opportunities(page) {
+function render_team_opportunities(page) {
     const opportunities = page.opportunities;
     
     if (!opportunities.length) {
         page.main.find('.opportunities-list').html(`
             <div style="text-align: center; padding: 40px; color: #666;">
-                <h4>🎉 No open opportunities!</h4>
-                <p>You have no pending tasks.</p>
+                <h4>🎉 No open opportunities for this team!</h4>
             </div>
         `);
         return;
@@ -108,7 +130,7 @@ function render_opportunities(page) {
                     <th>Customer</th>
                     <th>Closing Date</th>
                     <th>Days Left</th>
-                    <th>Items</th>
+                    <th>Assigned To</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -117,10 +139,16 @@ function render_opportunities(page) {
 
     opportunities.forEach(opp => {
         const urgencyBadge = getUrgencyBadge(opp.urgency, opp.days_remaining);
-        const itemsCount = opp.items ? opp.items.length : 0;
+        
+        // Format assignees
+        const assigneesList = opp.assignees.map(a => {
+            const name = a.employee || a.user;
+            const dept = a.department ? ` (${a.department})` : '';
+            return `<div class="assignee-badge" style="display: inline-block; background: #e9ecef; padding: 2px 8px; border-radius: 12px; margin: 2px; font-size: 12px;">${name}${dept}</div>`;
+        }).join('');
 
         html += `
-            <tr data-urgency="${opp.urgency}">
+            <tr>
                 <td>${urgencyBadge}</td>
                 <td>
                     <a href="/app/opportunity/${opp.opportunity}" target="_blank">
@@ -130,9 +158,7 @@ function render_opportunities(page) {
                 <td>${opp.customer || 'N/A'}</td>
                 <td>${opp.closing_date || 'Not set'}</td>
                 <td style="text-align: center;">${opp.days_remaining !== null ? opp.days_remaining : '-'}</td>
-                <td style="text-align: center;">
-                    <span class="badge" style="background: #6c757d; color: white;">${itemsCount} items</span>
-                </td>
+                <td>${assigneesList}</td>
                 <td>
                     <a href="/app/quotation/new-quotation-1?opportunity=${opp.opportunity}" 
                        class="btn btn-xs btn-success">
@@ -158,30 +184,4 @@ function getUrgencyBadge(urgency, days) {
         'unknown': '<span class="badge" style="background: #6c757d; color: white;">No date</span>'
     };
     return badges[urgency] || badges['unknown'];
-}
-
-function filter_opportunities(page) {
-    const filter = page.fields_dict.urgency_filter.get_value();
-    const rows = page.main.find('tbody tr');
-    
-    if (!filter || filter === 'All') {
-        rows.show();
-        return;
-    }
-
-    const filterMap = {
-        'Overdue': 'overdue',
-        'Due Today': 'due_today',
-        'Critical (1 day)': 'critical',
-        'High (3 days)': 'high',
-        'Medium (7 days)': 'medium',
-        'Low': 'low'
-    };
-
-    const urgencyValue = filterMap[filter];
-    
-    rows.each(function() {
-        const rowUrgency = $(this).data('urgency');
-        $(this).toggle(rowUrgency === urgencyValue);
-    });
 }

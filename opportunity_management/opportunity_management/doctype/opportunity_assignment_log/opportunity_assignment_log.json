@@ -1,0 +1,127 @@
+{
+    "actions": [],
+    "creation": "2024-01-01 00:00:00",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "opportunity",
+        "assigned_by",
+        "assigned_to",
+        "assignment_date",
+        "closing_date",
+        "column_break_1",
+        "status",
+        "completed_date",
+        "quotation",
+        "completed_on_time"
+    ],
+    "fields": [
+        {
+            "fieldname": "opportunity",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "label": "Opportunity",
+            "options": "Opportunity",
+            "reqd": 1
+        },
+        {
+            "fieldname": "assigned_by",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "Assigned By",
+            "options": "User"
+        },
+        {
+            "fieldname": "assigned_to",
+            "fieldtype": "Small Text",
+            "in_list_view": 1,
+            "label": "Assigned To"
+        },
+        {
+            "fieldname": "assignment_date",
+            "fieldtype": "Date",
+            "in_list_view": 1,
+            "label": "Assignment Date"
+        },
+        {
+            "fieldname": "closing_date",
+            "fieldtype": "Date",
+            "in_list_view": 1,
+            "label": "Closing Date"
+        },
+        {
+            "fieldname": "column_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "default": "Open",
+            "fieldname": "status",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "label": "Status",
+            "options": "Open\nCompleted\nCancelled"
+        },
+        {
+            "fieldname": "completed_date",
+            "fieldtype": "Date",
+            "label": "Completed Date"
+        },
+        {
+            "fieldname": "quotation",
+            "fieldtype": "Link",
+            "label": "Quotation",
+            "options": "Quotation"
+        },
+        {
+            "default": "0",
+            "fieldname": "completed_on_time",
+            "fieldtype": "Check",
+            "in_list_view": 1,
+            "label": "Completed On Time"
+        }
+    ],
+    "index_web_pages_for_search": 1,
+    "links": [],
+    "modified": "2024-01-01 00:00:00",
+    "modified_by": "Administrator",
+    "module": "Opportunity Management",
+    "name": "Opportunity Assignment Log",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        },
+        {
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "Sales Manager",
+            "share": 1
+        },
+        {
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "Sales User"
+        }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "title_field": "opportunity",
+    "track_changes": 1
+}
