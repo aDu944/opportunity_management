@@ -1,3 +1,0 @@
-# Patches for Opportunity Management app
-# Add patch file names here, one per line
-# Example: patches.v1_0.patch_name
