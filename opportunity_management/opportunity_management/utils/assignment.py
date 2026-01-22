@@ -157,6 +157,10 @@ def process_assignments(doc, is_new=False, specific_engineers=None):
 def create_opportunity_todo(doc, user_id):
     """Create a ToDo for the given user linked to the Opportunity."""
     try:
+        # Suppress notifications during ToDo creation to avoid duplicates
+        # The assignment email is already being sent separately
+        frappe.flags.in_import = True
+
         todo = frappe.get_doc({
             "doctype": "ToDo",
             "status": "Open",
@@ -169,8 +173,12 @@ def create_opportunity_todo(doc, user_id):
             "assigned_by": frappe.session.user,
         })
         todo.insert(ignore_permissions=True)
+
+        # Reset the flag
+        frappe.flags.in_import = False
+
         frappe.db.commit()
-        
+
         frappe.msgprint(_(f"ToDo created for {user_id}"), alert=True)
         
     except Exception as e:
