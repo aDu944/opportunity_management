@@ -23,18 +23,19 @@ doc_events = {
 # Scheduled Tasks
 # ============================================================================
 # Daily scheduler for reminder emails
-scheduler_events = {
-    # Run daily at 8:00 AM
-    "cron": {
-        "0 8 * * *": [
-            "opportunity_management.opportunity_management.tasks.send_opportunity_reminders"
-        ]
-    },
-    # Alternative: use daily hook
-    "daily": [
-        "opportunity_management.opportunity_management.tasks.send_opportunity_reminders"
-    ]
-}
+# DISABLED: Using Notification doctype instead to avoid duplicate emails
+# scheduler_events = {
+#     # Run daily at 8:00 AM
+#     "cron": {
+#         "0 8 * * *": [
+#             "opportunity_management.opportunity_management.tasks.send_opportunity_reminders"
+#         ]
+#     },
+#     # Alternative: use daily hook
+#     "daily": [
+#         "opportunity_management.opportunity_management.tasks.send_opportunity_reminders"
+#     ]
+# }
 
 # ============================================================================
 # Website/Portal Configuration
