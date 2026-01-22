@@ -74,7 +74,7 @@ def create_workspace():
         except Exception as e:
             frappe.log_error(f"Could not delete existing workspace: {str(e)}")
 
-    # Create workspace with card structure (Frappe v15)
+    # Create workspace with shortcuts (cards/links don't work reliably on Frappe Cloud)
     workspace = frappe.get_doc({
         "doctype": "Workspace",
         "name": workspace_name,
@@ -84,7 +84,7 @@ def create_workspace():
         "is_hidden": 0,
         "public": 1,
 
-        # Shortcuts
+        # All features as shortcuts - these work reliably
         "shortcuts": [
             {
                 "type": "DocType",
@@ -92,81 +92,57 @@ def create_workspace():
                 "link_to": "Opportunity",
                 "doc_view": "List",
                 "color": "Blue"
-            }
-        ],
-
-        # Cards with links
-        "cards": [
-            {
-                "label": "Views & Dashboards",
-                "links": [
-                    {
-                        "type": "Link",
-                        "link_type": "Page",
-                        "link_to": "my-opportunities",
-                        "label": "My Opportunities",
-                        "description": "View your assigned opportunities"
-                    },
-                    {
-                        "type": "Link",
-                        "link_type": "Page",
-                        "link_to": "team-opportunities",
-                        "label": "Team Opportunities",
-                        "description": "View team opportunities"
-                    },
-                    {
-                        "type": "Link",
-                        "link_type": "Page",
-                        "link_to": "opportunity-calendar",
-                        "label": "Opportunity Calendar",
-                        "description": "Calendar view"
-                    },
-                    {
-                        "type": "Link",
-                        "link_type": "Page",
-                        "link_to": "opportunity-kpi",
-                        "label": "KPI Dashboard",
-                        "description": "View KPI metrics"
-                    }
-                ]
             },
             {
-                "label": "Reports & Logs",
-                "links": [
-                    {
-                        "type": "Link",
-                        "link_type": "DocType",
-                        "link_to": "Opportunity Assignment Log",
-                        "label": "Assignment Log",
-                        "description": "View assignment logs"
-                    }
-                ]
+                "type": "Page",
+                "label": "My Opportunities",
+                "link_to": "my-opportunities",
+                "color": "Green"
             },
             {
-                "label": "Configuration",
-                "links": [
-                    {
-                        "type": "Link",
-                        "link_type": "Page",
-                        "link_to": "employee-team-assignment",
-                        "label": "Employee Team Assignment",
-                        "description": "Assign employees to teams"
-                    },
-                    {
-                        "type": "Link",
-                        "link_type": "DocType",
-                        "link_to": "Email Template",
-                        "label": "Email Templates",
-                        "description": "Manage email templates"
-                    }
-                ]
+                "type": "Page",
+                "label": "Team Opportunities",
+                "link_to": "team-opportunities",
+                "color": "Green"
+            },
+            {
+                "type": "Page",
+                "label": "Opportunity Calendar",
+                "link_to": "opportunity-calendar",
+                "color": "Orange"
+            },
+            {
+                "type": "Page",
+                "label": "KPI Dashboard",
+                "link_to": "opportunity-kpi",
+                "color": "Purple"
+            },
+            {
+                "type": "DocType",
+                "label": "Assignment Log",
+                "link_to": "Opportunity Assignment Log",
+                "doc_view": "List",
+                "color": "Grey"
+            },
+            {
+                "type": "Page",
+                "label": "Employee Team Assignment",
+                "link_to": "employee-team-assignment",
+                "color": "Red"
+            },
+            {
+                "type": "DocType",
+                "label": "Email Templates",
+                "link_to": "Email Template",
+                "doc_view": "List",
+                "color": "Grey"
             }
         ]
     })
 
     try:
         workspace.insert(ignore_permissions=True, ignore_if_duplicate=True)
-        print(f"✓ Created workspace: {workspace_name} with {len(workspace.cards)} cards")
+        print(f"✓ Created workspace: {workspace_name} with {len(workspace.shortcuts)} shortcuts")
     except Exception as e:
         frappe.log_error(f"Workspace creation error: {str(e)}")
         print(f"Warning: Could not create workspace: {str(e)}")
