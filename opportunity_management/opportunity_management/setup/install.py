@@ -80,7 +80,7 @@ def create_workspace():
         "name": workspace_name,
         "title": "Opportunity Management",
         "module": "Opportunity Management",
-        "icon": "briefcase",
+        "icon": "folder-normal",
         "is_hidden": 0,
         "public": 1,
 
