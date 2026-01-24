@@ -13,9 +13,9 @@ frappe.pages['team-opportunities'].on_page_load = function(wrapper) {
     // Add team filter
     page.add_field({
         fieldname: 'team_filter',
-        label: 'Filter by Team',
+        label: 'Filter by Team/Department',
         fieldtype: 'Select',
-        options: '\nAll Teams',
+        options: '\nLoading...',
         change: function() {
             load_team_opportunities(page);
         }
@@ -28,9 +28,8 @@ frappe.pages['team-opportunities'].on_page_load = function(wrapper) {
         </div>
     `);
 
-    // Load available teams first
+    // Load available teams first, then load opportunities
     load_teams(page);
-    load_team_opportunities(page);
 };
 
 function load_teams(page) {
@@ -38,12 +37,39 @@ function load_teams(page) {
         method: 'opportunity_management.opportunity_management.api.get_available_teams',
         callback: function(r) {
             if (r.message) {
-                let options = '\nAll Teams';
-                r.message.forEach(team => {
-                    options += '\n' + team;
+                // Get current user's department to set as default
+                frappe.call({
+                    method: 'frappe.client.get_value',
+                    args: {
+                        doctype: 'Employee',
+                        filters: {
+                            user_id: frappe.session.user,
+                            status: 'Active'
+                        },
+                        fieldname: 'department'
+                    },
+                    callback: function(dept_r) {
+                        let options = 'All Teams';
+                        let user_dept = dept_r.message ? dept_r.message.department : null;
+
+                        r.message.forEach(team => {
+                            options += '\n' + team;
+                        });
+
+                        page.fields_dict.team_filter.df.options = options;
+                        page.fields_dict.team_filter.refresh();
+
+                        // Set default to user's department if found
+                        if (user_dept && r.message.includes(user_dept)) {
+                            page.fields_dict.team_filter.set_value(user_dept);
+                        } else {
+                            page.fields_dict.team_filter.set_value('All Teams');
+                        }
+
+                        // Load opportunities after setting the filter
+                        load_team_opportunities(page);
+                    }
                 });
-                page.fields_dict.team_filter.df.options = options;
-                page.fields_dict.team_filter.refresh();
             }
         }
     });
@@ -128,6 +154,7 @@ function render_team_opportunities(page) {
                     <th>Urgency</th>
                     <th>Opportunity</th>
                     <th>Customer</th>
+                    <th>Status</th>
                     <th>Closing Date</th>
                     <th>Days Left</th>
                     <th>Assigned To</th>
@@ -139,7 +166,12 @@ function render_team_opportunities(page) {
 
     opportunities.forEach(opp => {
         const urgencyBadge = getUrgencyBadge(opp.urgency, opp.days_remaining);
-        
+
+        // Status badge
+        const statusBadge = opp.has_quotation
+            ? '<span class="badge" style="background: #28a745; color: white;">✓ Quotation Sent</span>'
+            : '<span class="badge" style="background: #6c757d; color: white;">Pending</span>';
+
         // Format assignees
         const assigneesList = opp.assignees.map(a => {
             const name = a.employee || a.user;
@@ -156,14 +188,18 @@ function render_team_opportunities(page) {
                     </a>
                 </td>
                 <td>${opp.customer || 'N/A'}</td>
+                <td>${statusBadge}</td>
                 <td>${opp.closing_date || 'Not set'}</td>
                 <td style="text-align: center;">${opp.days_remaining !== null ? opp.days_remaining : '-'}</td>
                 <td>${assigneesList}</td>
                 <td>
-                    <a href="/app/quotation/new-quotation-1?opportunity=${opp.opportunity}" 
-                       class="btn btn-xs btn-success">
-                        Create Quotation
-                    </a>
+                    ${opp.has_quotation
+                        ? '<span class="text-muted" style="font-size: 12px;">Quotation exists</span>'
+                        : `<a href="/app/quotation/new-quotation-1?opportunity=${opp.opportunity}"
+                             class="btn btn-xs btn-success">
+                              Create Quotation
+                           </a>`
+                    }
                 </td>
             </tr>
         `;

@@ -44,11 +44,20 @@ def get_my_opportunities(user=None):
         if opp.status in ["Closed", "Lost", "Converted"]:
             continue
 
+        # Check if quotation exists for this opportunity
+        has_quotation = frappe.db.exists("Quotation", {
+            "opportunity": opp.name,
+            "docstatus": ["!=", 2]  # Not cancelled
+        })
+
         closing_date = getdate(opp.expected_closing) if opp.expected_closing else None
         days_remaining = date_diff(closing_date, today) if closing_date else None
-        
-        # Determine urgency level (matching frontend expectations)
-        if days_remaining is None:
+
+        # Determine urgency level - if quotation exists, it's not overdue
+        if has_quotation:
+            # Has quotation, so not urgent even if past closing date
+            urgency = "low"
+        elif days_remaining is None:
             urgency = "unknown"
         elif days_remaining < 0:
             urgency = "overdue"
@@ -503,10 +512,22 @@ def get_team_opportunities(team=None):
 
     Args:
         team: Optional - filter by specific team (department)
+              If not provided, defaults to current user's department
 
     Returns:
         List of opportunities with assignee details
     """
+    # If no team specified, get current user's department
+    if not team:
+        current_user = frappe.session.user
+        employee_dept = frappe.db.get_value(
+            "Employee",
+            {"user_id": current_user, "status": "Active"},
+            "department"
+        )
+        if employee_dept:
+            team = employee_dept
+
     # Get all open ToDos for opportunities
     todo_filters = {
         "reference_type": "Opportunity",
@@ -530,15 +551,24 @@ def get_team_opportunities(team=None):
             # Get opportunity details
             opp = frappe.get_doc("Opportunity", opp_name)
 
-            # Skip if opportunity is not open
-            if opp.status not in ["Open", "Replied", "Quotation"]:
+            # Skip if opportunity is closed/lost/converted
+            if opp.status in ["Closed", "Lost", "Converted"]:
                 continue
+
+            # Check if quotation exists for this opportunity
+            has_quotation = frappe.db.exists("Quotation", {
+                "opportunity": opp.name,
+                "docstatus": ["!=", 2]  # Not cancelled
+            })
 
             closing_date = getdate(opp.expected_closing) if opp.expected_closing else None
             days_remaining = date_diff(closing_date, today) if closing_date else None
 
-            # Determine urgency
-            if days_remaining is None:
+            # Determine urgency - if quotation exists, it's not overdue
+            if has_quotation:
+                # Has quotation, so not urgent even if past closing date
+                urgency = "low"
+            elif days_remaining is None:
                 urgency = "unknown"
             elif days_remaining < 0:
                 urgency = "overdue"
@@ -560,6 +590,7 @@ def get_team_opportunities(team=None):
                 "days_remaining": days_remaining,
                 "urgency": urgency,
                 "status": opp.status,
+                "has_quotation": has_quotation,
                 "assignees": []
             }
 
