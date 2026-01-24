@@ -5,13 +5,40 @@ frappe.pages['opportunity-calendar'].on_page_load = function(wrapper) {
 		single_column: true
 	});
 
-	// Add FullCalendar CSS
-	frappe.require('assets/frappe/js/lib/fullcalendar/main.min.css', () => {
-		// Add FullCalendar JS
-		frappe.require('assets/frappe/js/lib/fullcalendar/main.min.js', () => {
-			new OpportunityCalendar(page);
+	// Check if FullCalendar is available (loaded via app_include_js)
+	if (typeof FullCalendar !== 'undefined') {
+		new OpportunityCalendar(page);
+	} else {
+		// Fallback: load from CDN if not available
+		console.warn('FullCalendar not loaded via app includes, loading from CDN...');
+
+		// Load FullCalendar CSS from CDN
+		$('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.5/main.min.css">').appendTo('head');
+
+		// Load FullCalendar core and plugins from CDN
+		let scripts = [
+			'https://cdn.jsdelivr.net/npm/fullcalendar@5.11.5/main.min.js',
+			'https://cdn.jsdelivr.net/npm/fullcalendar@5.11.5/daygrid/main.min.js',
+			'https://cdn.jsdelivr.net/npm/fullcalendar@5.11.5/timegrid/main.min.js',
+			'https://cdn.jsdelivr.net/npm/fullcalendar@5.11.5/list/main.min.js'
+		];
+
+		let loadedScripts = 0;
+		scripts.forEach(function(url) {
+			$.getScript(url)
+				.done(function() {
+					loadedScripts++;
+					if (loadedScripts === scripts.length) {
+						console.log('All FullCalendar scripts loaded from CDN');
+						new OpportunityCalendar(page);
+					}
+				})
+				.fail(function(jqxhr, settings, exception) {
+					console.error('Failed to load FullCalendar script:', url, exception);
+					frappe.msgprint(__('Failed to load calendar library. Please refresh the page.'));
+				});
 		});
-	});
+	}
 }
 
 class OpportunityCalendar {
