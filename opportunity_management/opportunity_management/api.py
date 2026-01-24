@@ -13,23 +13,34 @@ from datetime import datetime
 
 
 @frappe.whitelist()
-def get_my_opportunities(user=None):
+def get_my_opportunities(user=None, include_completed=False):
     """
-    Get all open opportunity tasks for the current user.
-    
+    Get opportunity tasks for the current user.
+
+    Args:
+        user: Optional - user email (defaults to current user)
+        include_completed: Boolean - if True, show only completed opportunities (Closed/Lost/Converted)
+                                     if False, show only open opportunities
+
     Returns a list of opportunities with their ToDos and closing dates.
     """
     if not user:
         user = frappe.session.user
-    
-    # Get all open ToDos for this user linked to Opportunities
+
+    # Get ToDos for this user linked to Opportunities
+    todo_filters = {
+        "allocated_to": user,
+        "reference_type": "Opportunity"
+    }
+
+    # For completed opportunities, we don't filter by ToDo status
+    # For open opportunities, we only want open ToDos
+    if not include_completed:
+        todo_filters["status"] = "Open"
+
     todos = frappe.get_all(
         "ToDo",
-        filters={
-            "allocated_to": user,
-            "reference_type": "Opportunity",
-            "status": "Open"
-        },
+        filters=todo_filters,
         fields=["name", "reference_name", "date", "description", "priority", "assigned_by", "creation"]
     )
     
@@ -40,9 +51,15 @@ def get_my_opportunities(user=None):
         # Get opportunity details
         opp = frappe.get_doc("Opportunity", todo.reference_name)
 
-        # Skip closed/lost/converted opportunities
-        if opp.status in ["Closed", "Lost", "Converted"]:
-            continue
+        # Filter based on include_completed flag
+        if include_completed:
+            # Only show completed opportunities
+            if opp.status not in ["Closed", "Lost", "Converted"]:
+                continue
+        else:
+            # Skip closed/lost/converted opportunities
+            if opp.status in ["Closed", "Lost", "Converted"]:
+                continue
 
         # Check if quotation exists for this opportunity
         has_quotation = frappe.db.exists("Quotation", {
@@ -53,8 +70,11 @@ def get_my_opportunities(user=None):
         closing_date = getdate(opp.expected_closing) if opp.expected_closing else None
         days_remaining = date_diff(closing_date, today) if closing_date else None
 
-        # Determine urgency level - if quotation exists, it's not overdue
-        if has_quotation:
+        # Determine urgency level - for completed opportunities, urgency is based on final status
+        if include_completed:
+            # For completed opportunities, urgency doesn't matter - we just need a value
+            urgency = "completed"
+        elif has_quotation:
             # Has quotation, so not urgent even if past closing date
             urgency = "low"
         elif days_remaining is None:
@@ -95,6 +115,7 @@ def get_my_opportunities(user=None):
             "days_remaining": days_remaining,
             "urgency": urgency,  # Frontend expects 'urgency'
             "items": items,  # Frontend expects 'items'
+            "status": opp.status,  # Frontend expects 'status' for completed tab
             "status_color": "gray" if days_remaining is None else ("red" if days_remaining < 0 else ("red" if days_remaining == 0 else ("orange" if days_remaining <= 3 else ("yellow" if days_remaining <= 7 else "green")))),
             "status_label": "No closing date" if days_remaining is None else (f"Overdue by {abs(days_remaining)} days" if days_remaining < 0 else ("Due today" if days_remaining == 0 else f"{days_remaining} days remaining")),
             "opportunity_status": opp.status,
@@ -506,13 +527,15 @@ def get_opportunity_details(opportunity_name):
 
 
 @frappe.whitelist()
-def get_team_opportunities(team=None):
+def get_team_opportunities(team=None, include_completed=False):
     """
-    Get all open opportunities for a team with their assignees.
+    Get opportunities for a team with their assignees.
 
     Args:
         team: Optional - filter by specific team (department)
               If not provided, defaults to current user's department
+        include_completed: Boolean - if True, show only completed opportunities (Closed/Lost/Converted)
+                                     if False, show only open opportunities
 
     Returns:
         List of opportunities with assignee details
@@ -528,11 +551,15 @@ def get_team_opportunities(team=None):
         if employee_dept:
             team = employee_dept
 
-    # Get all open ToDos for opportunities
+    # Get ToDos for opportunities based on whether we want completed or open
     todo_filters = {
-        "reference_type": "Opportunity",
-        "status": "Open"
+        "reference_type": "Opportunity"
     }
+
+    # For completed opportunities, we don't filter by ToDo status
+    # For open opportunities, we only want open ToDos
+    if not include_completed:
+        todo_filters["status"] = "Open"
 
     todos = frappe.get_all(
         "ToDo",
@@ -551,9 +578,15 @@ def get_team_opportunities(team=None):
             # Get opportunity details
             opp = frappe.get_doc("Opportunity", opp_name)
 
-            # Skip if opportunity is closed/lost/converted
-            if opp.status in ["Closed", "Lost", "Converted"]:
-                continue
+            # Filter based on include_completed flag
+            if include_completed:
+                # Only show completed opportunities
+                if opp.status not in ["Closed", "Lost", "Converted"]:
+                    continue
+            else:
+                # Skip if opportunity is closed/lost/converted
+                if opp.status in ["Closed", "Lost", "Converted"]:
+                    continue
 
             # Check if quotation exists for this opportunity
             has_quotation = frappe.db.exists("Quotation", {
@@ -564,8 +597,11 @@ def get_team_opportunities(team=None):
             closing_date = getdate(opp.expected_closing) if opp.expected_closing else None
             days_remaining = date_diff(closing_date, today) if closing_date else None
 
-            # Determine urgency - if quotation exists, it's not overdue
-            if has_quotation:
+            # Determine urgency - for completed opportunities, urgency is based on final status
+            if include_completed:
+                # For completed opportunities, urgency doesn't matter - we just need a value
+                urgency = "completed"
+            elif has_quotation:
                 # Has quotation, so not urgent even if past closing date
                 urgency = "low"
             elif days_remaining is None:
