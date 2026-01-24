@@ -39,7 +39,11 @@ def get_my_opportunities(user=None):
     for todo in todos:
         # Get opportunity details
         opp = frappe.get_doc("Opportunity", todo.reference_name)
-        
+
+        # Skip closed/lost/converted opportunities
+        if opp.status in ["Closed", "Lost", "Converted"]:
+            continue
+
         closing_date = getdate(opp.expected_closing) if opp.expected_closing else None
         days_remaining = date_diff(closing_date, today) if closing_date else None
         
