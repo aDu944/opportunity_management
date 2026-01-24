@@ -64,6 +64,18 @@ def get_calendar_events(start, end, filters=None):
         # Use expected_closing as fallback
         fields.append("o.expected_closing as closing_date")
 
+    # Build the main query
+    query = f"""
+        SELECT
+            {', '.join(fields)}
+        FROM
+            `tabOpportunity` o
+        WHERE
+            {where_clause}
+        ORDER BY
+            o.transaction_date
+    """
+
     # Query opportunities with error handling for missing columns
     try:
         opportunities = frappe.db.sql(query, values, as_dict=True)
