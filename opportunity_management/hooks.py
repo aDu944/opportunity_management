@@ -55,7 +55,7 @@ fixtures = [
     },
     {
         "doctype": "Email Template",
-        "filters": [["name", "in", ["Opportunity Assignment", "Opportunity Reminder"]]]
+        "filters": [["name", "in", ["Opportunity Assignment", "Opportunity Reminder", "Opportunity Closing Date Extended"]]]
     },
     {
         "doctype": "Workspace",
