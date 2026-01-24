@@ -244,13 +244,14 @@ def send_reminder_email(doc, user_id, days_remaining):
         
         # Build subject
         if days_remaining == 0:
-            days_text = "0 days"
+            days_text = "today"
+            subject = f"{config['subject_prefix']} Opportunity {doc.name} Closing TODAY"
         elif days_remaining == 1:
-            days_text = "1 days"
+            days_text = "1 day"
+            subject = f"{config['subject_prefix']} Opportunity {doc.name} Closing in {days_text}"
         else:
             days_text = f"{days_remaining} days"
-        
-        subject = f"{config['subject_prefix']} Opportunity {doc.name} Closing in {days_text}"
+            subject = f"{config['subject_prefix']} Opportunity {doc.name} Closing in {days_text}"
         
         # Get company name
         company_name = frappe.db.get_single_value("System Settings", "company") or frappe.db.get_default("Company") or "ALKHORA for General Trading Ltd"
