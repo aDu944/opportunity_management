@@ -64,25 +64,48 @@ def get_calendar_events(start, end, filters=None):
         # Use expected_closing as fallback
         fields.append("o.expected_closing as closing_date")
 
-    # Query opportunities
-    query = f"""
-        SELECT
-            {', '.join(fields)}
-        FROM
-            `tabOpportunity` o
-        WHERE
-            {where_clause}
-        ORDER BY
-            o.transaction_date
-    """
+    # Query opportunities with error handling for missing columns
+    try:
+        opportunities = frappe.db.sql(query, values, as_dict=True)
+    except Exception as e:
+        if "Unknown column" in str(e):
+            # Fallback: remove problematic custom fields and retry
+            frappe.logger().warning(f"Custom field columns not found, falling back to standard fields: {str(e)}")
 
-    opportunities = frappe.db.sql(query, values, as_dict=True)
+            # Remove custom fields that might not exist
+            fallback_fields = [
+                "o.name as id",
+                "o.name as title",
+                "o.transaction_date as start",
+                "o.transaction_date as end",
+                "o.status",
+                "o.opportunity_owner",
+                "o.opportunity_amount",
+                "o.party_name",
+                "o.expected_closing as closing_date"
+            ]
+
+            fallback_query = f"""
+                SELECT
+                    {', '.join(fallback_fields)}
+                FROM
+                    `tabOpportunity` o
+                WHERE
+                    {where_clause}
+                ORDER BY
+                    o.transaction_date
+            """
+
+            opportunities = frappe.db.sql(fallback_query, values, as_dict=True)
+        else:
+            raise e
 
     # Format events for FullCalendar
     events = []
     for opp in opportunities:
-        # Determine color based on urgency level
-        color = get_urgency_color(opp.get("urgency_level"))
+        # Determine color based on urgency level (default to low if not available)
+        urgency_level = opp.get("urgency_level") or "Low"
+        color = get_urgency_color(urgency_level)
 
         # Use closing date if available, otherwise use transaction date
         event_date = opp.get("closing_date") or opp.get("start")
