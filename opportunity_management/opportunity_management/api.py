@@ -695,23 +695,37 @@ def get_employee_opportunity_stats(team=None):
         List of employees with their opportunity counts
     """
     # Get all open ToDos linked to opportunities
-    todo_filters = {
-        "reference_type": "Opportunity",
-        "status": "Open"
-    }
-
     todos = frappe.get_all(
         "ToDo",
-        filters=todo_filters,
-        fields=["allocated_to"]
+        filters={
+            "reference_type": "Opportunity",
+            "status": "Open"
+        },
+        fields=["allocated_to", "reference_name"]
     )
 
-    # Count opportunities per user
+    # Count non-overdue opportunities per user
     user_counts = {}
+    today = getdate(nowdate())
+    
     for todo in todos:
         user = todo.allocated_to
-        if user:
-            user_counts[user] = user_counts.get(user, 0) + 1
+        opp_name = todo.reference_name
+        
+        if user and opp_name:
+            # Check if opportunity is not overdue
+            opp = frappe.db.get_value("Opportunity", opp_name, ["expected_closing", "status"], as_dict=True)
+            
+            if opp and opp.status not in ["Closed", "Lost", "Converted"]:
+                # Check if not overdue
+                is_overdue = False
+                if opp.expected_closing:
+                    closing_date = getdate(opp.expected_closing)
+                    if closing_date < today:
+                        is_overdue = True
+                
+                if not is_overdue:
+                    user_counts[user] = user_counts.get(user, 0) + 1
 
     # Get employee details and filter by team if specified
     employees = []
