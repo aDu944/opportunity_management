@@ -181,7 +181,7 @@ function render_team_summary(page) {
     
     const overdue = opportunities.filter(o => o.urgency === 'overdue').length;
     const dueToday = opportunities.filter(o => o.urgency === 'due_today').length;
-    const dueSoon = opportunities.filter(o => ['critical', 'high'].includes(o.urgency)).length;
+    const dueSoon = opportunities.filter(o => o.days_remaining !== null && o.days_remaining <= 2 && o.days_remaining >= 0).length;
     const total = opportunities.length;
 
     const summaryHtml = `
@@ -207,7 +207,7 @@ function render_team_summary(page) {
             <div class="col" style="flex: 1;">
                 <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); color: #333; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(252, 182, 159, 0.4);">
                     <h3 style="margin: 0; font-size: 32px; font-weight: 600;">${dueSoon}</h3>
-                    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 14px;">Due in 3 days</p>
+                    <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 14px;">Due Soon</p>
                 </div>
             </div>
         </div>
