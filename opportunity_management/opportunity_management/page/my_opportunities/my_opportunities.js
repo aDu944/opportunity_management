@@ -227,7 +227,6 @@ function render_opportunities(page) {
         <table class="table table-bordered" style="background: white;">
             <thead style="background: #f5f5f5; cursor: pointer;">
                 <tr>
-                    <th onclick="window.sort_my_opportunities_handler('urgency')">Urgency${getSortIcon('urgency')}</th>
                     <th onclick="window.sort_my_opportunities_handler('opportunity')">Opportunity${getSortIcon('opportunity')}</th>
                     <th onclick="window.sort_my_opportunities_handler('customer')">Customer${getSortIcon('customer')}</th>
                     ${page.current_tab === 'completed' ? `<th onclick="window.sort_my_opportunities_handler('status')">Status${getSortIcon('status')}</th>` : ''}
@@ -258,7 +257,6 @@ function render_opportunities(page) {
 
         html += `
             <tr data-urgency="${opp.urgency}" style="${rowStyle}">
-                <td>${urgencyBadge}</td>
                 <td>
                     <a href="/app/opportunity/${opp.opportunity}" target="_blank">
                         ${opp.opportunity}
@@ -273,7 +271,7 @@ function render_opportunities(page) {
                 </td>
                 ${page.current_tab === 'open' ? `
                 <td>
-                    <a href="/app/quotation/new-quotation-1?opportunity=${opp.opportunity}"
+                    <a href="/app/quotation/new?opportunity=${opp.opportunity}"
                        class="btn btn-xs btn-success">
                         Create Quotation
                     </a>
