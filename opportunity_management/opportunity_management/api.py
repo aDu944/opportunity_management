@@ -656,8 +656,8 @@ def get_team_opportunities(team=None, include_completed=False):
                 "department": department
             })
 
-    # Filter by team if specified
-    if team:
+    # Filter by team if specified (skip filtering for "All Teams")
+    if team and team != "All Teams":
         filtered_map = {}
         for opp_name, opp_data in opp_map.items():
             # Check if any assignee is in the specified team

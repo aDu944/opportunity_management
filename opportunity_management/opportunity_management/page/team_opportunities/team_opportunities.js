@@ -62,12 +62,15 @@ function load_teams(page) {
                 
                 // Move the field to the custom container and ensure it's visible
                 const $container = page.main.find('#team-filter-container .control-input');
-                $container.html(page.fields_dict.team_filter.$input);
+                $container.html(page.fields_dict.team_filter.$wrapper);
                 
                 // Ensure the field is properly styled
-                page.fields_dict.team_filter.$input.css({
+                page.fields_dict.team_filter.$wrapper.css({
                     'width': '100%',
                     'min-width': '200px'
+                });
+                page.fields_dict.team_filter.$input.css({
+                    'width': '100%'
                 });
                 
                 // Set default team to current user's department
@@ -100,12 +103,15 @@ function load_teams(page) {
             } else {
                 // Move the field to the custom container even if no teams
                 const $container = page.main.find('#team-filter-container .control-input');
-                $container.html(page.fields_dict.team_filter.$input);
+                $container.html(page.fields_dict.team_filter.$wrapper);
                 
                 // Ensure the field is properly styled
-                page.fields_dict.team_filter.$input.css({
+                page.fields_dict.team_filter.$wrapper.css({
                     'width': '100%',
                     'min-width': '200px'
+                });
+                page.fields_dict.team_filter.$input.css({
+                    'width': '100%'
                 });
                 
                 // If no teams available, just load all opportunities
@@ -121,7 +127,7 @@ function load_team_opportunities(page) {
     frappe.call({
         method: 'opportunity_management.opportunity_management.api.get_team_opportunities',
         args: {
-            team: team && team !== 'All Teams' ? team : null
+            team: team || null
         },
         freeze: true,
         freeze_message: 'Loading team opportunities...',
