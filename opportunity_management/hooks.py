@@ -9,31 +9,28 @@ app_license = "MIT"
 # Document Events
 # ============================================================================
 # Hook into Opportunity save/update events
+# DISABLED: Using client script for assignment instead to avoid duplicates
 doc_events = {
-    "Opportunity": {
-        "on_update": "opportunity_management.opportunity_management.utils.assignment.on_opportunity_update",
-        "after_insert": "opportunity_management.opportunity_management.utils.assignment.on_opportunity_insert",
-    },
+    # "Opportunity": {
+    #     "on_update": "opportunity_management.opportunity_management.utils.assignment.on_opportunity_update",
+    #     "after_insert": "opportunity_management.opportunity_management.utils.assignment.on_opportunity_insert",
+    # },
     "Quotation": {
         "on_submit": "opportunity_management.quotation_handler.on_quotation_submit",
     }
 }
 
 # ============================================================================
-# Scheduled Tasks
+# Scheduled Tasks (Option B: Fancy color-coded reminder emails)
 # ============================================================================
-# Daily scheduler for reminder emails
+# Daily scheduler for reminder emails at 7, 3, 1, 0 days before closing
 scheduler_events = {
     # Run daily at 8:00 AM
     "cron": {
         "0 8 * * *": [
             "opportunity_management.opportunity_management.tasks.send_opportunity_reminders"
         ]
-    },
-    # Alternative: use daily hook
-    "daily": [
-        "opportunity_management.opportunity_management.tasks.send_opportunity_reminders"
-    ]
+    }
 }
 
 # ============================================================================
@@ -58,7 +55,7 @@ fixtures = [
     },
     {
         "doctype": "Email Template",
-        "filters": [["name", "in", ["Opportunity Assignment", "Opportunity Reminder"]]]
+        "filters": [["name", "in", ["Opportunity Assignment", "Opportunity Reminder", "Opportunity Closing Date Extended"]]]
     },
     {
         "doctype": "Workspace",

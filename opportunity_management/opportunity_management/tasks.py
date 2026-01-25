@@ -88,42 +88,100 @@ def process_opportunity_reminders(opp, today):
 
 def send_reminder_to_all_engineers(doc, days_remaining):
     """
-    Send reminder emails to all responsible engineers for an opportunity.
+    Send reminder emails to all responsible engineers AND department managers.
+
+    Recipients:
+    1. Responsible engineers assigned to the opportunity
+    2. Managers/System Managers from the department of the assigner
     """
-    # Get all assigned engineers
-    engineers = get_assigned_engineers(doc)
-    
-    if not engineers:
-        frappe.logger().warning(f"No engineers assigned to Opportunity {doc.name}")
+    # Get all recipients (engineers + managers)
+    recipients = get_all_recipients(doc)
+
+    if not recipients:
+        frappe.logger().warning(f"No recipients found for Opportunity {doc.name}")
         return
-    
-    for user_id in engineers:
+
+    for user_id in recipients:
         send_reminder_email(doc, user_id, days_remaining)
 
 
 def get_assigned_engineers(doc):
-    """Get all user IDs assigned to this opportunity."""
+    """Get all user IDs assigned to this opportunity (engineers only)."""
     users = set()
-    
+
     # From custom_resp_eng child table
     if doc.get("custom_resp_eng"):
         for row in doc.custom_resp_eng:
             user_id = get_user_from_engineer(row.responsible_engineer)
             if user_id:
                 users.add(user_id)
-    
+
     # Also include users with open ToDos for this opportunity
     todos = frappe.get_all("ToDo", filters={
         "reference_type": "Opportunity",
         "reference_name": doc.name,
         "status": "Open"
     }, fields=["allocated_to"])
-    
+
     for todo in todos:
         if todo.allocated_to:
             users.add(todo.allocated_to)
-    
+
     return users
+
+
+def get_all_recipients(doc):
+    """
+    Get all recipients for opportunity notifications.
+
+    Returns:
+        Set of user IDs including:
+        - Responsible engineers
+        - Department managers of the assigner
+    """
+    recipients = set()
+
+    # 1. Get responsible engineers
+    engineers = get_assigned_engineers(doc)
+    recipients.update(engineers)
+
+    # 2. Get department managers of the person who assigned/created
+    try:
+        from opportunity_management.opportunity_management.notification_utils import get_department_managers
+
+        # Try owner first (creator), then modified_by (last editor)
+        assigner_email = doc.owner or doc.modified_by
+
+        if assigner_email:
+            dept_managers = get_department_managers(assigner_email)
+            if dept_managers:
+                recipients.update(dept_managers)
+                frappe.logger().info(
+                    f"Added {len(dept_managers)} department managers for {doc.name}: {dept_managers}"
+                )
+
+        # Also check ToDos for assigned_by field
+        todos = frappe.get_all("ToDo", filters={
+            "reference_type": "Opportunity",
+            "reference_name": doc.name,
+            "status": "Open"
+        }, fields=["assigned_by"])
+
+        for todo in todos:
+            if todo.assigned_by:
+                todo_managers = get_department_managers(todo.assigned_by)
+                if todo_managers:
+                    recipients.update(todo_managers)
+
+    except Exception as e:
+        frappe.log_error(
+            f"Error getting department managers for {doc.name}: {str(e)}",
+            "Get All Recipients Error"
+        )
+        # Continue with just engineers if manager lookup fails
+        pass
+
+    return recipients
 
 
 def get_user_from_engineer(engineer_name):
@@ -244,13 +302,14 @@ def send_reminder_email(doc, user_id, days_remaining):
         
         # Build subject
         if days_remaining == 0:
-            days_text = "0 days"
+            days_text = "today"
+            subject = f"{config['subject_prefix']} Opportunity {doc.name} Closing TODAY"
         elif days_remaining == 1:
-            days_text = "1 days"
+            days_text = "1 day"
+            subject = f"{config['subject_prefix']} Opportunity {doc.name} Closing in {days_text}"
         else:
             days_text = f"{days_remaining} days"
-        
-        subject = f"{config['subject_prefix']} Opportunity {doc.name} Closing in {days_text}"
+            subject = f"{config['subject_prefix']} Opportunity {doc.name} Closing in {days_text}"
         
         # Get company name
         company_name = frappe.db.get_single_value("System Settings", "company") or frappe.db.get_default("Company") or "ALKHORA for General Trading Ltd"
