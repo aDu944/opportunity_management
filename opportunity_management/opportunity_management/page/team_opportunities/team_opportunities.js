@@ -299,7 +299,7 @@ function render_team_opportunities(page) {
                 <td style="text-align: center;">${opp.days_remaining !== null ? opp.days_remaining : '-'}</td>
                 <td>${assigneesList}</td>
                 <td>
-                    <a href="/app/quotation/new?opportunity=${opp.opportunity}" 
+                    <a href="/app/quotation?new=1&opportunity=${opp.opportunity}" 
                        class="btn btn-xs btn-success">
                         Create Quotation
                     </a>

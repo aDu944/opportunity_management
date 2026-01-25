@@ -271,7 +271,7 @@ function render_opportunities(page) {
                 </td>
                 ${page.current_tab === 'open' ? `
                 <td>
-                    <a href="/app/quotation/new?opportunity=${opp.opportunity}"
+                    <a href="/app/quotation?new=1&opportunity=${opp.opportunity}"
                        class="btn btn-xs btn-success">
                         Create Quotation
                     </a>
