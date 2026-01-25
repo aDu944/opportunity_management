@@ -355,28 +355,11 @@ window.sort_my_opportunities_handler = function(column) {
 
 // Function to create quotation from opportunity
 window.create_quotation = function(opportunity_name) {
-    // Use the correct method to create quotation from opportunity
-    frappe.call({
-        method: 'erpnext.crm.doctype.opportunity.opportunity.make_quotation',
-        args: {
-            source_name: opportunity_name
-        },
-        callback: function(r) {
-            if (r.message) {
-                // The response should be the quotation doc
-                if (r.message.name) {
-                    frappe.set_route('Form', 'Quotation', r.message.name);
-                } else {
-                    frappe.msgprint('Quotation created successfully');
-                    frappe.set_route('List', 'Quotation');
-                }
-            } else {
-                frappe.msgprint('Error creating quotation');
-            }
-        },
-        error: function() {
-            frappe.msgprint('Error creating quotation');
-            frappe.set_route('List', 'Quotation');
-        }
-    });
+    // Set route options to link the quotation to the opportunity
+    frappe.route_options = {
+        "opportunity": opportunity_name
+    };
+
+    // Create new quotation
+    frappe.new_doc("Quotation");
 };
