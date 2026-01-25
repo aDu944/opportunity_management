@@ -267,6 +267,49 @@ function getEmployeeCardColor(opportunityCount) {
     }
 }
 
+function sort_team_opportunities(page, column) {
+    // Toggle sort order if clicking same column
+    if (page.sort_by === column) {
+        page.sort_order = page.sort_order === 'asc' ? 'desc' : 'asc';
+    } else {
+        page.sort_by = column;
+        page.sort_order = 'asc';
+    }
+
+    // Sort the opportunities array
+    page.opportunities.sort((a, b) => {
+        let aVal, bVal;
+
+        switch(column) {
+            case 'opportunity':
+                aVal = a.opportunity || '';
+                bVal = b.opportunity || '';
+                break;
+            case 'customer':
+                aVal = a.customer || '';
+                bVal = b.customer || '';
+                break;
+            case 'closing_date':
+                aVal = a.closing_date || '9999-12-31';
+                bVal = b.closing_date || '9999-12-31';
+                break;
+            case 'days_remaining':
+                aVal = a.days_remaining !== null ? a.days_remaining : 9999;
+                bVal = b.days_remaining !== null ? b.days_remaining : 9999;
+                break;
+            default:
+                return 0;
+        }
+
+        if (aVal < bVal) return page.sort_order === 'asc' ? -1 : 1;
+        if (aVal > bVal) return page.sort_order === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    // Re-render
+    render_team_opportunities(page);
+}
+
 function render_team_opportunities(page) {
     let opportunities = page.opportunities;
     
@@ -286,14 +329,21 @@ function render_team_opportunities(page) {
         return;
     }
 
+    const getSortIcon = (column) => {
+        if (page.sort_by === column) {
+            return page.sort_order === 'asc' ? ' ▲' : ' ▼';
+        }
+        return ' ⇅';
+    };
+
     let html = `
         <table class="table table-bordered" style="background: white;">
-            <thead style="background: #f5f5f5;">
+            <thead style="background: #f5f5f5; cursor: pointer;">
                 <tr>
-                    <th>Opportunity</th>
-                    <th>Customer</th>
-                    <th>Closing Date</th>
-                    <th>Days Left</th>
+                    <th onclick="window.sort_team_opportunities_handler('opportunity')">Opportunity${getSortIcon('opportunity')}</th>
+                    <th onclick="window.sort_team_opportunities_handler('customer')">Customer${getSortIcon('customer')}</th>
+                    <th onclick="window.sort_team_opportunities_handler('closing_date')">Closing Date${getSortIcon('closing_date')}</th>
+                    <th onclick="window.sort_team_opportunities_handler('days_remaining')">Days Left${getSortIcon('days_remaining')}</th>
                     <th>Assigned To</th>
                     <th>Actions</th>
                 </tr>
@@ -311,11 +361,13 @@ function render_team_opportunities(page) {
             return `<div class="assignee-badge" style="display: inline-block; background: #e9ecef; padding: 2px 8px; border-radius: 12px; margin: 2px; font-size: 12px;">${name}${dept}</div>`;
         }).join('');
 
-        // Highlight rows with closing date today and within next 3 days
-        const highlightUrgencies = ['due_today', 'critical', 'high'];
-        const rowStyle = highlightUrgencies.includes(opp.urgency)
-            ? 'background: linear-gradient(90deg, #fff3cd 0%, #ffffff 100%); border-left: 4px solid #ffc107; box-shadow: 0 2px 4px rgba(255, 193, 7, 0.2);'
-            : '';
+        // Highlight rows based on urgency
+        let rowStyle = '';
+        if (['overdue', 'due_today', 'critical'].includes(opp.urgency)) {
+            rowStyle = 'background: linear-gradient(90deg, #f8d7da 0%, #ffffff 100%); border-left: 4px solid #dc3545; box-shadow: 0 2px 4px rgba(220, 53, 69, 0.2);';
+        } else if (opp.urgency === 'high') {
+            rowStyle = 'background: linear-gradient(90deg, #fff3cd 0%, #ffffff 100%); border-left: 4px solid #fd7e14; box-shadow: 0 2px 4px rgba(253, 126, 20, 0.2);';
+        }
 
         html += `
             <tr data-urgency="${opp.urgency}" style="${rowStyle}">
@@ -329,7 +381,7 @@ function render_team_opportunities(page) {
                 <td style="text-align: center;">${opp.days_remaining !== null ? opp.days_remaining : '-'}</td>
                 <td>${assigneesList}</td>
                 <td>
-                    <a href="/app/quotation/new-quotation?opportunity=${opp.opportunity}" 
+                    <a href="/app/quotation/new?opportunity=${opp.opportunity}" 
                        class="btn btn-xs btn-success">
                         Create Quotation
                     </a>
@@ -354,3 +406,12 @@ function getUrgencyBadge(urgency, days) {
     };
     return badges[urgency] || badges['unknown'];
 }
+
+// Global handler for sorting (accessed from onclick in table headers)
+window.sort_team_opportunities_handler = function(column) {
+    // Find the page object
+    const page = frappe.pages['team-opportunities'].page;
+    if (page && page.opportunities) {
+        sort_team_opportunities(page, column);
+    }
+};
