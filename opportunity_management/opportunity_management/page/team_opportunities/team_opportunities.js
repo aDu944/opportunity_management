@@ -27,8 +27,14 @@ frappe.pages['team-opportunities'].on_page_load = function(wrapper) {
                 <div class="row">
                     <div class="col-md-12">
                         <div style="display: flex; align-items: center; gap: 15px;">
-                            <label style="margin: 0; font-weight: 600; color: #2c3e50; font-size: 14px;">Filter by Team:</label>
-                            <div id="team-filter-container" style="flex: 1; max-width: 300px;"></div>
+                            <label style="margin: 0; font-weight: 600; color: #2c3e50; font-size: 14px; white-space: nowrap;">Filter by Team:</label>
+                            <div id="team-filter-container" style="flex: 1; max-width: 400px; min-width: 200px;">
+                                <div class="form-group frappe-control input-max-width" style="margin: 0;">
+                                    <div class="control-input-wrapper">
+                                        <div class="control-input" style="width: 100%;"></div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -54,8 +60,15 @@ function load_teams(page) {
                 page.fields_dict.team_filter.df.options = options;
                 page.fields_dict.team_filter.refresh();
                 
-                // Move the field to the custom container
-                page.main.find('#team-filter-container').html(page.fields_dict.team_filter.$wrapper);
+                // Move the field to the custom container and ensure it's visible
+                const $container = page.main.find('#team-filter-container .control-input');
+                $container.html(page.fields_dict.team_filter.$input);
+                
+                // Ensure the field is properly styled
+                page.fields_dict.team_filter.$input.css({
+                    'width': '100%',
+                    'min-width': '200px'
+                });
                 
                 // Set default team to current user's department
                 frappe.call({
@@ -86,7 +99,15 @@ function load_teams(page) {
                 });
             } else {
                 // Move the field to the custom container even if no teams
-                page.main.find('#team-filter-container').html(page.fields_dict.team_filter.$wrapper);
+                const $container = page.main.find('#team-filter-container .control-input');
+                $container.html(page.fields_dict.team_filter.$input);
+                
+                // Ensure the field is properly styled
+                page.fields_dict.team_filter.$input.css({
+                    'width': '100%',
+                    'min-width': '200px'
+                });
+                
                 // If no teams available, just load all opportunities
                 load_team_opportunities(page);
             }
@@ -170,7 +191,6 @@ function render_team_opportunities(page) {
         <table class="table table-bordered" style="background: white;">
             <thead style="background: #f5f5f5;">
                 <tr>
-                    <th>Urgency</th>
                     <th>Opportunity</th>
                     <th>Customer</th>
                     <th>Closing Date</th>
@@ -199,7 +219,6 @@ function render_team_opportunities(page) {
 
         html += `
             <tr data-urgency="${opp.urgency}" style="${rowStyle}">
-                <td>${urgencyBadge}</td>
                 <td>
                     <a href="/app/opportunity/${opp.opportunity}" target="_blank">
                         ${opp.opportunity}
