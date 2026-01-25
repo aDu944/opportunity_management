@@ -285,9 +285,9 @@ function render_opportunities(page) {
         // Highlight rows based on urgency
         let rowStyle = '';
         if (['overdue', 'due_today', 'critical'].includes(opp.urgency)) {
-            rowStyle = 'background: linear-gradient(90deg, #f8d7da 0%, #ffffff 100%); border-left: 4px solid #dc3545; box-shadow: 0 2px 4px rgba(220, 53, 69, 0.2);';
+            rowStyle = 'background: #f8d7da; border-left: 4px solid #dc3545; font-weight: bold;';
         } else if (opp.urgency === 'high') {
-            rowStyle = 'background: linear-gradient(90deg, #fff3cd 0%, #ffffff 100%); border-left: 4px solid #fd7e14; box-shadow: 0 2px 4px rgba(253, 126, 20, 0.2);';
+            rowStyle = 'background: #fff3cd; border-left: 4px solid #fd7e14; font-weight: bold;';
         }
 
         html += `
