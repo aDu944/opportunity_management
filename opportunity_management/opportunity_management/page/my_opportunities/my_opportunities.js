@@ -231,7 +231,7 @@ function render_opportunities(page) {
                     <th onclick="window.sort_my_opportunities_handler('customer')">Customer${getSortIcon('customer')}</th>
                     ${page.current_tab === 'completed' ? `<th onclick="window.sort_my_opportunities_handler('status')">Status${getSortIcon('status')}</th>` : ''}
                     <th onclick="window.sort_my_opportunities_handler('closing_date')">Closing Date${getSortIcon('closing_date')}</th>
-                    <th onclick="window.sort_my_opportunities_handler('days_remaining')">Days Left${getSortIcon('days_remaining')}</th>
+                    ${page.current_tab === 'open' ? `<th onclick="window.sort_my_opportunities_handler('days_remaining')">Days Left${getSortIcon('days_remaining')}</th>` : ''}
                     <th>Items</th>
                     ${page.current_tab === 'open' ? '<th>Actions</th>' : ''}
                 </tr>
@@ -265,7 +265,7 @@ function render_opportunities(page) {
                 <td>${opp.customer || 'N/A'}</td>
                 ${statusColumn}
                 <td>${opp.closing_date || 'Not set'}</td>
-                <td style="text-align: center;">${opp.days_remaining !== null ? opp.days_remaining : '-'}</td>
+                ${page.current_tab === 'open' ? `<td style="text-align: center;">${opp.days_remaining !== null ? opp.days_remaining : '-'}</td>` : ''}
                 <td style="text-align: center;">
                     <span class="badge" style="background: #6c757d; color: white;">${itemsCount} items</span>
                 </td>
