@@ -15,6 +15,17 @@ frappe.pages['my-opportunities'].on_page_load = function(wrapper) {
         load_opportunities(page);
     }, 'primary');
 
+    // Add hide overdue filter
+    page.add_field({
+        fieldname: 'hide_overdue',
+        label: 'Hide Overdue Opportunities',
+        fieldtype: 'Check',
+        default: 1,
+        change: function() {
+            render_opportunities(page);
+        }
+    });
+
     // Add tabs
     page.main.html(`
         <div class="opportunities-container">
@@ -201,12 +212,20 @@ function sort_my_opportunities(page, column) {
 }
 
 function render_opportunities(page) {
-    const opportunities = page.opportunities;
+    let opportunities = page.opportunities;
+
+    // Filter out overdue opportunities if checkbox is checked (only for open opportunities)
+    const hideOverdue = page.fields_dict.hide_overdue ? page.fields_dict.hide_overdue.get_value() : false;
+    if (hideOverdue && page.current_tab === 'open') {
+        opportunities = opportunities.filter(opp => opp.urgency !== 'overdue');
+    }
 
     if (!opportunities.length) {
         const message = page.current_tab === 'completed'
             ? '<h4>No completed opportunities!</h4>'
-            : '<h4>🎉 No open opportunities!</h4><p>You have no pending tasks.</p>';
+            : hideOverdue 
+                ? '<h4>🎉 No open opportunities!</h4><p>You have no pending tasks (overdue hidden).</p>'
+                : '<h4>🎉 No open opportunities!</h4><p>You have no pending tasks.</p>';
 
         page.main.find('.opportunities-list').html(`
             <div style="text-align: center; padding: 40px; color: #666;">
@@ -250,9 +269,10 @@ function render_opportunities(page) {
 
         const itemsCount = opp.items ? opp.items.length : 0;
 
-        // Highlight rows with closing date today
-        const rowStyle = opp.urgency === 'due_today'
-            ? 'background: linear-gradient(90deg, #fff3cd 0%, #ffffff 100%); border-left: 4px solid #ffc107;'
+        // Highlight rows with closing date today and within next 3 days
+        const highlightUrgencies = ['due_today', 'critical', 'high'];
+        const rowStyle = highlightUrgencies.includes(opp.urgency)
+            ? 'background: linear-gradient(90deg, #fff3cd 0%, #ffffff 100%); border-left: 4px solid #ffc107; box-shadow: 0 2px 4px rgba(255, 193, 7, 0.2);'
             : '';
 
         html += `
@@ -271,7 +291,7 @@ function render_opportunities(page) {
                 </td>
                 ${page.current_tab === 'open' ? `
                 <td>
-                    <a href="/app/quotation?new=1&opportunity=${opp.opportunity}"
+                    <a href="/app/quotation/new-quotation?opportunity=${opp.opportunity}"
                        class="btn btn-xs btn-success">
                         Create Quotation
                     </a>

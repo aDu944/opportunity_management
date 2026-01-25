@@ -21,11 +21,22 @@ frappe.pages['team-opportunities'].on_page_load = function(wrapper) {
         }
     });
 
+    // Add hide overdue filter
+    page.add_field({
+        fieldname: 'hide_overdue',
+        label: 'Hide Overdue Opportunities',
+        fieldtype: 'Check',
+        default: 1,
+        change: function() {
+            render_team_opportunities(page);
+        }
+    });
+
     page.main.html(`
         <div class="team-opportunities-container">
             <div class="filter-section" style="margin-bottom: 20px; padding: 20px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border: 1px solid #e1e8ed;">
                 <div class="row">
-                    <div class="col-md-12">
+                    <div class="col-md-8">
                         <div style="display: flex; align-items: center; gap: 15px;">
                             <label style="margin: 0; font-weight: 600; color: #2c3e50; font-size: 14px; white-space: nowrap;">Filter by Team:</label>
                             <div id="team-filter-container" style="flex: 1; max-width: 400px; min-width: 200px;">
@@ -36,6 +47,9 @@ frappe.pages['team-opportunities'].on_page_load = function(wrapper) {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div id="overdue-filter-container"></div>
                     </div>
                 </div>
             </div>
@@ -73,6 +87,10 @@ function load_teams(page) {
                 page.fields_dict.team_filter.$input.css({
                     'width': '100%'
                 });
+                
+                // Move the hide overdue field
+                const $overdueContainer = page.main.find('#overdue-filter-container');
+                $overdueContainer.html(page.fields_dict.hide_overdue.$wrapper);
                 
                 // Rebind the change event after moving the field
                 page.fields_dict.team_filter.$input.on('change', function() {
@@ -119,6 +137,10 @@ function load_teams(page) {
                 page.fields_dict.team_filter.$input.css({
                     'width': '100%'
                 });
+                
+                // Move the hide overdue field
+                const $overdueContainer = page.main.find('#overdue-filter-container');
+                $overdueContainer.html(page.fields_dict.hide_overdue.$wrapper);
                 
                 // Rebind the change event after moving the field
                 page.fields_dict.team_filter.$input.on('change', function() {
@@ -246,12 +268,19 @@ function getEmployeeCardColor(opportunityCount) {
 }
 
 function render_team_opportunities(page) {
-    const opportunities = page.opportunities;
+    let opportunities = page.opportunities;
+    
+    // Filter out overdue opportunities if checkbox is checked
+    const hideOverdue = page.fields_dict.hide_overdue ? page.fields_dict.hide_overdue.get_value() : false;
+    if (hideOverdue) {
+        opportunities = opportunities.filter(opp => opp.urgency !== 'overdue');
+    }
     
     if (!opportunities.length) {
+        const message = hideOverdue ? 'No open opportunities for this team (overdue hidden)!' : 'No open opportunities for this team!';
         page.main.find('.opportunities-list').html(`
             <div style="text-align: center; padding: 40px; color: #666;">
-                <h4>🎉 No open opportunities for this team!</h4>
+                <h4>🎉 ${message}</h4>
             </div>
         `);
         return;
@@ -282,9 +311,10 @@ function render_team_opportunities(page) {
             return `<div class="assignee-badge" style="display: inline-block; background: #e9ecef; padding: 2px 8px; border-radius: 12px; margin: 2px; font-size: 12px;">${name}${dept}</div>`;
         }).join('');
 
-        // Highlight rows with closing date today
-        const rowStyle = opp.urgency === 'due_today'
-            ? 'background: linear-gradient(90deg, #fff3cd 0%, #ffffff 100%); border-left: 4px solid #ffc107;'
+        // Highlight rows with closing date today and within next 3 days
+        const highlightUrgencies = ['due_today', 'critical', 'high'];
+        const rowStyle = highlightUrgencies.includes(opp.urgency)
+            ? 'background: linear-gradient(90deg, #fff3cd 0%, #ffffff 100%); border-left: 4px solid #ffc107; box-shadow: 0 2px 4px rgba(255, 193, 7, 0.2);'
             : '';
 
         html += `
@@ -299,7 +329,7 @@ function render_team_opportunities(page) {
                 <td style="text-align: center;">${opp.days_remaining !== null ? opp.days_remaining : '-'}</td>
                 <td>${assigneesList}</td>
                 <td>
-                    <a href="/app/quotation?new=1&opportunity=${opp.opportunity}" 
+                    <a href="/app/quotation/new-quotation?opportunity=${opp.opportunity}" 
                        class="btn btn-xs btn-success">
                         Create Quotation
                     </a>
