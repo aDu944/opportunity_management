@@ -26,7 +26,7 @@ frappe.pages['team-opportunities'].on_page_load = function(wrapper) {
         fieldname: 'hide_overdue',
         label: 'Hide Overdue Opportunities',
         fieldtype: 'Check',
-        default: 1,
+        default: 0,
         change: function() {
             render_team_opportunities(page);
         }
@@ -95,6 +95,11 @@ function load_teams(page) {
                 // Rebind the change event after moving the field
                 page.fields_dict.team_filter.$input.on('change', function() {
                     load_team_opportunities(page);
+                });
+                
+                // Ensure hide_overdue change event works
+                page.fields_dict.hide_overdue.$input.on('change', function() {
+                    render_team_opportunities(page);
                 });
                 
                 // Set default team to current user's department
@@ -381,8 +386,8 @@ function render_team_opportunities(page) {
                 <td style="text-align: center;">${opp.days_remaining !== null ? opp.days_remaining : '-'}</td>
                 <td>${assigneesList}</td>
                 <td>
-                    <a href="/app/quotation/new?opportunity=${opp.opportunity}" 
-                       class="btn btn-xs btn-success">
+                    <a onclick="create_quotation('${opp.opportunity}')" 
+                       class="btn btn-xs btn-success" style="cursor: pointer;">
                         Create Quotation
                     </a>
                 </td>
@@ -414,4 +419,11 @@ window.sort_team_opportunities_handler = function(column) {
     if (page && page.opportunities) {
         sort_team_opportunities(page, column);
     }
+};
+
+// Function to create quotation from opportunity
+window.create_quotation = function(opportunity_name) {
+    frappe.new_doc('Quotation', {
+        opportunity: opportunity_name
+    });
 };

@@ -20,7 +20,7 @@ frappe.pages['my-opportunities'].on_page_load = function(wrapper) {
         fieldname: 'hide_overdue',
         label: 'Hide Overdue Opportunities',
         fieldtype: 'Check',
-        default: 1,
+        default: 0,
         change: function() {
             render_opportunities(page);
         }
@@ -306,8 +306,8 @@ function render_opportunities(page) {
                 </td>
                 ${page.current_tab === 'open' ? `
                 <td>
-                    <a href="/app/quotation/new?opportunity=${opp.opportunity}"
-                       class="btn btn-xs btn-success">
+                    <a onclick="create_quotation('${opp.opportunity}')" 
+                       class="btn btn-xs btn-success" style="cursor: pointer;">
                         Create Quotation
                     </a>
                 </td>
@@ -349,4 +349,11 @@ window.sort_my_opportunities_handler = function(column) {
     if (page && page.opportunities) {
         sort_my_opportunities(page, column);
     }
+};
+
+// Function to create quotation from opportunity
+window.create_quotation = function(opportunity_name) {
+    frappe.new_doc('Quotation', {
+        opportunity: opportunity_name
+    });
 };
