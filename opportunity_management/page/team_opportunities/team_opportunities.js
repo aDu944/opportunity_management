@@ -141,29 +141,29 @@ function render_team_summary(page) {
         const lost = opportunities.filter(o => o.status === 'Lost').length;
 
         const summaryHtml = `
-            <div class="row" style="margin-bottom: 20px;">
-                <div class="col-md-3">
-                    <div class="card" style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                        <h3 style="margin: 0; color: #333;">${total}</h3>
-                        <p style="margin: 0; color: #666;">Total Completed</p>
+            <div class="row" style="margin-bottom: 20px; gap: 15px;">
+                <div class="col" style="flex: 1;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
+                        <h3 style="margin: 0; font-size: 32px; font-weight: 600;">${total}</h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">Total Completed</p>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="card" style="background: #28a745; color: white; padding: 15px; border-radius: 8px;">
-                        <h3 style="margin: 0;">${converted}</h3>
-                        <p style="margin: 0;">Converted</p>
+                <div class="col" style="flex: 1;">
+                    <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(56, 239, 125, 0.4);">
+                        <h3 style="margin: 0; font-size: 32px; font-weight: 600;">${converted}</h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">Converted</p>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="card" style="background: #17a2b8; color: white; padding: 15px; border-radius: 8px;">
-                        <h3 style="margin: 0;">${closed}</h3>
-                        <p style="margin: 0;">Closed</p>
+                <div class="col" style="flex: 1;">
+                    <div style="background: linear-gradient(135deg, #3a7bd5 0%, #00d2ff 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(58, 123, 213, 0.4);">
+                        <h3 style="margin: 0; font-size: 32px; font-weight: 600;">${closed}</h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">Closed</p>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="card" style="background: #6c757d; color: white; padding: 15px; border-radius: 8px;">
-                        <h3 style="margin: 0;">${lost}</h3>
-                        <p style="margin: 0;">Lost</p>
+                <div class="col" style="flex: 1;">
+                    <div style="background: linear-gradient(135deg, #757F9A 0%, #D7DDE8 100%); color: #333; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(117, 127, 154, 0.3);">
+                        <h3 style="margin: 0; font-size: 32px; font-weight: 600;">${lost}</h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 14px;">Lost</p>
                     </div>
                 </div>
             </div>
@@ -177,29 +177,29 @@ function render_team_summary(page) {
         const total = opportunities.length;
 
         const summaryHtml = `
-            <div class="row" style="margin-bottom: 20px;">
-                <div class="col-md-3">
-                    <div class="card" style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                        <h3 style="margin: 0; color: #333;">${total}</h3>
-                        <p style="margin: 0; color: #666;">Total Open</p>
+            <div class="row" style="margin-bottom: 20px; gap: 15px;">
+                <div class="col" style="flex: 1;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
+                        <h3 style="margin: 0; font-size: 32px; font-weight: 600;">${total}</h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">Total Open</p>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="card" style="background: #dc3545; color: white; padding: 15px; border-radius: 8px;">
-                        <h3 style="margin: 0;">${overdue}</h3>
-                        <p style="margin: 0;">Overdue</p>
+                <div class="col" style="flex: 1;">
+                    <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);">
+                        <h3 style="margin: 0; font-size: 32px; font-weight: 600;">${overdue}</h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">Overdue</p>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="card" style="background: #fd7e14; color: white; padding: 15px; border-radius: 8px;">
-                        <h3 style="margin: 0;">${dueToday}</h3>
-                        <p style="margin: 0;">Due Today</p>
+                <div class="col" style="flex: 1;">
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(254, 225, 64, 0.4);">
+                        <h3 style="margin: 0; font-size: 32px; font-weight: 600;">${dueToday}</h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">Due Today</p>
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <div class="card" style="background: #ffc107; padding: 15px; border-radius: 8px;">
-                        <h3 style="margin: 0;">${dueSoon}</h3>
-                        <p style="margin: 0;">Due in 3 days</p>
+                <div class="col" style="flex: 1;">
+                    <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); color: #333; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(252, 182, 159, 0.4);">
+                        <h3 style="margin: 0; font-size: 32px; font-weight: 600;">${dueSoon}</h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.8; font-size: 14px;">Due in 3 days</p>
                     </div>
                 </div>
             </div>
@@ -319,8 +319,13 @@ function render_team_opportunities(page) {
             return `<div class="assignee-badge" style="display: inline-block; background: #e9ecef; padding: 2px 8px; border-radius: 12px; margin: 2px; font-size: 12px;">${name}${dept}</div>`;
         }).join('');
 
+        // Highlight rows with closing date today
+        const rowStyle = opp.urgency === 'due_today'
+            ? 'background: linear-gradient(90deg, #fff3cd 0%, #ffffff 100%); border-left: 4px solid #ffc107;'
+            : '';
+
         html += `
-            <tr>
+            <tr style="${rowStyle}">
                 <td>${urgencyBadge}</td>
                 <td>
                     <a href="/app/opportunity/${opp.opportunity}" target="_blank">
