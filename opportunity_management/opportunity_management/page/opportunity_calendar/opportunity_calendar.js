@@ -15,7 +15,7 @@ frappe.pages['opportunity-calendar'].on_page_load = function(wrapper) {
 		// Load FullCalendar CSS from CDN
 		$('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.5/main.min.css">').appendTo('head');
 
-		// Load FullCalendar core and plugins from CDN
+		// Load FullCalendar core and plugins from CDN using script tags instead of $.getScript
 		let scripts = [
 			'https://cdn.jsdelivr.net/npm/fullcalendar@5.11.5/main.min.js',
 			'https://cdn.jsdelivr.net/npm/fullcalendar@5.11.5/daygrid/main.min.js',
@@ -24,20 +24,25 @@ frappe.pages['opportunity-calendar'].on_page_load = function(wrapper) {
 		];
 
 		let loadedScripts = 0;
-		scripts.forEach(function(url) {
-			$.getScript(url)
-				.done(function() {
-					loadedScripts++;
-					if (loadedScripts === scripts.length) {
-						console.log('All FullCalendar scripts loaded from CDN');
-						new OpportunityCalendar(page);
-					}
-				})
-				.fail(function(jqxhr, settings, exception) {
-					console.error('Failed to load FullCalendar script:', url, exception);
-					frappe.msgprint(__('Failed to load calendar library. Please refresh the page.'));
-				});
-		});
+		function loadScript(url) {
+			let script = document.createElement('script');
+			script.src = url;
+			script.onload = function() {
+				loadedScripts++;
+				console.log(`Loaded script ${loadedScripts}/${scripts.length}: ${url}`);
+				if (loadedScripts === scripts.length) {
+					console.log('All FullCalendar scripts loaded from CDN');
+					new OpportunityCalendar(page);
+				}
+			};
+			script.onerror = function() {
+				console.error('Failed to load FullCalendar script:', url);
+				frappe.msgprint(__('Failed to load calendar library. Please refresh the page.'));
+			};
+			document.head.appendChild(script);
+		}
+
+		scripts.forEach(loadScript);
 	}
 }
 

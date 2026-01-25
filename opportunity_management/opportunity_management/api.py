@@ -27,6 +27,9 @@ def get_my_opportunities(user=None, include_completed=False):
     if not user:
         user = frappe.session.user
 
+    # Debug: Log current user
+    frappe.logger().info(f"get_my_opportunities called for user: {user}")
+
     # Get ToDos for this user linked to Opportunities
     todo_filters = {
         "allocated_to": user,
@@ -43,7 +46,10 @@ def get_my_opportunities(user=None, include_completed=False):
         filters=todo_filters,
         fields=["name", "reference_name", "date", "description", "priority", "assigned_by", "creation"]
     )
-    
+
+    # Debug: Log number of todos found
+    frappe.logger().info(f"Found {len(todos)} todos for user {user}")
+
     opportunities = []
     today = getdate(nowdate())
     
