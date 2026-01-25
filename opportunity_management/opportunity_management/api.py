@@ -674,7 +674,74 @@ def get_team_opportunities(team=None, include_completed=False):
     urgency_order = {"overdue": 0, "due_today": 1, "critical": 2, "high": 3, "medium": 4, "low": 5, "unknown": 6}
     opportunities.sort(key=lambda x: (urgency_order.get(x["urgency"], 99), x["days_remaining"] or 9999))
 
-    return opportunities
+    # Get employee statistics for the selected team
+    employee_stats = get_employee_opportunity_stats(team)
+
+    return {
+        "opportunities": opportunities,
+        "employee_stats": employee_stats
+    }
+
+
+def get_employee_opportunity_stats(team=None):
+    """
+    Get statistics for employees in a team showing their open opportunity counts.
+
+    Args:
+        team: Optional - filter by specific team (department)
+              If "All Teams" or None, show all employees with opportunities
+
+    Returns:
+        List of employees with their opportunity counts
+    """
+    # Get all open ToDos linked to opportunities
+    todo_filters = {
+        "reference_type": "Opportunity",
+        "status": "Open"
+    }
+
+    todos = frappe.get_all(
+        "ToDo",
+        filters=todo_filters,
+        fields=["allocated_to"]
+    )
+
+    # Count opportunities per user
+    user_counts = {}
+    for todo in todos:
+        user = todo.allocated_to
+        if user:
+            user_counts[user] = user_counts.get(user, 0) + 1
+
+    # Get employee details and filter by team if specified
+    employees = []
+    for user_email, count in user_counts.items():
+        # Get user details
+        user_doc = frappe.get_doc("User", user_email)
+        employee_name = user_doc.full_name or user_email
+
+        # Get employee department
+        department = None
+        employee = frappe.db.get_value("Employee", {"user_id": user_email}, "name")
+        if employee:
+            emp_doc = frappe.get_doc("Employee", employee)
+            department = getattr(emp_doc, "department", None)
+
+        # Filter by team if specified (skip for "All Teams")
+        if team and team != "All Teams" and department != team:
+            continue
+
+        employees.append({
+            "user": user_email,
+            "employee_name": employee_name,
+            "department": department,
+            "open_opportunities": count
+        })
+
+    # Sort by opportunity count (highest first)
+    employees.sort(key=lambda x: x["open_opportunities"], reverse=True)
+
+    return employees
 
 
 @frappe.whitelist()

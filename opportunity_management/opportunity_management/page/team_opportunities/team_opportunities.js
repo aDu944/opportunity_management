@@ -40,6 +40,7 @@ frappe.pages['team-opportunities'].on_page_load = function(wrapper) {
                 </div>
             </div>
             <div class="summary-cards"></div>
+            <div class="employee-cards" style="margin-bottom: 20px;"></div>
             <div class="opportunities-list"></div>
         </div>
     `);
@@ -133,8 +134,10 @@ function load_team_opportunities(page) {
         freeze_message: 'Loading team opportunities...',
         callback: function(r) {
             if (r.message) {
-                page.opportunities = r.message;
+                page.opportunities = r.message.opportunities || [];
+                page.employee_stats = r.message.employee_stats || [];
                 render_team_summary(page);
+                render_employee_cards(page);
                 render_team_opportunities(page);
             }
         }
@@ -179,6 +182,57 @@ function render_team_summary(page) {
     `;
 
     page.main.find('.summary-cards').html(summaryHtml);
+}
+
+function render_employee_cards(page) {
+    const employeeStats = page.employee_stats || [];
+    
+    if (!employeeStats.length) {
+        page.main.find('.employee-cards').html(`
+            <div style="text-align: center; padding: 20px; color: #666; background: #f8f9fa; border-radius: 8px;">
+                <h5>No team members with open opportunities</h5>
+            </div>
+        `);
+        return;
+    }
+
+    let html = `
+        <div style="margin-bottom: 15px;">
+            <h4 style="color: #2c3e50; margin-bottom: 15px; font-weight: 600;">Team Members & Open Opportunities</h4>
+        </div>
+        <div class="row" style="gap: 15px;">
+    `;
+
+    employeeStats.forEach(employee => {
+        const dept = employee.department ? ` (${employee.department})` : '';
+        const cardColor = getEmployeeCardColor(employee.open_opportunities);
+        
+        html += `
+            <div class="col" style="flex: 1; min-width: 200px; max-width: 250px;">
+                <div style="background: ${cardColor}; color: white; padding: 15px; border-radius: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.15); text-align: center;">
+                    <h4 style="margin: 0 0 5px 0; font-size: 18px; font-weight: 600;">${employee.employee_name}</h4>
+                    <p style="margin: 0 0 10px 0; opacity: 0.9; font-size: 12px;">${dept}</p>
+                    <div style="font-size: 28px; font-weight: 700; margin-bottom: 5px;">${employee.open_opportunities}</div>
+                    <p style="margin: 0; opacity: 0.9; font-size: 12px;">Open Opportunities</p>
+                </div>
+            </div>
+        `;
+    });
+
+    html += '</div>';
+    page.main.find('.employee-cards').html(html);
+}
+
+function getEmployeeCardColor(opportunityCount) {
+    if (opportunityCount >= 5) {
+        return 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'; // Purple - high workload
+    } else if (opportunityCount >= 3) {
+        return 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'; // Pink - medium workload
+    } else if (opportunityCount >= 1) {
+        return 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)'; // Blue - light workload
+    } else {
+        return 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)'; // Green - no workload
+    }
 }
 
 function render_team_opportunities(page) {
