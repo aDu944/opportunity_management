@@ -355,29 +355,35 @@ window.sort_my_opportunities_handler = function(column) {
 
 // Function to create quotation from opportunity
 window.create_quotation = function(opportunity_name) {
-    // Use ERPNext's standard make_quotation method
+    // Use frappe's call_method to trigger the make_quotation action
     frappe.call({
-        method: 'frappe.client.get',
+        method: 'frappe.client.call_method',
         args: {
             doctype: 'Opportunity',
-            name: opportunity_name
+            name: opportunity_name,
+            method: 'make_quotation'
         },
         callback: function(r) {
             if (r.message) {
-                // Create quotation using the make_quotation method
-                frappe.call({
-                    method: 'erpnext.crm.doctype.opportunity.opportunity.make_quotation',
-                    args: {
-                        source_name: opportunity_name
-                    },
-                    callback: function(quotation_r) {
-                        if (quotation_r.message) {
-                            // Open the created quotation
-                            frappe.set_route('Form', 'Quotation', quotation_r.message.name);
-                        }
-                    }
-                });
+                // The response should be the quotation doc or name
+                if (typeof r.message === 'string') {
+                    // It's a name
+                    frappe.set_route('Form', 'Quotation', r.message);
+                } else if (r.message.name) {
+                    // It's a doc object
+                    frappe.set_route('Form', 'Quotation', r.message.name);
+                } else {
+                    // Fallback
+                    frappe.msgprint('Quotation created successfully');
+                    frappe.set_route('List', 'Quotation');
+                }
+            } else {
+                frappe.msgprint('Error creating quotation');
             }
+        },
+        error: function() {
+            frappe.msgprint('Error creating quotation');
+            frappe.set_route('List', 'Quotation');
         }
     });
 };
