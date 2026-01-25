@@ -230,7 +230,7 @@ function render_opportunities(page) {
     // Filter out overdue opportunities if checkbox is checked (only for open opportunities)
     const hideOverdue = page.fields_dict.hide_overdue ? page.fields_dict.hide_overdue.get_value() : false;
     if (hideOverdue && page.current_tab === 'open') {
-        opportunities = opportunities.filter(opp => opp.urgency !== 'overdue');
+        opportunities = opportunities.filter(opp => opp.days_remaining === null || opp.days_remaining >= 0);
     }
 
     if (!opportunities.length) {
