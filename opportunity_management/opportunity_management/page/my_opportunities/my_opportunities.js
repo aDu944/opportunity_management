@@ -282,12 +282,14 @@ function render_opportunities(page) {
 
         const itemsCount = opp.items ? opp.items.length : 0;
 
-        // Highlight rows based on urgency
+        // Highlight rows based on days remaining
         let rowStyle = '';
-        if (['overdue', 'due_today', 'critical'].includes(opp.urgency)) {
-            rowStyle = 'background: #f8d7da; border-left: 4px solid #dc3545; font-weight: bold;';
-        } else if (opp.urgency === 'high') {
-            rowStyle = 'background: #fff3cd; border-left: 4px solid #fd7e14; font-weight: bold;';
+        if (opp.days_remaining !== null) {
+            if (opp.days_remaining < 0) {
+                rowStyle = 'background: #f8d7da; border-left: 4px solid #dc3545; font-weight: bold;'; // Red for overdue
+            } else if (opp.days_remaining <= 3) {
+                rowStyle = 'background: #fff3cd; border-left: 4px solid #fd7e14; font-weight: bold;'; // Orange for due within 3 days
+            }
         }
 
         html += `
@@ -353,7 +355,29 @@ window.sort_my_opportunities_handler = function(column) {
 
 // Function to create quotation from opportunity
 window.create_quotation = function(opportunity_name) {
-    frappe.new_doc('Quotation', {
-        opportunity: opportunity_name
+    // Use ERPNext's standard make_quotation method
+    frappe.call({
+        method: 'frappe.client.get',
+        args: {
+            doctype: 'Opportunity',
+            name: opportunity_name
+        },
+        callback: function(r) {
+            if (r.message) {
+                // Create quotation using the make_quotation method
+                frappe.call({
+                    method: 'erpnext.crm.doctype.opportunity.opportunity.make_quotation',
+                    args: {
+                        source_name: opportunity_name
+                    },
+                    callback: function(quotation_r) {
+                        if (quotation_r.message) {
+                            // Open the created quotation
+                            frappe.set_route('Form', 'Quotation', quotation_r.message.name);
+                        }
+                    }
+                });
+            }
+        }
     });
 };
