@@ -7,24 +7,13 @@ frappe.pages['my-opportunities'].on_page_load = function(wrapper) {
 
     // Initialize page data
     page.current_tab = 'open'; // 'open' or 'completed'
-    page.sort_by = 'urgency';
+    page.sort_by = 'closing_date';
     page.sort_order = 'asc';
 
     // Add refresh button
     page.add_button('Refresh', () => {
         load_opportunities(page);
     }, 'primary');
-
-    // Add filter for urgency (only for open opportunities)
-    page.add_field({
-        fieldname: 'urgency_filter',
-        label: 'Filter by Urgency',
-        fieldtype: 'Select',
-        options: '\nAll\nOverdue\nDue Today\nCritical (1 day)\nHigh (3 days)\nMedium (7 days)\nLow',
-        change: function() {
-            filter_opportunities(page);
-        }
-    });
 
     // Add tabs
     page.main.html(`
@@ -50,13 +39,6 @@ frappe.pages['my-opportunities'].on_page_load = function(wrapper) {
         // Update active tab styling
         page.main.find('.tab-btn').removeClass('btn-primary').addClass('btn-default');
         $(this).removeClass('btn-default').addClass('btn-primary');
-
-        // Show/hide urgency filter based on tab
-        if (tab === 'completed') {
-            page.fields_dict.urgency_filter.$wrapper.hide();
-        } else {
-            page.fields_dict.urgency_filter.$wrapper.show();
-        }
 
         // Reload data
         load_opportunities(page);
@@ -335,29 +317,3 @@ window.sort_my_opportunities_handler = function(column) {
         sort_my_opportunities(page, column);
     }
 };
-
-function filter_opportunities(page) {
-    const filter = page.fields_dict.urgency_filter.get_value();
-    const rows = page.main.find('tbody tr');
-    
-    if (!filter || filter === 'All') {
-        rows.show();
-        return;
-    }
-
-    const filterMap = {
-        'Overdue': 'overdue',
-        'Due Today': 'due_today',
-        'Critical (1 day)': 'critical',
-        'High (3 days)': 'high',
-        'Medium (7 days)': 'medium',
-        'Low': 'low'
-    };
-
-    const urgencyValue = filterMap[filter];
-    
-    rows.each(function() {
-        const rowUrgency = $(this).data('urgency');
-        $(this).toggle(rowUrgency === urgencyValue);
-    });
-}

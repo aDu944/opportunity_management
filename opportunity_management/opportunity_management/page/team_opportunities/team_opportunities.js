@@ -23,10 +23,13 @@ frappe.pages['team-opportunities'].on_page_load = function(wrapper) {
 
     page.main.html(`
         <div class="team-opportunities-container">
-            <div class="filter-section" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+            <div class="filter-section" style="margin-bottom: 20px; padding: 20px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border: 1px solid #e1e8ed;">
                 <div class="row">
-                    <div class="col-md-6">
-                        <div id="team-filter-container"></div>
+                    <div class="col-md-12">
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <label style="margin: 0; font-weight: 600; color: #2c3e50; font-size: 14px;">Filter by Team:</label>
+                            <div id="team-filter-container" style="flex: 1; max-width: 300px;"></div>
+                        </div>
                     </div>
                 </div>
             </div>
