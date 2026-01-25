@@ -20,7 +20,7 @@ frappe.pages['my-opportunities'].on_page_load = function(wrapper) {
         fieldname: 'hide_overdue',
         label: 'Hide Overdue Opportunities',
         fieldtype: 'Check',
-        default: 0,
+        default: 1,
         change: function() {
             render_opportunities(page);
         }
@@ -355,25 +355,18 @@ window.sort_my_opportunities_handler = function(column) {
 
 // Function to create quotation from opportunity
 window.create_quotation = function(opportunity_name) {
-    // Use frappe's call_method to trigger the make_quotation action
+    // Use the correct method to create quotation from opportunity
     frappe.call({
-        method: 'frappe.client.call_method',
+        method: 'erpnext.crm.doctype.opportunity.opportunity.make_quotation',
         args: {
-            doctype: 'Opportunity',
-            name: opportunity_name,
-            method: 'make_quotation'
+            source_name: opportunity_name
         },
         callback: function(r) {
             if (r.message) {
-                // The response should be the quotation doc or name
-                if (typeof r.message === 'string') {
-                    // It's a name
-                    frappe.set_route('Form', 'Quotation', r.message);
-                } else if (r.message.name) {
-                    // It's a doc object
+                // The response should be the quotation doc
+                if (r.message.name) {
                     frappe.set_route('Form', 'Quotation', r.message.name);
                 } else {
-                    // Fallback
                     frappe.msgprint('Quotation created successfully');
                     frappe.set_route('List', 'Quotation');
                 }
