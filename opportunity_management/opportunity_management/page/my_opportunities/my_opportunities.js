@@ -87,6 +87,14 @@ function load_opportunities(page) {
         callback: function(r) {
             if (r.message) {
                 page.opportunities = r.message;
+                
+                // Sort by days remaining for open opportunities, closing date for completed
+                if (is_completed) {
+                    sort_my_opportunities(page, 'closing_date');
+                } else {
+                    sort_my_opportunities(page, 'days_remaining');
+                }
+                
                 render_summary(page);
                 render_opportunities(page);
             }

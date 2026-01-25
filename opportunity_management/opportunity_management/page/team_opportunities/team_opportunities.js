@@ -5,6 +5,10 @@ frappe.pages['team-opportunities'].on_page_load = function(wrapper) {
         single_column: true
     });
 
+    // Initialize page data
+    page.sort_by = 'days_remaining';
+    page.sort_order = 'asc';
+
     // Add refresh button
     page.add_button('Refresh', () => {
         load_team_opportunities(page);
@@ -173,6 +177,10 @@ function load_team_opportunities(page) {
             if (r.message) {
                 page.opportunities = r.message.opportunities || [];
                 page.employee_stats = r.message.employee_stats || [];
+                
+                // Sort by days remaining (ascending) by default
+                sort_team_opportunities(page, 'days_remaining');
+                
                 render_team_summary(page);
                 render_employee_cards(page);
                 render_team_opportunities(page);
