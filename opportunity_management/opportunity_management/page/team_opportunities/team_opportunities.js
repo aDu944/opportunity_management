@@ -23,6 +23,13 @@ frappe.pages['team-opportunities'].on_page_load = function(wrapper) {
 
     page.main.html(`
         <div class="team-opportunities-container">
+            <div class="filter-section" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div id="team-filter-container"></div>
+                    </div>
+                </div>
+            </div>
             <div class="summary-cards"></div>
             <div class="opportunities-list"></div>
         </div>
@@ -43,6 +50,9 @@ function load_teams(page) {
                 });
                 page.fields_dict.team_filter.df.options = options;
                 page.fields_dict.team_filter.refresh();
+                
+                // Move the field to the custom container
+                page.main.find('#team-filter-container').html(page.fields_dict.team_filter.$wrapper);
                 
                 // Set default team to current user's department
                 frappe.call({
@@ -72,6 +82,8 @@ function load_teams(page) {
                     }
                 });
             } else {
+                // Move the field to the custom container even if no teams
+                page.main.find('#team-filter-container').html(page.fields_dict.team_filter.$wrapper);
                 // If no teams available, just load all opportunities
                 load_team_opportunities(page);
             }
