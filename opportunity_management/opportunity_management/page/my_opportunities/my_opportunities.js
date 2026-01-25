@@ -138,7 +138,7 @@ function render_summary(page) {
         const overdue = opportunities.filter(o => o.urgency === 'overdue').length;
         const dueToday = opportunities.filter(o => o.urgency === 'due_today').length;
         const critical = opportunities.filter(o => o.urgency === 'critical').length;
-        const total = opportunities.length;
+        const total = opportunities.filter(o => o.days_remaining === null || o.days_remaining >= 0).length;
 
         const summaryHtml = `
             <div class="row" style="margin-bottom: 20px; gap: 15px;">
