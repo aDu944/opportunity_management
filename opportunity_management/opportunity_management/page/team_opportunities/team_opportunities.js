@@ -74,6 +74,11 @@ function load_teams(page) {
                     'width': '100%'
                 });
                 
+                // Rebind the change event after moving the field
+                page.fields_dict.team_filter.$input.on('change', function() {
+                    load_team_opportunities(page);
+                });
+                
                 // Set default team to current user's department
                 frappe.call({
                     method: 'frappe.client.get_value',
@@ -113,6 +118,11 @@ function load_teams(page) {
                 });
                 page.fields_dict.team_filter.$input.css({
                     'width': '100%'
+                });
+                
+                // Rebind the change event after moving the field
+                page.fields_dict.team_filter.$input.on('change', function() {
+                    load_team_opportunities(page);
                 });
                 
                 // If no teams available, just load all opportunities
