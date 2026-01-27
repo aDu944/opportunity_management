@@ -2,9 +2,8 @@
 Assignment Logic for Opportunity Management
 
 This module handles:
-1. Creating ToDos for assigned engineers when an Opportunity is created/updated
-2. Sending initial assignment emails with item lists
-3. Avoiding duplicate assignments
+1. Sending initial assignment emails with item lists
+2. Avoiding duplicate assignments
 """
 
 import frappe
@@ -16,7 +15,7 @@ from frappe.desk.form.assign_to import add as assign_to
 def on_opportunity_insert(doc, method):
     """
     Called after a new Opportunity is inserted.
-    Creates ToDos and sends assignment emails to all responsible engineers.
+    Sends assignment emails to all responsible engineers.
     """
     process_assignments(doc, is_new=True)
 
@@ -24,7 +23,7 @@ def on_opportunity_insert(doc, method):
 def on_opportunity_update(doc, method):
     """
     Called when an Opportunity is updated.
-    Checks for changes in responsible engineers and creates/removes ToDos accordingly.
+    Checks for changes in responsible engineers and sends emails for new assignees.
     """
     # Get previous state of the document
     if doc.get("__islocal"):
@@ -42,9 +41,7 @@ def on_opportunity_update(doc, method):
     if new_engineers:
         process_assignments(doc, is_new=False, specific_engineers=new_engineers)
     
-    # Remove ToDos for removed engineers
-    if removed_engineers:
-        remove_assignments(doc, removed_engineers)
+    # No cleanup needed for removed engineers
 
 
 def get_previous_engineers(opportunity_name):
@@ -112,7 +109,7 @@ def get_user_from_engineer(engineer_name):
 
 def process_assignments(doc, is_new=False, specific_engineers=None):
     """
-    Create ToDos and send assignment emails.
+    Send assignment emails.
     """
     current_user = frappe.session.user
     assigner_name = frappe.db.get_value("User", current_user, "full_name") or current_user
@@ -123,31 +120,12 @@ def process_assignments(doc, is_new=False, specific_engineers=None):
     else:
         engineers_to_process = get_current_engineers(doc)
     
-    # Add current user (assigner) to get a ToDo as well
-    all_assignees = engineers_to_process.copy()
-    if current_user != "Administrator" and current_user not in all_assignees:
-        all_assignees.add(current_user)
-    
     # Get items to be quoted for email
     items_list = get_opportunity_items(doc)
     
-    for user_id in all_assignees:
+    for user_id in engineers_to_process:
         if not user_id:
             continue
-        
-        # Check if ToDo already exists
-        existing_todo = frappe.db.exists("ToDo", {
-            "reference_type": "Opportunity",
-            "reference_name": doc.name,
-            "allocated_to": user_id,
-            "status": "Open"
-        })
-        
-        if existing_todo:
-            continue
-        
-        # Create ToDo
-        create_opportunity_todo(doc, user_id)
         
         # Send assignment email (skip for current user if they're the assigner)
         is_assigner = (user_id == current_user)
@@ -155,45 +133,13 @@ def process_assignments(doc, is_new=False, specific_engineers=None):
 
 
 def create_opportunity_todo(doc, user_id):
-    """Create a ToDo for the given user linked to the Opportunity."""
-    try:
-        todo = frappe.get_doc({
-            "doctype": "ToDo",
-            "status": "Open",
-            "priority": "Medium",
-            "allocated_to": user_id,
-            "reference_type": "Opportunity",
-            "reference_name": doc.name,
-            "description": f"Follow up on Opportunity: {doc.name}\nCustomer: {doc.party_name or 'N/A'}\nClosing Date: {doc.expected_closing or 'Not set'}",
-            "date": doc.expected_closing or nowdate(),
-            "assigned_by": frappe.session.user,
-        })
-        todo.insert(ignore_permissions=True)
-        frappe.db.commit()
-        
-        frappe.msgprint(_(f"ToDo created for {user_id}"), alert=True)
-        
-    except Exception as e:
-        frappe.log_error(f"Error creating ToDo for {user_id}: {str(e)}")
+    """Deprecated: ToDo creation removed in Opportunity-only mode."""
+    return
 
 
 def remove_assignments(doc, removed_engineers):
-    """Remove ToDos for engineers who were unassigned."""
-    for user_id in removed_engineers:
-        if not user_id:
-            continue
-        
-        todos = frappe.get_all("ToDo", filters={
-            "reference_type": "Opportunity",
-            "reference_name": doc.name,
-            "allocated_to": user_id,
-            "status": "Open"
-        })
-        
-        for todo in todos:
-            frappe.delete_doc("ToDo", todo.name, ignore_permissions=True)
-        
-        frappe.db.commit()
+    """Deprecated: no ToDo cleanup required."""
+    return
 
 
 def get_opportunity_items(doc):

@@ -130,18 +130,13 @@ def get_opportunity_notification_recipients(opportunity_name):
         # Get the opportunity document
         opportunity = frappe.get_doc("Opportunity", opportunity_name)
 
-        # 1. Get responsible engineers
-        if opportunity.get("custom_resp_eng"):
-            for row in opportunity.custom_resp_eng:
-                if row.responsible_engineer:
-                    # Get user_id from Responsible Engineer
-                    emp = frappe.db.get_value(
-                        "Employee",
-                        row.responsible_engineer,
-                        "user_id"
-                    )
-                    if emp:
-                        recipients.add(emp)
+        # 1. Get responsible parties/users
+        for party in _get_opportunity_party_rows(opportunity):
+            info = _get_responsible_party_info(party)
+            if info.get("user_id"):
+                recipients.add(info.get("user_id"))
+            elif info.get("email"):
+                recipients.add(info.get("email"))
 
         # 2. Get managers from the department of the user who owns/modified the opportunity
         # Try owner first (creator), then modified_by (last person who edited)
@@ -151,23 +146,6 @@ def get_opportunity_notification_recipients(opportunity_name):
             dept_managers = get_department_managers(assigner_email)
             for mgr in dept_managers:
                 recipients.add(mgr)
-
-        # Also check ToDos to see who assigned them
-        todos = frappe.get_all(
-            "ToDo",
-            filters={
-                "reference_type": "Opportunity",
-                "reference_name": opportunity_name,
-                "status": "Open"
-            },
-            fields=["assigned_by"]
-        )
-
-        for todo in todos:
-            if todo.assigned_by:
-                dept_managers = get_department_managers(todo.assigned_by)
-                for mgr in dept_managers:
-                    recipients.add(mgr)
 
         frappe.logger().info(
             f"Opportunity {opportunity_name} recipients: {list(recipients)}"
@@ -199,36 +177,105 @@ def get_opportunity_recipients_for_notification(doc, method=None):
     return get_opportunity_notification_recipients(doc.name)
 
 
+def _get_responsible_party_info(party_name):
+    """Resolve a Responsible Party/Employee/Shareholder to user_id/email."""
+    info = {"user_id": None, "email": None}
+
+    if not party_name:
+        return info
+
+    # Preferred: Responsible Party doctype (standalone)
+    if frappe.db.exists("DocType", "Responsible Party") and frappe.db.exists("Responsible Party", party_name):
+        party = frappe.get_doc("Responsible Party", party_name)
+
+        user_id = getattr(party, "user_id", None)
+        employee = getattr(party, "employee", None)
+        shareholder = getattr(party, "shareholder", None)
+        email = getattr(party, "email", None)
+
+        if user_id:
+            info["user_id"] = user_id
+        if email:
+            info["email"] = email
+
+        if not info["user_id"] and employee:
+            emp = frappe.db.get_value("Employee", employee, ["user_id", "prefered_email", "company_email", "personal_email"], as_dict=True)
+            if emp:
+                info["user_id"] = emp.user_id
+                info["email"] = info["email"] or emp.prefered_email or emp.company_email or emp.personal_email
+
+        if shareholder and not info["email"]:
+            contact = frappe.db.get_value(
+                "Dynamic Link",
+                {"link_doctype": "Shareholder", "link_name": shareholder, "parenttype": "Contact"},
+                "parent"
+            )
+            if contact:
+                info["email"] = frappe.db.get_value("Contact", contact, "email_id")
+
+        if info["user_id"] and not info["email"]:
+            info["email"] = frappe.db.get_value("User", info["user_id"], "email")
+
+        return info
+
+    # Fallback: Employee ID directly
+    if frappe.db.exists("Employee", party_name):
+        emp = frappe.db.get_value("Employee", party_name, ["user_id", "prefered_email", "company_email", "personal_email"], as_dict=True)
+        if emp:
+            info["user_id"] = emp.user_id
+            info["email"] = emp.prefered_email or emp.company_email or emp.personal_email
+        return info
+
+    # Fallback: Shareholder ID directly
+    if frappe.db.exists("Shareholder", party_name):
+        contact = frappe.db.get_value(
+            "Dynamic Link",
+            {"link_doctype": "Shareholder", "link_name": party_name, "parenttype": "Contact"},
+            "parent"
+        )
+        if contact:
+            info["email"] = frappe.db.get_value("Contact", contact, "email_id")
+        return info
+
+    # Legacy: Responsible Engineer as child table entry
+    if frappe.db.exists("Responsible Engineer", party_name):
+        engineer = frappe.get_doc("Responsible Engineer", party_name)
+        employee = getattr(engineer, "employee", None)
+        if employee:
+            emp = frappe.db.get_value("Employee", employee, ["user_id", "prefered_email", "company_email", "personal_email"], as_dict=True)
+            if emp:
+                info["user_id"] = emp.user_id
+                info["email"] = emp.prefered_email or emp.company_email or emp.personal_email
+        return info
+
+    return info
+
+
 def _get_user_from_responsible_engineer(engineer_name):
-    """Resolve Responsible Engineer -> user id/email."""
-    if not engineer_name:
-        return None
+    """Resolve to user_id for assignment logic."""
+    return _get_responsible_party_info(engineer_name).get("user_id")
 
-    # If it's already an Employee ID, resolve directly to avoid noisy errors
-    if frappe.db.exists("Employee", engineer_name):
-        employee = frappe.get_doc("Employee", engineer_name)
-        return employee.user_id
 
-    try:
-        engineer = frappe.get_doc("Responsible Engineer", engineer_name)
+def _get_opportunity_party_rows(doc):
+    """Return list of party identifiers from new or legacy field."""
+    parties = []
+    if not doc:
+        return parties
 
-        if hasattr(engineer, "employee") and engineer.employee:
-            employee = frappe.get_doc("Employee", engineer.employee)
-            return employee.user_id
+    if doc.get("custom_responsible_party"):
+        for row in doc.custom_responsible_party:
+            party = getattr(row, "responsible_party", None) or row.get("responsible_party")
+            if party:
+                parties.append(party)
+        return parties
 
-        if hasattr(engineer, "user") and engineer.user:
-            return engineer.user
+    if doc.get("custom_resp_eng"):
+        for row in doc.custom_resp_eng:
+            party = getattr(row, "responsible_engineer", None) or row.get("responsible_engineer")
+            if party:
+                parties.append(party)
 
-        if hasattr(engineer, "email") and engineer.email:
-            return frappe.db.get_value("User", {"email": engineer.email}, "name")
-
-    except Exception:
-        # Fallback: engineer_name might be an Employee record
-        employee = frappe.db.get_value("Employee", engineer_name, ["user_id"], as_dict=True)
-        if employee and employee.user_id:
-            return employee.user_id
-
-    return None
+    return parties
 
 
 def get_opportunity_assigned_users(doc):
@@ -238,27 +285,10 @@ def get_opportunity_assigned_users(doc):
     if not doc:
         return assigned_users
 
-    # From custom_resp_eng child table
-    if doc.get("custom_resp_eng"):
-        for row in doc.custom_resp_eng:
-            user_id = _get_user_from_responsible_engineer(row.responsible_engineer)
-            if user_id:
-                assigned_users.add(user_id)
-
-    # From open ToDos linked to this opportunity
-    todos = frappe.get_all(
-        "ToDo",
-        filters={
-            "reference_type": "Opportunity",
-            "reference_name": doc.name,
-            "status": "Open"
-        },
-        fields=["allocated_to"]
-    )
-
-    for todo in todos:
-        if todo.allocated_to:
-            assigned_users.add(todo.allocated_to)
+    for party in _get_opportunity_party_rows(doc):
+        user_id = _get_user_from_responsible_engineer(party)
+        if user_id:
+            assigned_users.add(user_id)
 
     return assigned_users
 
@@ -268,7 +298,7 @@ def get_opportunity_assignee_recipients_for_notification(doc, method=None):
     Hook function for Opportunity notifications (assignees + their managers).
 
     Recipients:
-    1. All assigned users (custom_resp_eng + open ToDos allocated_to)
+    1. All assigned users (custom_responsible_party or custom_resp_eng)
     2. Department managers/system managers of each assigned user
     3. Opportunity creator (owner)
 
@@ -281,6 +311,7 @@ def get_opportunity_assignee_recipients_for_notification(doc, method=None):
     """
     recipients = set()
     assigned_users = get_opportunity_assigned_users(doc)
+    assigned_emails = set()
 
     if not doc:
         return []
@@ -292,6 +323,12 @@ def get_opportunity_assignee_recipients_for_notification(doc, method=None):
         for mgr in dept_managers:
             recipients.add(mgr)
 
+    # Add assignees with no user_id (e.g., shareholders)
+    for party in _get_opportunity_party_rows(doc):
+        info = _get_responsible_party_info(party)
+        if info.get("email") and not info.get("user_id"):
+            assigned_emails.add(info.get("email"))
+
     # Include the creator (assigner) explicitly
     if doc.owner:
         recipients.add(doc.owner)
@@ -299,6 +336,9 @@ def get_opportunity_assignee_recipients_for_notification(doc, method=None):
         owner_managers = get_department_managers(doc.owner)
         for mgr in owner_managers:
             recipients.add(mgr)
+
+    for email in assigned_emails:
+        recipients.add(email)
 
     recipients_list = list(recipients)
     frappe.logger().info(
@@ -329,32 +369,6 @@ def set_opportunity_notification_recipients(doc, method=None):
     recipients = get_opportunity_assignee_recipients_for_notification(doc, method)
     doc.set(fieldname, ", ".join(recipients))
 
-
-def get_todo_recipients_for_notification(doc, method=None):
-    """
-    Hook function for ToDo notifications.
-
-    Recipients:
-    1. The allocated user (allocated_to)
-    2. Department managers/system managers of the allocated user
-
-    Args:
-        doc: The ToDo document
-        method: The method name (optional)
-
-    Returns:
-        List of user emails
-    """
-    recipients = set()
-
-    if doc and doc.allocated_to:
-        recipients.add(doc.allocated_to)
-
-        dept_managers = get_department_managers(doc.allocated_to)
-        for mgr in dept_managers:
-            recipients.add(mgr)
-
-    return list(recipients)
 
 
 def log_opportunity_notification_from_email_queue(doc, method=None):

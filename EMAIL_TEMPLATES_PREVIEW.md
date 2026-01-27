@@ -6,20 +6,20 @@ The auto-close functionality sends **one email notification** when a Quotation i
 
 ---
 
-## Email #1: Task Completed Notification
+## Email #1: Opportunity Converted Notification
 
-**Sent to:** All users assigned to the Opportunity (via ToDo)
+**Sent to:** All users assigned to the Opportunity (via Responsible Party assignments)
 **Sent when:** Quotation is submitted
 **Current implementation:** Uses the existing notification system in `quotation_handler.py`
 
 ### Email Preview:
 
 ```
-Subject: Task Completed: Opportunity OPP-2024-00123
+Subject: Opportunity Converted: Opportunity OPP-2024-00123
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Your task has been completed
+Opportunity converted to quotation
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 The Opportunity OPP-2024-00123 has been converted to a Quotation.
@@ -36,7 +36,7 @@ Quotation: QTN-2024-00456
 ### HTML Email Body:
 
 ```html
-<h3>Your task has been completed</h3>
+<h3>Opportunity converted to quotation</h3>
 
 <p>The Opportunity <b>OPP-2024-00123</b> has been converted to a Quotation.</p>
 
@@ -84,9 +84,9 @@ Day 9: 1 day before closing
   → Your notification: "Urgent Reminder" ✓
 
 Day 10: Quotation Submitted
-  → NEW auto-close notification: "Task Completed" ✓
+  → NEW auto-close notification: "Opportunity Converted" ✓
   → Opportunity status → Converted ✓
-  → ToDos closed ✓
+  → Assignees notified ✓
 ```
 
 ---
@@ -98,7 +98,7 @@ Would you like a more detailed email that matches your existing notification sty
 ### Enhanced Template Preview:
 
 ```
-Subject: ✅ Task Completed: Opportunity OPP-2024-00123
+Subject: ✅ Opportunity Converted: Opportunity OPP-2024-00123
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -127,8 +127,7 @@ converted to a quotation.
 │ Status: Submitted ✓                         │
 └─────────────────────────────────────────────┘
 
-Your assigned tasks for this opportunity have been automatically
-marked as complete.
+This opportunity has been converted to a quotation.
 
 ┌─────────────────────────┐
 │   View Quotation   │  ← Green button
@@ -196,7 +195,7 @@ If you choose Option 3, here's the Email Template you'd create:
 
 **Subject:**
 ```jinja
-Task Completed: Opportunity {{ doc.name }}
+Opportunity Converted: Opportunity {{ doc.name }}
 ```
 
 **Message:**
@@ -278,18 +277,10 @@ bench --site [your-site] console
 
 ```python
 # Test the email notification
-from opportunity_management.quotation_handler import send_todo_closed_notification
-
-# Create a test todo object
-class TestTodo:
-    allocated_to = "your.email@company.com"
-    name = "TEST-TODO-001"
-
-todo = TestTodo()
+from opportunity_management.quotation_handler import notify_opportunity_assignees
 
 # Send test email
-send_todo_closed_notification(
-    todo=todo,
+notify_opportunity_assignees(
     opportunity_name="OPP-TEST-001",
     quotation_name="QTN-TEST-001"
 )

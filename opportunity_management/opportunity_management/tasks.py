@@ -116,17 +116,6 @@ def get_assigned_engineers(doc):
             if user_id:
                 users.add(user_id)
 
-    # Also include users with open ToDos for this opportunity
-    todos = frappe.get_all("ToDo", filters={
-        "reference_type": "Opportunity",
-        "reference_name": doc.name,
-        "status": "Open"
-    }, fields=["allocated_to"])
-
-    for todo in todos:
-        if todo.allocated_to:
-            users.add(todo.allocated_to)
-
     return users
 
 
@@ -159,19 +148,6 @@ def get_all_recipients(doc):
                 frappe.logger().info(
                     f"Added {len(dept_managers)} department managers for {doc.name}: {dept_managers}"
                 )
-
-        # Also check ToDos for assigned_by field
-        todos = frappe.get_all("ToDo", filters={
-            "reference_type": "Opportunity",
-            "reference_name": doc.name,
-            "status": "Open"
-        }, fields=["assigned_by"])
-
-        for todo in todos:
-            if todo.assigned_by:
-                todo_managers = get_department_managers(todo.assigned_by)
-                if todo_managers:
-                    recipients.update(todo_managers)
 
     except Exception as e:
         frappe.log_error(

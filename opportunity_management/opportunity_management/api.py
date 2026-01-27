@@ -10,7 +10,45 @@ import frappe
 from frappe import _
 from frappe.utils import nowdate, getdate, date_diff, flt
 from datetime import datetime
-from opportunity_management.utils.assignment import get_user_from_engineer
+from opportunity_management.opportunity_management import notification_utils
+
+
+def _get_party_display_name(party_name):
+    """Resolve display name for Responsible Party/Employee/Shareholder."""
+    if not party_name:
+        return ""
+
+    if frappe.db.exists("DocType", "Responsible Party") and frappe.db.exists("Responsible Party", party_name):
+        return frappe.db.get_value("Responsible Party", party_name, "display_name") or party_name
+
+    if frappe.db.exists("Employee", party_name):
+        return frappe.db.get_value("Employee", party_name, "employee_name") or party_name
+
+    if frappe.db.exists("Shareholder", party_name):
+        return frappe.db.get_value("Shareholder", party_name, "title") or party_name
+
+    return party_name
+
+
+def _get_assigned_user_ids(doc):
+    users = set()
+    if not doc:
+        return users
+
+    parties = notification_utils._get_opportunity_party_rows(doc)
+    for party in parties:
+        info = notification_utils._get_responsible_party_info(party)
+        if info.get("user_id"):
+            users.add(info.get("user_id"))
+    return users
+
+
+def _is_user_assigned(user, doc):
+    if not doc:
+        return False
+    if doc.owner == user:
+        return True
+    return user in _get_assigned_user_ids(doc)
 
 
 @frappe.whitelist()
@@ -23,7 +61,7 @@ def get_my_opportunities(user=None, include_completed=False):
         include_completed: Boolean - if True, show only completed opportunities (Closed/Lost/Converted)
                                      if False, show only open opportunities
 
-    Returns a list of opportunities with their ToDos and closing dates.
+    Returns a list of opportunities with their assignments and closing dates.
     """
     if not user:
         user = frappe.session.user
@@ -47,58 +85,33 @@ def get_personal_opportunities(user, include_completed=False):
     """
     Get personal opportunity tasks for a user.
     """
-    # Get ToDos for this user linked to Opportunities
-    todo_filters = {
-        "allocated_to": user,
-        "reference_type": "Opportunity"
-    }
-
-    # For completed opportunities, we don't filter by ToDo status
-    # For open opportunities, we only want open ToDos
-    if not include_completed:
-        todo_filters["status"] = "Open"
-
-    todos = frappe.get_all(
-        "ToDo",
-        filters=todo_filters,
-        fields=["name", "reference_name", "date", "description", "priority", "assigned_by", "creation"]
+    status_filter = ["in", ["Closed", "Lost", "Converted"]] if include_completed else ["not in", ["Closed", "Lost", "Converted"]]
+    opps = frappe.get_all(
+        "Opportunity",
+        filters={"status": status_filter},
+        fields=["name"]
     )
-
-    # Debug: Log number of todos found
-    frappe.logger().info(f"Found {len(todos)} todos for user {user}")
 
     opportunities = []
     today = getdate(nowdate())
-    
-    for todo in todos:
-        # Get opportunity details
-        opp = frappe.get_doc("Opportunity", todo.reference_name)
 
-        # Filter based on include_completed flag
-        if include_completed:
-            # Only show completed opportunities
-            if opp.status not in ["Closed", "Lost", "Converted"]:
-                continue
-        else:
-            # Skip closed/lost/converted opportunities
-            if opp.status in ["Closed", "Lost", "Converted"]:
-                continue
+    for row in opps:
+        opp = frappe.get_doc("Opportunity", row.name)
 
-        # Check if quotation exists for this opportunity
+        if not _is_user_assigned(user, opp):
+            continue
+
         has_quotation = frappe.db.exists("Quotation", {
             "opportunity": opp.name,
-            "docstatus": ["!=", 2]  # Not cancelled
+            "docstatus": ["!=", 2]
         })
 
         closing_date = getdate(opp.expected_closing) if opp.expected_closing else None
         days_remaining = date_diff(closing_date, today) if closing_date else None
 
-        # Determine urgency level - for completed opportunities, urgency is based on final status
         if include_completed:
-            # For completed opportunities, urgency doesn't matter - we just need a value
             urgency = "completed"
         elif has_quotation:
-            # Has quotation, so not urgent even if past closing date
             urgency = "low"
         elif days_remaining is None:
             urgency = "unknown"
@@ -114,8 +127,7 @@ def get_personal_opportunities(user, include_completed=False):
             urgency = "medium"
         else:
             urgency = "low"
-        
-        # Get items for this opportunity
+
         items = []
         if opp.get("items"):
             for item in opp.items:
@@ -126,32 +138,31 @@ def get_personal_opportunities(user, include_completed=False):
                     "uom": item.uom,
                     "description": item.description
                 })
-        
+
         opportunities.append({
-            "todo_name": todo.name,
-            "opportunity": opp.name,  # Frontend expects 'opportunity'
-            "opportunity_name": opp.name,  # Keep for backward compatibility
-            "customer": opp.party_name,  # Frontend expects 'customer'
-            "party_name": opp.party_name,  # Keep for backward compatibility
-            "closing_date": opp.expected_closing,  # Frontend expects 'closing_date'
-            "expected_closing": opp.expected_closing,  # Keep for backward compatibility
+            "todo_name": None,
+            "opportunity": opp.name,
+            "opportunity_name": opp.name,
+            "customer": opp.party_name,
+            "party_name": opp.party_name,
+            "closing_date": opp.expected_closing,
+            "expected_closing": opp.expected_closing,
             "days_remaining": days_remaining,
-            "urgency": urgency,  # Frontend expects 'urgency'
-            "items": items,  # Frontend expects 'items'
-            "status": opp.status,  # Frontend expects 'status' for completed tab
+            "urgency": urgency,
+            "items": items,
+            "status": opp.status,
             "status_color": "gray" if days_remaining is None else ("red" if days_remaining < 0 else ("red" if days_remaining == 0 else ("orange" if days_remaining <= 3 else ("yellow" if days_remaining <= 7 else "green")))),
             "status_label": "No closing date" if days_remaining is None else (f"Overdue by {abs(days_remaining)} days" if days_remaining < 0 else ("Due today" if days_remaining == 0 else f"{days_remaining} days remaining")),
             "opportunity_status": opp.status,
-            "priority": todo.priority,
-            "assigned_by": todo.assigned_by,
-            "assigned_date": todo.creation,
+            "priority": None,
+            "assigned_by": opp.owner,
+            "assigned_date": opp.creation,
             "source": opp.source,
             "opportunity_type": opp.opportunity_type,
         })
-    
-    # Sort by days remaining (most urgent first)
+
     opportunities.sort(key=lambda x: (x["days_remaining"] is None, x["days_remaining"] or 9999))
-    
+
     return opportunities
 
 
@@ -170,123 +181,99 @@ def get_team_opportunities_for_user(user, include_completed=False):
         # If no department, fall back to personal opportunities
         return get_personal_opportunities(user, include_completed)
 
-    # Get ToDos for opportunities in the user's department
-    todo_filters = {
-        "reference_type": "Opportunity"
-    }
-
-    # For completed opportunities, we don't filter by ToDo status
-    # For open opportunities, we only want open ToDos
-    if not include_completed:
-        todo_filters["status"] = "Open"
-
-    todos = frappe.get_all(
-        "ToDo",
-        filters=todo_filters,
-        fields=["name", "reference_name", "allocated_to", "creation", "priority"]
-    )
-
     # Group by opportunity and filter by department
     opp_map = {}
     today = getdate(nowdate())
 
-    for todo in todos:
-        opp_name = todo.reference_name
+    status_filter = ["in", ["Closed", "Lost", "Converted"]] if include_completed else ["not in", ["Closed", "Lost", "Converted"]]
+    opps = frappe.get_all(
+        "Opportunity",
+        filters={"status": status_filter},
+        fields=["name"]
+    )
 
-        if opp_name not in opp_map:
-            # Get opportunity details
-            opp = frappe.get_doc("Opportunity", opp_name)
+    for row in opps:
+        opp = frappe.get_doc("Opportunity", row.name)
 
-            # Filter based on include_completed flag
-            if include_completed:
-                # Only show completed opportunities
-                if opp.status not in ["Closed", "Lost", "Converted"]:
-                    continue
-            else:
-                # Skip if opportunity is closed/lost/converted
-                if opp.status in ["Closed", "Lost", "Converted"]:
-                    continue
+        assigned_in_dept = False
+        assigned_users = _get_assigned_user_ids(opp)
+        for assigned_user in assigned_users:
+            engineer_dept = frappe.db.get_value(
+                "Employee",
+                {"user_id": assigned_user, "status": "Active"},
+                "department"
+            )
+            if engineer_dept == employee_dept:
+                assigned_in_dept = True
+                break
 
-            # Check if any assigned engineer is in the user's department
-            assigned_in_dept = False
-            if opp.get("custom_resp_eng"):
-                for row in opp.custom_resp_eng:
-                    engineer_user = get_user_from_engineer(row.responsible_engineer)
-                    if engineer_user:
-                        engineer_dept = frappe.db.get_value(
-                            "Employee",
-                            {"user_id": engineer_user, "status": "Active"},
-                            "department"
-                        )
-                        if engineer_dept == employee_dept:
-                            assigned_in_dept = True
-                            break
+        # Also include if owner is in the same department
+        if not assigned_in_dept and opp.owner:
+            owner_dept = frappe.db.get_value(
+                "Employee",
+                {"user_id": opp.owner, "status": "Active"},
+                "department"
+            )
+            if owner_dept == employee_dept:
+                assigned_in_dept = True
 
-            if not assigned_in_dept:
-                continue
+        if not assigned_in_dept:
+            continue
 
-            # Check if quotation exists for this opportunity
-            has_quotation = frappe.db.exists("Quotation", {
-                "opportunity": opp.name,
-                "docstatus": ["!=", 2]  # Not cancelled
-            })
+        has_quotation = frappe.db.exists("Quotation", {
+            "opportunity": opp.name,
+            "docstatus": ["!=", 2]
+        })
 
-            closing_date = getdate(opp.expected_closing) if opp.expected_closing else None
-            days_remaining = date_diff(closing_date, today) if closing_date else None
+        closing_date = getdate(opp.expected_closing) if opp.expected_closing else None
+        days_remaining = date_diff(closing_date, today) if closing_date else None
 
-            # Determine urgency level
-            if include_completed:
-                urgency = "completed"
-            elif has_quotation:
-                urgency = "low"
-            elif days_remaining is None:
-                urgency = "unknown"
-            elif days_remaining < 0:
-                urgency = "overdue"
-            elif days_remaining == 0:
-                urgency = "due_today"
-            elif days_remaining == 1:
-                urgency = "critical"
-            elif days_remaining <= 3:
-                urgency = "high"
-            elif days_remaining <= 7:
-                urgency = "medium"
-            else:
-                urgency = "low"
+        if include_completed:
+            urgency = "completed"
+        elif has_quotation:
+            urgency = "low"
+        elif days_remaining is None:
+            urgency = "unknown"
+        elif days_remaining < 0:
+            urgency = "overdue"
+        elif days_remaining == 0:
+            urgency = "due_today"
+        elif days_remaining == 1:
+            urgency = "critical"
+        elif days_remaining <= 3:
+            urgency = "high"
+        elif days_remaining <= 7:
+            urgency = "medium"
+        else:
+            urgency = "low"
 
-            # Get items for this opportunity
-            items = []
-            if opp.get("items"):
-                for item in opp.items:
-                    items.append({
-                        "item_code": item.item_code,
-                        "item_name": item.item_name,
-                        "qty": item.qty,
-                        "uom": item.uom,
-                        "description": item.description
-                    })
+        items = []
+        if opp.get("items"):
+            for item in opp.items:
+                items.append({
+                    "item_code": item.item_code,
+                    "item_name": item.item_name,
+                    "qty": item.qty,
+                    "uom": item.uom,
+                    "description": item.description
+                })
 
-            opp_map[opp_name] = {
-                "opportunity": opp.name,
-                "customer": opp.party_name,
-                "closing_date": opp.expected_closing,
-                "days_remaining": days_remaining,
-                "urgency": urgency,
-                "items": items,
-                "status": opp.status,
-                "status_color": "gray" if days_remaining is None else ("red" if days_remaining < 0 else ("red" if days_remaining == 0 else ("orange" if days_remaining <= 3 else ("yellow" if days_remaining <= 7 else "green")))),
-                "status_label": "No closing date" if days_remaining is None else (f"Overdue by {abs(days_remaining)} days" if days_remaining < 0 else ("Due today" if days_remaining == 0 else f"{days_remaining} days remaining")),
-                "opportunity_status": opp.status,
-                "source": opp.source,
-                "opportunity_type": opp.opportunity_type,
-                "assigned_users": [],  # Will collect assigned users
-                "todo_names": []  # Will collect todo names
-            }
-
-        # Add assigned user and todo
-        if opp_name in opp_map:
-            opp_map[opp_name]["assigned_users"].append(todo.allocated_to)
-            opp_map[opp_name]["todo_names"].append(todo.name)
+        opp_map[opp.name] = {
+            "opportunity": opp.name,
+            "customer": opp.party_name,
+            "closing_date": opp.expected_closing,
+            "days_remaining": days_remaining,
+            "urgency": urgency,
+            "items": items,
+            "status": opp.status,
+            "status_color": "gray" if days_remaining is None else ("red" if days_remaining < 0 else ("red" if days_remaining == 0 else ("orange" if days_remaining <= 3 else ("yellow" if days_remaining <= 7 else "green")))),
+            "status_label": "No closing date" if days_remaining is None else (f"Overdue by {abs(days_remaining)} days" if days_remaining < 0 else ("Due today" if days_remaining == 0 else f"{days_remaining} days remaining")),
+            "opportunity_status": opp.status,
+            "source": opp.source,
+            "opportunity_type": opp.opportunity_type,
+            "assigned_users": list(assigned_users),
+            "todo_names": []
+        }
 
     # Convert to list and sort
     opportunities = list(opp_map.values())
@@ -448,130 +435,89 @@ def get_kpi_breakdown(breakdown_type="employee", from_date=None, to_date=None):
         from_date: Optional - start date for filtering
         to_date: Optional - end date for filtering
     """
-    # Get all closed ToDos for opportunities
-    todo_filters = {
-        "reference_type": "Opportunity",
-        "status": "Closed"
-    }
-    
-    todos = frappe.get_all(
-        "ToDo",
-        filters=todo_filters,
-        fields=["name", "allocated_to", "reference_name", "modified"],
-        group_by="allocated_to, reference_name"
-    )
-    
-    # Get all open ToDos for opportunities
-    open_todos = frappe.get_all(
-        "ToDo",
-        filters={
-            "reference_type": "Opportunity",
-            "status": "Open"
-        },
-        fields=["name", "allocated_to", "reference_name"]
-    )
-    
-    # Group by employee or team
     breakdown_data = {}
-    
-    # Process closed todos
-    for todo in todos:
-        # Apply date filter if provided
-        if from_date and to_date:
-            todo_date = getdate(todo.modified)
-            if not (getdate(from_date) <= todo_date <= getdate(to_date)):
-                continue
-        
-        user = todo.allocated_to
-        if not user:
-            continue
-        
-        # Get user details
-        user_doc = frappe.get_doc("User", user)
-        employee_name = user_doc.full_name or user
-        
-        # For team breakdown, get team from employee
+
+    def _get_key_and_name(user_id):
+        user_doc = frappe.get_doc("User", user_id)
+        employee_name = user_doc.full_name or user_id
+
         if breakdown_type == "team":
-            # Try to get team from Employee doctype
-            employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
+            employee = frappe.db.get_value("Employee", {"user_id": user_id}, "name")
             if employee:
                 emp_doc = frappe.get_doc("Employee", employee)
                 team = getattr(emp_doc, "department", None) or getattr(emp_doc, "designation", None) or "Unassigned"
             else:
                 team = "Unassigned"
-            key = team
-            name_field = "team"
-        else:
-            key = user
-            name_field = "employee_name"
-        
-        if key not in breakdown_data:
-            breakdown_data[key] = {
-                name_field: employee_name if breakdown_type == "employee" else team,
-                "total": 0,
-                "completed": 0,
-                "completed_on_time": 0,
-                "completed_late": 0,
-                "still_open": 0,
-                "on_time_rate": 0
-            }
-        
-        # Get opportunity details
-        opp = frappe.db.get_value(
-            "Opportunity",
-            todo.reference_name,
-            ["expected_closing", "status"],
-            as_dict=True
-        )
-        
-        if opp and opp.status in ["Converted", "Closed", "Lost"]:
+            return team, "team", team
+
+        return user_id, "employee_name", employee_name
+
+    closed_filters = {"status": ["in", ["Converted", "Closed", "Lost"]]}
+    if from_date and to_date:
+        closed_filters["modified"] = ["between", [getdate(from_date), getdate(to_date)]]
+
+    closed_opps = frappe.get_all(
+        "Opportunity",
+        filters=closed_filters,
+        fields=["name", "expected_closing", "modified"]
+    )
+
+    for opp_row in closed_opps:
+        opp = frappe.get_doc("Opportunity", opp_row.name)
+        assigned_users = _get_assigned_user_ids(opp)
+        if not assigned_users and opp.owner:
+            assigned_users = {opp.owner}
+
+        for user_id in assigned_users:
+            key, name_field, name_value = _get_key_and_name(user_id)
+            if key not in breakdown_data:
+                breakdown_data[key] = {
+                    name_field: name_value,
+                    "total": 0,
+                    "completed": 0,
+                    "completed_on_time": 0,
+                    "completed_late": 0,
+                    "still_open": 0,
+                    "on_time_rate": 0
+                }
+
             breakdown_data[key]["total"] += 1
             breakdown_data[key]["completed"] += 1
-            
-            if opp.expected_closing:
-                closing_date = getdate(opp.expected_closing)
-                completed_date = getdate(todo.modified)
-                
+
+            if opp_row.expected_closing and opp_row.modified:
+                closing_date = getdate(opp_row.expected_closing)
+                completed_date = getdate(opp_row.modified)
                 if completed_date <= closing_date:
                     breakdown_data[key]["completed_on_time"] += 1
                 else:
                     breakdown_data[key]["completed_late"] += 1
-    
-    # Process open todos
-    for todo in open_todos:
-        user = todo.allocated_to
-        if not user:
-            continue
-        
-        # Get user details
-        user_doc = frappe.get_doc("User", user)
-        employee_name = user_doc.full_name or user
-        
-        # For team breakdown, get team from employee
-        if breakdown_type == "team":
-            employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
-            if employee:
-                emp_doc = frappe.get_doc("Employee", employee)
-                team = getattr(emp_doc, "department", None) or getattr(emp_doc, "designation", None) or "Unassigned"
-            else:
-                team = "Unassigned"
-            key = team
-        else:
-            key = user
-        
-        if key not in breakdown_data:
-            breakdown_data[key] = {
-                name_field: employee_name if breakdown_type == "employee" else team,
-                "total": 0,
-                "completed": 0,
-                "completed_on_time": 0,
-                "completed_late": 0,
-                "still_open": 0,
-                "on_time_rate": 0
-            }
-        
-        breakdown_data[key]["total"] += 1
-        breakdown_data[key]["still_open"] += 1
+
+    open_opps = frappe.get_all(
+        "Opportunity",
+        filters={"status": ["not in", ["Converted", "Closed", "Lost"]]},
+        fields=["name"]
+    )
+
+    for opp_row in open_opps:
+        opp = frappe.get_doc("Opportunity", opp_row.name)
+        assigned_users = _get_assigned_user_ids(opp)
+        if not assigned_users and opp.owner:
+            assigned_users = {opp.owner}
+
+        for user_id in assigned_users:
+            key, name_field, name_value = _get_key_and_name(user_id)
+            if key not in breakdown_data:
+                breakdown_data[key] = {
+                    name_field: name_value,
+                    "total": 0,
+                    "completed": 0,
+                    "completed_on_time": 0,
+                    "completed_late": 0,
+                    "still_open": 0,
+                    "on_time_rate": 0
+                }
+            breakdown_data[key]["total"] += 1
+            breakdown_data[key]["still_open"] += 1
     
     # Calculate percentages and prepare result
     result = []
@@ -591,54 +537,38 @@ def get_kpi_breakdown(breakdown_type="employee", from_date=None, to_date=None):
 
 def calculate_user_metrics(date_range="all", from_date=None, to_date=None):
     """Calculate KPI metrics per user."""
-    # Get all users who have been assigned opportunities
-    filters = {
-        "reference_type": "Opportunity",
-        "status": "Closed"
-    }
-    
+    closed_filters = {"status": ["in", ["Converted", "Closed", "Lost"]]}
     if from_date and to_date:
-        filters["modified"] = ["between", [getdate(from_date), getdate(to_date)]]
-    
-    todos = frappe.get_all(
-        "ToDo",
-        filters=filters,
-        fields=["allocated_to", "reference_name", "modified"],
-        group_by="allocated_to, reference_name"
+        closed_filters["modified"] = ["between", [getdate(from_date), getdate(to_date)]]
+
+    closed_opps = frappe.get_all(
+        "Opportunity",
+        filters=closed_filters,
+        fields=["name", "expected_closing", "modified"]
     )
-    
-    # Group by user
+
     user_data = {}
-    
-    for todo in todos:
-        user = todo.allocated_to
-        if not user:
-            continue
-        
-        if user not in user_data:
-            user_data[user] = {
-                "user": user,
-                "user_name": frappe.db.get_value("User", user, "full_name") or user,
-                "total": 0,
-                "on_time": 0,
-                "late": 0
-            }
-        
-        # Get opportunity details
-        opp = frappe.db.get_value(
-            "Opportunity",
-            todo.reference_name,
-            ["expected_closing", "status"],
-            as_dict=True
-        )
-        
-        if opp and opp.status in ["Converted", "Closed", "Lost"]:
+
+    for opp_row in closed_opps:
+        opp = frappe.get_doc("Opportunity", opp_row.name)
+        assigned_users = _get_assigned_user_ids(opp)
+        if not assigned_users and opp.owner:
+            assigned_users = {opp.owner}
+
+        for user in assigned_users:
+            if user not in user_data:
+                user_data[user] = {
+                    "user": user,
+                    "user_name": frappe.db.get_value("User", user, "full_name") or user,
+                    "total": 0,
+                    "on_time": 0,
+                    "late": 0
+                }
+
             user_data[user]["total"] += 1
-            
-            if opp.expected_closing:
-                closing_date = getdate(opp.expected_closing)
-                completed_date = getdate(todo.modified)
-                
+            if opp_row.expected_closing and opp_row.modified:
+                closing_date = getdate(opp_row.expected_closing)
+                completed_date = getdate(opp_row.modified)
                 if completed_date <= closing_date:
                     user_data[user]["on_time"] += 1
                 else:
@@ -659,17 +589,8 @@ def calculate_user_metrics(date_range="all", from_date=None, to_date=None):
 
 @frappe.whitelist()
 def close_opportunity_todo(todo_name):
-    """Mark a ToDo as closed."""
-    todo = frappe.get_doc("ToDo", todo_name)
-    
-    # Check permission
-    if todo.allocated_to != frappe.session.user and not frappe.has_permission("ToDo", "write", todo):
-        frappe.throw(_("You don't have permission to close this task"))
-    
-    todo.status = "Closed"
-    todo.save(ignore_permissions=True)
-    
-    return {"status": "success", "message": "Task closed successfully"}
+    """Deprecated: ToDo-based tasks are no longer used."""
+    frappe.throw(_("ToDo-based tasks are disabled. Please update the Opportunity directly."))
 
 
 @frappe.whitelist()
@@ -689,14 +610,14 @@ def get_opportunity_details(opportunity_name):
                 "description": item.description
             })
 
-    # Get assigned engineers
+    # Get assigned parties
     engineers = []
-    if opp.get("custom_resp_eng"):
-        for row in opp.custom_resp_eng:
-            engineers.append({
-                "engineer": row.responsible_engineer,
-                "name": frappe.db.get_value("Responsible Engineer", row.responsible_engineer, "eng_name") or row.responsible_engineer
-            })
+    parties = notification_utils._get_opportunity_party_rows(opp)
+    for party in parties:
+        engineers.append({
+            "engineer": party,
+            "name": _get_party_display_name(party)
+        })
 
     return {
         "name": opp.name,
@@ -737,115 +658,92 @@ def get_team_opportunities(team=None, include_completed=False):
         if employee_dept:
             team = employee_dept
 
-    # Get ToDos for opportunities based on whether we want completed or open
-    todo_filters = {
-        "reference_type": "Opportunity"
-    }
-
-    # For completed opportunities, we don't filter by ToDo status
-    # For open opportunities, we only want open ToDos
-    if not include_completed:
-        todo_filters["status"] = "Open"
-
-    todos = frappe.get_all(
-        "ToDo",
-        filters=todo_filters,
-        fields=["name", "reference_name", "allocated_to", "creation", "priority"]
-    )
-
     # Group by opportunity
     opp_map = {}
     today = getdate(nowdate())
 
-    for todo in todos:
-        opp_name = todo.reference_name
+    status_filter = ["in", ["Closed", "Lost", "Converted"]] if include_completed else ["not in", ["Closed", "Lost", "Converted"]]
+    opps = frappe.get_all(
+        "Opportunity",
+        filters={"status": status_filter},
+        fields=["name", "party_name", "expected_closing", "status"]
+    )
 
-        if opp_name not in opp_map:
-            # Get opportunity details
-            opp = frappe.get_doc("Opportunity", opp_name)
+    for row in opps:
+        opp = frappe.get_doc("Opportunity", row.name)
 
-            # Filter based on include_completed flag
-            if include_completed:
-                # Only show completed opportunities
-                if opp.status not in ["Closed", "Lost", "Converted"]:
-                    continue
-            else:
-                # Skip if opportunity is closed/lost/converted
-                if opp.status in ["Closed", "Lost", "Converted"]:
-                    continue
+        assigned_users = _get_assigned_user_ids(opp)
+        if not assigned_users and opp.owner:
+            assigned_users = {opp.owner}
 
-            # Check if quotation exists for this opportunity
-            has_quotation = frappe.db.exists("Quotation", {
-                "opportunity": opp.name,
-                "docstatus": ["!=", 2]  # Not cancelled
-            })
-
-            closing_date = getdate(opp.expected_closing) if opp.expected_closing else None
-            days_remaining = date_diff(closing_date, today) if closing_date else None
-
-            # Determine urgency - for completed opportunities, urgency is based on final status
-            if include_completed:
-                # For completed opportunities, urgency doesn't matter - we just need a value
-                urgency = "completed"
-            elif has_quotation:
-                # Has quotation, so not urgent even if past closing date
-                urgency = "low"
-            elif days_remaining is None:
-                urgency = "unknown"
-            elif days_remaining < 0:
-                urgency = "overdue"
-            elif days_remaining == 0:
-                urgency = "due_today"
-            elif days_remaining == 1:
-                urgency = "critical"
-            elif days_remaining <= 3:
-                urgency = "high"
-            elif days_remaining <= 7:
-                urgency = "medium"
-            else:
-                urgency = "low"
-
-            opp_map[opp_name] = {
-                "opportunity": opp.name,
-                "customer": opp.party_name,
-                "closing_date": str(opp.expected_closing) if opp.expected_closing else None,
-                "days_remaining": days_remaining,
-                "urgency": urgency,
-                "status": opp.status,
-                "has_quotation": has_quotation,
-                "assignees": []
-            }
-
-        # Get user details
-        user = todo.allocated_to
-        if user:
+        # Build assignee list with departments
+        assignees = []
+        assigned_departments = set()
+        for user in assigned_users:
             user_doc = frappe.get_doc("User", user)
             employee_name = user_doc.full_name or user
 
-            # Get employee department
             department = None
-            employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
+            employee = frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, "name")
             if employee:
                 emp_doc = frappe.get_doc("Employee", employee)
                 department = getattr(emp_doc, "department", None)
+                if department:
+                    assigned_departments.add(department)
 
-            # Add assignee to opportunity
-            opp_map[opp_name]["assignees"].append({
+            assignees.append({
                 "user": user,
                 "employee": employee_name,
                 "department": department
             })
 
-    # Filter by team if specified (skip filtering for "All Teams")
-    if team and team != "All Teams":
-        filtered_map = {}
-        for opp_name, opp_data in opp_map.items():
-            # Check if any assignee is in the specified team
-            for assignee in opp_data["assignees"]:
-                if assignee["department"] == team:
-                    filtered_map[opp_name] = opp_data
-                    break
-        opp_map = filtered_map
+        # Filter by team if specified (skip filtering for "All Teams")
+        if team and team != "All Teams":
+            if team not in assigned_departments:
+                # Also include if owner is in team
+                owner_dept = None
+                if opp.owner:
+                    owner_dept = frappe.db.get_value("Employee", {"user_id": opp.owner, "status": "Active"}, "department")
+                if owner_dept != team:
+                    continue
+
+        has_quotation = frappe.db.exists("Quotation", {
+            "opportunity": opp.name,
+            "docstatus": ["!=", 2]
+        })
+
+        closing_date = getdate(opp.expected_closing) if opp.expected_closing else None
+        days_remaining = date_diff(closing_date, today) if closing_date else None
+
+        if include_completed:
+            urgency = "completed"
+        elif has_quotation:
+            urgency = "low"
+        elif days_remaining is None:
+            urgency = "unknown"
+        elif days_remaining < 0:
+            urgency = "overdue"
+        elif days_remaining == 0:
+            urgency = "due_today"
+        elif days_remaining == 1:
+            urgency = "critical"
+        elif days_remaining <= 3:
+            urgency = "high"
+        elif days_remaining <= 7:
+            urgency = "medium"
+        else:
+            urgency = "low"
+
+        opp_map[opp.name] = {
+            "opportunity": opp.name,
+            "customer": opp.party_name,
+            "closing_date": str(opp.expected_closing) if opp.expected_closing else None,
+            "days_remaining": days_remaining,
+            "urgency": urgency,
+            "status": opp.status,
+            "has_quotation": has_quotation,
+            "assignees": assignees
+        }
 
     # Convert to list and sort by urgency
     opportunities = list(opp_map.values())
@@ -874,38 +772,27 @@ def get_employee_opportunity_stats(team=None):
     Returns:
         List of employees with their opportunity counts
     """
-    # Get all open ToDos linked to opportunities
-    todos = frappe.get_all(
-        "ToDo",
-        filters={
-            "reference_type": "Opportunity",
-            "status": "Open"
-        },
-        fields=["allocated_to", "reference_name"]
-    )
-
     # Count non-overdue opportunities per user
     user_counts = {}
     today = getdate(nowdate())
-    
-    for todo in todos:
-        user = todo.allocated_to
-        opp_name = todo.reference_name
-        
-        if user and opp_name:
-            # Check if opportunity is not overdue
-            opp = frappe.db.get_value("Opportunity", opp_name, ["expected_closing", "status"], as_dict=True)
-            
-            if opp and opp.status not in ["Closed", "Lost", "Converted"]:
-                # Check if not overdue
-                is_overdue = False
-                if opp.expected_closing:
-                    closing_date = getdate(opp.expected_closing)
-                    if closing_date < today:
-                        is_overdue = True
-                
-                if not is_overdue:
-                    user_counts[user] = user_counts.get(user, 0) + 1
+
+    opps = frappe.get_all(
+        "Opportunity",
+        filters={"status": ["not in", ["Closed", "Lost", "Converted"]]},
+        fields=["name", "expected_closing", "status", "owner"]
+    )
+
+    for opp in opps:
+        if opp.expected_closing and getdate(opp.expected_closing) < today:
+            continue
+
+        opp_doc = frappe.get_doc("Opportunity", opp.name)
+        assigned_users = _get_assigned_user_ids(opp_doc)
+        if not assigned_users and opp.owner:
+            assigned_users = {opp.owner}
+
+        for user in assigned_users:
+            user_counts[user] = user_counts.get(user, 0) + 1
 
     # Get employee details and filter by team if specified
     employees = []
@@ -946,16 +833,23 @@ def get_available_teams():
     Returns:
         List of team/department names
     """
-    # Get all departments from employees who are assigned to opportunities
-    departments = frappe.db.sql("""
-        SELECT DISTINCT e.department
-        FROM `tabEmployee` e
-        INNER JOIN `tabUser` u ON e.user_id = u.name
-        INNER JOIN `tabToDo` t ON t.allocated_to = u.name
-        WHERE t.reference_type = 'Opportunity'
-        AND t.status = 'Open'
-        AND e.department IS NOT NULL
-        ORDER BY e.department
-    """, as_dict=True)
+    departments = set()
 
-    return [d.department for d in departments if d.department]
+    opps = frappe.get_all(
+        "Opportunity",
+        filters={"status": ["not in", ["Closed", "Lost", "Converted"]]},
+        fields=["name", "owner"]
+    )
+
+    for opp_row in opps:
+        opp = frappe.get_doc("Opportunity", opp_row.name)
+        assigned_users = _get_assigned_user_ids(opp)
+        if not assigned_users and opp.owner:
+            assigned_users = {opp.owner}
+
+        for user in assigned_users:
+            department = frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, "department")
+            if department:
+                departments.add(department)
+
+    return sorted(departments)
