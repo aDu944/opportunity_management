@@ -209,26 +209,12 @@ def _get_user_from_responsible_engineer(engineer_name):
     return None
 
 
-def get_opportunity_assignee_recipients_for_notification(doc, method=None):
-    """
-    Hook function for Opportunity notifications (assignees + their managers).
-
-    Recipients:
-    1. All assigned users (custom_resp_eng + open ToDos allocated_to)
-    2. Department managers/system managers of each assigned user
-
-    Args:
-        doc: The Opportunity document
-        method: The method name (optional)
-
-    Returns:
-        List of user emails
-    """
-    recipients = set()
+def get_opportunity_assigned_users(doc):
+    """Return all assigned users for an Opportunity."""
     assigned_users = set()
 
     if not doc:
-        return []
+        return assigned_users
 
     # From custom_resp_eng child table
     if doc.get("custom_resp_eng"):
@@ -252,12 +238,41 @@ def get_opportunity_assignee_recipients_for_notification(doc, method=None):
         if todo.allocated_to:
             assigned_users.add(todo.allocated_to)
 
+    return assigned_users
+
+
+def get_opportunity_assignee_recipients_for_notification(doc, method=None):
+    """
+    Hook function for Opportunity notifications (assignees + their managers).
+
+    Recipients:
+    1. All assigned users (custom_resp_eng + open ToDos allocated_to)
+    2. Department managers/system managers of each assigned user
+    3. Opportunity creator (owner)
+
+    Args:
+        doc: The Opportunity document
+        method: The method name (optional)
+
+    Returns:
+        List of user emails
+    """
+    recipients = set()
+    assigned_users = get_opportunity_assigned_users(doc)
+
+    if not doc:
+        return []
+
     # Add assigned users and their department managers
     for user_id in assigned_users:
         recipients.add(user_id)
         dept_managers = get_department_managers(user_id)
         for mgr in dept_managers:
             recipients.add(mgr)
+
+    # Include the creator (assigner) explicitly
+    if doc.owner:
+        recipients.add(doc.owner)
 
     recipients_list = list(recipients)
     frappe.logger().info(
@@ -314,3 +329,106 @@ def get_todo_recipients_for_notification(doc, method=None):
             recipients.add(mgr)
 
     return list(recipients)
+
+
+def log_opportunity_notification_from_email_queue(doc, method=None):
+    """Log notifications sent for Opportunities via Email Queue."""
+    if not doc:
+        return
+
+    reference_doctype = getattr(doc, "reference_doctype", None)
+    reference_name = getattr(doc, "reference_name", None)
+
+    if reference_doctype != "Opportunity" or not reference_name:
+        return
+
+    recipients = getattr(doc, "recipients", None) or getattr(doc, "recipient", None) or ""
+    subject = getattr(doc, "subject", None) or ""
+    status = getattr(doc, "status", None) or "Queued"
+    sent_at = getattr(doc, "send_after", None) or getattr(doc, "creation", None)
+    message_id = getattr(doc, "message_id", None) or ""
+
+    try:
+        log = frappe.get_doc({
+            "doctype": "Opportunity Notification Log",
+            "opportunity": reference_name,
+            "recipients": recipients,
+            "subject": subject,
+            "status": status,
+            "email_queue": doc.name,
+            "sent_at": sent_at,
+            "message_id": message_id,
+        })
+        log.insert(ignore_permissions=True)
+
+        update_opportunity_last_notification_fields(
+            reference_name,
+            recipients,
+            subject,
+            status,
+            sent_at
+        )
+    except Exception as e:
+        frappe.log_error(
+            f"Error logging notification for Opportunity {reference_name}: {str(e)}",
+            "Opportunity Notification Log Error"
+        )
+
+
+def update_opportunity_notification_log_status(doc, method=None):
+    """Update notification log status when Email Queue status changes."""
+    if not doc:
+        return
+
+    reference_doctype = getattr(doc, "reference_doctype", None)
+    reference_name = getattr(doc, "reference_name", None)
+    if reference_doctype != "Opportunity" or not reference_name:
+        return
+
+    status = getattr(doc, "status", None) or "Queued"
+    try:
+        frappe.db.set_value(
+            "Opportunity Notification Log",
+            {"email_queue": doc.name},
+            "status",
+            status,
+            update_modified=False
+        )
+        update_opportunity_last_notification_fields(
+            reference_name,
+            getattr(doc, "recipients", None) or getattr(doc, "recipient", None) or "",
+            getattr(doc, "subject", None) or "",
+            status,
+            getattr(doc, "send_after", None) or getattr(doc, "modified", None)
+        )
+    except Exception as e:
+        frappe.log_error(
+            f"Error updating notification log status for {doc.name}: {str(e)}",
+            "Opportunity Notification Log Status Error"
+        )
+
+
+def update_opportunity_last_notification_fields(opportunity_name, recipients, subject, status, sent_at):
+    """Update last notification fields on Opportunity if they exist."""
+    if not opportunity_name:
+        return
+
+    fields = {}
+    meta = frappe.get_meta("Opportunity")
+
+    if meta.has_field("custom_last_notification_sent"):
+        fields["custom_last_notification_sent"] = sent_at
+    if meta.has_field("custom_last_notification_recipients"):
+        fields["custom_last_notification_recipients"] = recipients
+    if meta.has_field("custom_last_notification_subject"):
+        fields["custom_last_notification_subject"] = subject
+    if meta.has_field("custom_last_notification_status"):
+        fields["custom_last_notification_status"] = status
+
+    if fields:
+        frappe.db.set_value(
+            "Opportunity",
+            opportunity_name,
+            fields,
+            update_modified=False
+        )

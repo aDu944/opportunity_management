@@ -465,3 +465,359 @@ def reset_reminder_flags(opportunity_name):
         "custom_reminder_0_sent": 0,
     })
     frappe.db.commit()
+
+
+def _get_department_for_user(user_id):
+    if not user_id:
+        return None
+    return frappe.db.get_value(
+        "Employee",
+        {"user_id": user_id, "status": "Active"},
+        "department"
+    )
+
+
+def _get_department_managers_by_department(department):
+    if not department:
+        return []
+
+    managers = []
+
+    dept_managers = frappe.db.sql("""
+        SELECT DISTINCT e.user_id
+        FROM `tabEmployee` e
+        WHERE e.department = %(department)s
+            AND e.status = 'Active'
+            AND e.user_id IS NOT NULL
+            AND e.user_id != ''
+            AND (
+                e.designation LIKE '%%Manager%%'
+                OR e.designation LIKE '%%Head%%'
+                OR e.designation LIKE '%%Director%%'
+            )
+    """, {"department": department}, as_dict=True)
+
+    for mgr in dept_managers:
+        if mgr.user_id and mgr.user_id not in managers:
+            managers.append(mgr.user_id)
+
+    system_managers = frappe.db.sql("""
+        SELECT DISTINCT e.user_id
+        FROM `tabEmployee` e
+        INNER JOIN `tabHas Role` hr ON hr.parent = e.user_id
+        WHERE e.department = %(department)s
+            AND e.status = 'Active'
+            AND e.user_id IS NOT NULL
+            AND e.user_id != ''
+            AND hr.role = 'System Manager'
+            AND hr.parenttype = 'User'
+    """, {"department": department}, as_dict=True)
+
+    for mgr in system_managers:
+        if mgr.user_id and mgr.user_id not in managers:
+            managers.append(mgr.user_id)
+
+    return managers
+
+
+def send_manager_weekly_digest():
+    """
+    Weekly digest to department managers.
+    Includes overdue and due-soon opportunities for their departments.
+    """
+    today = getdate(nowdate())
+    upcoming = add_days(today, 7)
+
+    from opportunity_management.opportunity_management.notification_utils import get_opportunity_assigned_users
+
+    opportunities = frappe.get_all(
+        "Opportunity",
+        filters={
+            "status": ["not in", ["Lost", "Closed", "Converted"]],
+            "expected_closing": ["is", "set"]
+        },
+        fields=["name", "expected_closing", "party_name", "status"]
+    )
+
+    dept_opportunities = {}
+    user_department_cache = {}
+
+    for opp in opportunities:
+        doc = frappe.get_doc("Opportunity", opp.name)
+        assigned_users = get_opportunity_assigned_users(doc)
+
+        for user_id in assigned_users:
+            if user_id not in user_department_cache:
+                user_department_cache[user_id] = _get_department_for_user(user_id)
+            department = user_department_cache[user_id]
+
+            if not department:
+                continue
+
+            if department not in dept_opportunities:
+                dept_opportunities[department] = {}
+
+            dept_opportunities[department][opp.name] = {
+                "name": opp.name,
+                "party_name": opp.party_name,
+                "expected_closing": opp.expected_closing,
+                "status": opp.status
+            }
+
+    site_url = frappe.utils.get_url()
+
+    for department, opp_map in dept_opportunities.items():
+        managers = _get_department_managers_by_department(department)
+        if not managers:
+            continue
+
+        opp_list = list(opp_map.values())
+        for opp in opp_list:
+            opp["days_remaining"] = date_diff(getdate(opp["expected_closing"]), today)
+
+        overdue = [o for o in opp_list if o["days_remaining"] < 0]
+        due_soon = [o for o in opp_list if 0 <= o["days_remaining"] <= 7]
+
+        overdue.sort(key=lambda x: x["days_remaining"])
+        due_soon.sort(key=lambda x: x["days_remaining"])
+
+        def build_rows(items, limit=10):
+            rows = ""
+            for opp in items[:limit]:
+                rows += f"""
+                    <tr>
+                        <td><a href="{site_url}/app/opportunity/{opp['name']}">{opp['name']}</a></td>
+                        <td>{opp['party_name'] or '-'}</td>
+                        <td>{format_date(opp['expected_closing'], 'dd/MM/yyyy')}</td>
+                        <td style="text-align:center;">{opp['days_remaining']}</td>
+                    </tr>
+                """
+            return rows
+
+        overdue_rows = build_rows(overdue)
+        due_rows = build_rows(due_soon)
+
+        message = f"""
+        <div style="font-family: Arial, sans-serif;">
+            <h2>Weekly Opportunity Digest - {department}</h2>
+            <p>Summary for the next 7 days:</p>
+            <ul>
+                <li>Total open: {len(opp_list)}</li>
+                <li>Overdue: {len(overdue)}</li>
+                <li>Due in 7 days: {len(due_soon)}</li>
+            </ul>
+
+            <h3>Overdue Opportunities</h3>
+            <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+                <thead>
+                    <tr>
+                        <th>Opportunity</th>
+                        <th>Customer</th>
+                        <th>Closing Date</th>
+                        <th>Days Overdue</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {overdue_rows or '<tr><td colspan="4">None</td></tr>'}
+                </tbody>
+            </table>
+
+            <h3>Due in 7 Days</h3>
+            <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+                <thead>
+                    <tr>
+                        <th>Opportunity</th>
+                        <th>Customer</th>
+                        <th>Closing Date</th>
+                        <th>Days Remaining</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {due_rows or '<tr><td colspan="4">None</td></tr>'}
+                </tbody>
+            </table>
+        </div>
+        """
+
+        subject = f"Weekly Opportunity Digest - {department}"
+        try:
+            frappe.sendmail(recipients=managers, subject=subject, message=message, now=True)
+        except Exception as e:
+            frappe.log_error(
+                f"Digest email failed for {department}: {str(e)}",
+                "Manager Digest Error"
+            )
+
+
+def send_management_daily_closing_summary():
+    """
+    Daily summary of opportunities closing today, sent to users with "Management" role.
+    """
+    today = getdate(nowdate())
+    site_url = frappe.utils.get_url()
+
+    closings = frappe.get_all(
+        "Opportunity",
+        filters={
+            "status": ["not in", ["Lost", "Closed", "Converted"]],
+            "expected_closing": today
+        },
+        fields=["name", "party_name", "status", "expected_closing"]
+    )
+
+    users = frappe.get_all(
+        "Has Role",
+        filters={
+            "role": "Management",
+            "parenttype": "User"
+        },
+        fields=["parent"]
+    )
+    recipients = sorted({u.parent for u in users if u.parent})
+
+    if not recipients:
+        frappe.logger().warning("No recipients found for Management role")
+        return
+
+    def build_rows(items):
+        rows = ""
+        for opp in items:
+            rows += f"""
+                <tr>
+                    <td style="padding: 8px 10px; border-bottom: 1px solid #e9ecef;">
+                        <a href="{site_url}/app/opportunity/{opp.name}" style="color: #ff9800; text-decoration: none; font-weight: 600;">{opp.name}</a>
+                    </td>
+                    <td style="padding: 8px 10px; border-bottom: 1px solid #e9ecef;">{opp.party_name or '-'}</td>
+                    <td style="padding: 8px 10px; border-bottom: 1px solid #e9ecef; color: #FF0000; font-weight: 700;">
+                        {format_date(opp.expected_closing, 'dd/MM/yyyy')}
+                    </td>
+                    <td style="padding: 8px 10px; border-bottom: 1px solid #e9ecef;">{opp.status or 'Open'}</td>
+                </tr>
+            """
+        return rows
+
+    rows = build_rows(closings)
+
+    message = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Closing Summary</title>
+    <!--[if mso]>
+    <style type="text/css">
+    body, table, td {{font-family: Arial, Helvetica, sans-serif !important;}}
+    </style>
+    <![endif]-->
+</head>
+<body style="margin: 0; padding: 0; min-width: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; background-color: #f5f7fa; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #f5f7fa;">
+        <tr>
+            <td align="center" style="padding: 20px 15px;">
+                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 650px; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px rgba(255,193,7,0.15); overflow: hidden;">
+                    <!-- Header Banner -->
+                    <tr>
+                        <td align="center" style="background-color: #ffc107; padding: 25px 20px;">
+                            <h1 style="color: #ffffff; margin: 0; font-weight: 600; font-size: 24px;">Daily Closing Summary</h1>
+                            <p style="color: #fff3cd; margin: 10px 0 0 0; font-size: 16px;">Date: {format_date(today, 'dd/MM/yyyy')}</p>
+                        </td>
+                    </tr>
+
+                    <!-- Content Area -->
+                    <tr>
+                        <td style="padding: 30px 20px;">
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+                                <tr>
+                                    <td style="color: #444; font-size: 16px; padding-bottom: 20px;">
+                                        Here is today's summary of opportunities closing <strong>today</strong>.
+                                    </td>
+                                </tr>
+
+                                <!-- Alert Box -->
+                                <tr>
+                                    <td style="padding: 0 0 25px 0;">
+                                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #fff3cd; border-left: 4px solid #ffc107; border-radius: 6px;">
+                                            <tr>
+                                                <td style="padding: 15px 20px;">
+                                                    <p style="color: #856404; margin: 0; font-weight: 700; font-size: 16px;">⏰ Closing Today - {len(closings)} Opportunity(ies)</p>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+
+                                <!-- Opportunity Info Card -->
+                                <tr>
+                                    <td style="padding: 0 0 25px 0;">
+                                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #f8f9fa; border-left: 4px solid #ffc107; border-radius: 6px;">
+                                            <tr>
+                                                <td style="padding: 20px;">
+                                                    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+                                                        <thead>
+                                                            <tr>
+                                                                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #e9ecef; color: #555; font-size: 14px; width: 30%;">Opportunity</th>
+                                                                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #e9ecef; color: #555; font-size: 14px;">Customer</th>
+                                                                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #e9ecef; color: #555; font-size: 14px;">Closing Date</th>
+                                                                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #e9ecef; color: #555; font-size: 14px;">Status</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {rows or '<tr><td colspan="4" style="padding: 10px;">None</td></tr>'}
+                                                        </tbody>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+
+                                <!-- CTA Button -->
+                                <tr>
+                                    <td align="center" style="padding: 10px 0 25px 0;">
+                                        <!--[if mso]>
+                                        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{site_url}/app/opportunity" style="height:45px;v-text-anchor:middle;width:230px;" arcsize="50%" stroke="f" fillcolor="#ff9800">
+                                        <w:anchorlock/>
+                                        <center>
+                                        <![endif]-->
+                                        <a href="{site_url}/app/opportunity" style="display: inline-block; background-color: #ff9800; color: #ffffff; font-weight: 600; text-decoration: none; padding: 12px 25px; border-radius: 50px; font-size: 16px; box-shadow: 0 4px 10px rgba(255,152,0,0.3); mso-padding-alt: 0; text-underline-color: #ff9800;"><!--[if mso]><i style="letter-spacing: 25px;mso-font-width:-100%;mso-text-raise:20pt">&nbsp;</i><![endif]--><span style="mso-text-raise:10pt;">Open Opportunities</span><!--[if mso]><i style="letter-spacing: 25px;mso-font-width:-100%">&nbsp;</i><![endif]--></a>
+                                        <!--[if mso]>
+                                        </center>
+                                        </v:roundrect>
+                                        <![endif]-->
+                                    </td>
+                                </tr>
+
+                                <tr>
+                                    <td style="padding-top: 10px;">
+                                        <p style="color: #444; margin: 0 0 5px 0; font-size: 16px;">Best regards,</p>
+                                        <p style="color: #444; font-weight: 600; margin: 0; font-size: 16px;">ALKHORA for General Trading Ltd</p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e9ecef;">
+                            <p style="color: #6c757d; margin: 0; font-size: 13px;">This is an automated summary from your ERP system.</p>
+                            <p style="color: #6c757d; margin: 5px 0 0 0; font-size: 13px;">Please do not reply to this email.</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+    """
+
+    subject = f"Daily Closing Summary - {format_date(today, 'dd/MM/yyyy')}"
+    try:
+        frappe.sendmail(recipients=recipients, subject=subject, message=message, now=True)
+    except Exception as e:
+        frappe.log_error(
+            f"Daily closing summary failed: {str(e)}",
+            "Management Daily Closing Summary Error"
+        )

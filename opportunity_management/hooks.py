@@ -15,6 +15,10 @@ doc_events = {
         # Keep assignment hooks disabled to avoid duplicates.
         "validate": "opportunity_management.opportunity_management.notification_utils.set_opportunity_notification_recipients",
     },
+    "Email Queue": {
+        "after_insert": "opportunity_management.opportunity_management.notification_utils.log_opportunity_notification_from_email_queue",
+        "on_update": "opportunity_management.opportunity_management.notification_utils.update_opportunity_notification_log_status",
+    },
     "Quotation": {
         "on_submit": "opportunity_management.quotation_handler.on_quotation_submit",
     }
@@ -29,6 +33,14 @@ scheduler_events = {
     "cron": {
         "0 8 * * *": [
             "opportunity_management.opportunity_management.tasks.send_opportunity_reminders"
+        ],
+        # Daily closings summary for Management role (7:30 AM)
+        "30 7 * * *": [
+            "opportunity_management.opportunity_management.tasks.send_management_daily_closing_summary"
+        ],
+        # Weekly manager digest (Mondays at 9:00 AM)
+        "0 9 * * 1": [
+            "opportunity_management.opportunity_management.tasks.send_manager_weekly_digest"
         ]
     }
 }

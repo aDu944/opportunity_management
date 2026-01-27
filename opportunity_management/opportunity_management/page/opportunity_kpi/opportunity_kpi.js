@@ -96,40 +96,52 @@ function load_kpi_data(page) {
 function render_overall_kpi(page, kpi) {
     const html = `
         <div class="row" style="margin-bottom: 30px;">
-            <div class="col-md-2">
+            <div class="col-md-3">
                 <div class="kpi-card" style="background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
                     <h2 style="margin: 0; color: #333; font-size: 36px;">${kpi.total}</h2>
                     <p style="margin: 5px 0 0 0; color: #666;">Total Assigned</p>
                 </div>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-3">
                 <div class="kpi-card" style="background: #28a745; color: white; padding: 20px; border-radius: 8px; text-align: center;">
                     <h2 style="margin: 0; font-size: 36px;">${kpi.completed}</h2>
                     <p style="margin: 5px 0 0 0;">Completed</p>
                 </div>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-3">
                 <div class="kpi-card" style="background: #17a2b8; color: white; padding: 20px; border-radius: 8px; text-align: center;">
                     <h2 style="margin: 0; font-size: 36px;">${kpi.completed_on_time}</h2>
                     <p style="margin: 5px 0 0 0;">On Time</p>
                 </div>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-3">
                 <div class="kpi-card" style="background: #ffc107; padding: 20px; border-radius: 8px; text-align: center;">
                     <h2 style="margin: 0; font-size: 36px;">${kpi.completed_late}</h2>
                     <p style="margin: 5px 0 0 0;">Late</p>
                 </div>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-3">
                 <div class="kpi-card" style="background: #6c757d; color: white; padding: 20px; border-radius: 8px; text-align: center;">
                     <h2 style="margin: 0; font-size: 36px;">${kpi.still_open}</h2>
                     <p style="margin: 5px 0 0 0;">Still Open</p>
                 </div>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-3">
                 <div class="kpi-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; text-align: center;">
                     <h2 style="margin: 0; font-size: 36px;">${kpi.on_time_rate}%</h2>
                     <p style="margin: 5px 0 0 0;">On-Time Rate</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kpi-card" style="background: #dc3545; color: white; padding: 20px; border-radius: 8px; text-align: center;">
+                    <h2 style="margin: 0; font-size: 36px;">${kpi.overdue_rate}%</h2>
+                    <p style="margin: 5px 0 0 0;">Overdue Rate</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kpi-card" style="background: #0d6efd; color: white; padding: 20px; border-radius: 8px; text-align: center;">
+                    <h2 style="margin: 0; font-size: 36px;">${kpi.median_close_days}</h2>
+                    <p style="margin: 5px 0 0 0;">Median Close Days</p>
                 </div>
             </div>
         </div>
