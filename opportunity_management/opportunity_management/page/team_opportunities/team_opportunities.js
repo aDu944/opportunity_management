@@ -77,12 +77,13 @@ function load_teams(page) {
                     options += '\n' + team;
                 });
                 page.fields_dict.team_filter.df.options = options;
+                page.fields_dict.team_filter.df.label = '';
                 page.fields_dict.team_filter.refresh();
                 
                 // Move the field to the custom container and ensure it's visible
                 const $container = page.main.find('#team-filter-container .control-input');
                 $container.html(page.fields_dict.team_filter.$wrapper);
-                page.fields_dict.team_filter.$wrapper.find('.control-label').hide();
+                page.fields_dict.team_filter.$wrapper.find('label').hide();
                 
                 // Ensure the field is properly styled
                 page.fields_dict.team_filter.$wrapper.css({
@@ -139,7 +140,7 @@ function load_teams(page) {
                 // Move the field to the custom container even if no teams
                 const $container = page.main.find('#team-filter-container .control-input');
                 $container.html(page.fields_dict.team_filter.$wrapper);
-                page.fields_dict.team_filter.$wrapper.find('.control-label').hide();
+                page.fields_dict.team_filter.$wrapper.find('label').hide();
                 
                 // Ensure the field is properly styled
                 page.fields_dict.team_filter.$wrapper.css({

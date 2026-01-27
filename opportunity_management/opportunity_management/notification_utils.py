@@ -81,6 +81,23 @@ def get_department_managers(user_email):
             if mgr.user_id and mgr.user_id not in managers:
                 managers.append(mgr.user_id)
 
+        # Method 3: Get users with Management role in the same department
+        management_role = frappe.db.sql("""
+            SELECT DISTINCT e.user_id
+            FROM `tabEmployee` e
+            INNER JOIN `tabHas Role` hr ON hr.parent = e.user_id
+            WHERE e.department = %(department)s
+                AND e.status = 'Active'
+                AND e.user_id IS NOT NULL
+                AND e.user_id != ''
+                AND hr.role = 'Management'
+                AND hr.parenttype = 'User'
+        """, {"department": department}, as_dict=True)
+
+        for mgr in management_role:
+            if mgr.user_id and mgr.user_id not in managers:
+                managers.append(mgr.user_id)
+
         frappe.logger().info(
             f"Found {len(managers)} managers for department '{department}': {managers}"
         )
@@ -186,6 +203,11 @@ def _get_user_from_responsible_engineer(engineer_name):
     """Resolve Responsible Engineer -> user id/email."""
     if not engineer_name:
         return None
+
+    # If it's already an Employee ID, resolve directly to avoid noisy errors
+    if frappe.db.exists("Employee", engineer_name):
+        employee = frappe.get_doc("Employee", engineer_name)
+        return employee.user_id
 
     try:
         engineer = frappe.get_doc("Responsible Engineer", engineer_name)
