@@ -82,6 +82,7 @@ function load_teams(page) {
                 // Move the field to the custom container and ensure it's visible
                 const $container = page.main.find('#team-filter-container .control-input');
                 $container.html(page.fields_dict.team_filter.$wrapper);
+                page.fields_dict.team_filter.$wrapper.find('.control-label').hide();
                 
                 // Ensure the field is properly styled
                 page.fields_dict.team_filter.$wrapper.css({
@@ -89,7 +90,8 @@ function load_teams(page) {
                     'min-width': '200px'
                 });
                 page.fields_dict.team_filter.$input.css({
-                    'width': '100%'
+                    'width': '100%',
+                    'padding-left': '12px'
                 });
                 
                 // Move the hide overdue field
@@ -137,6 +139,7 @@ function load_teams(page) {
                 // Move the field to the custom container even if no teams
                 const $container = page.main.find('#team-filter-container .control-input');
                 $container.html(page.fields_dict.team_filter.$wrapper);
+                page.fields_dict.team_filter.$wrapper.find('.control-label').hide();
                 
                 // Ensure the field is properly styled
                 page.fields_dict.team_filter.$wrapper.css({
@@ -144,7 +147,8 @@ function load_teams(page) {
                     'min-width': '200px'
                 });
                 page.fields_dict.team_filter.$input.css({
-                    'width': '100%'
+                    'width': '100%',
+                    'padding-left': '12px'
                 });
                 
                 // Move the hide overdue field
