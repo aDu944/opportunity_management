@@ -11,10 +11,10 @@ app_license = "MIT"
 # Hook into Opportunity save/update events
 # DISABLED: Using client script for assignment instead to avoid duplicates
 doc_events = {
-    # "Opportunity": {
-    #     "on_update": "opportunity_management.opportunity_management.utils.assignment.on_opportunity_update",
-    #     "after_insert": "opportunity_management.opportunity_management.utils.assignment.on_opportunity_insert",
-    # },
+    "Opportunity": {
+        # Keep assignment hooks disabled to avoid duplicates.
+        "validate": "opportunity_management.opportunity_management.notification_utils.set_opportunity_notification_recipients",
+    },
     "Quotation": {
         "on_submit": "opportunity_management.quotation_handler.on_quotation_submit",
     }

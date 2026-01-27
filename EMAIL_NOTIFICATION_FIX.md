@@ -98,9 +98,20 @@ If your Notification **Document Type = Opportunity** and you want:
 - **Assigned users** (from `custom_resp_eng` and open ToDos)
 - **Department managers** of those assigned users
 
-Use this **Custom** recipient method in the Notification UI:
+ERPNext v15 doesn't show the Custom Method recipient. Use a **Document Field** instead.
 
-`opportunity_management.opportunity_management.notification_utils.get_opportunity_assignee_recipients_for_notification`
+#### Step 1: Create a Custom Field on Opportunity
+- **Label:** Notification Recipients
+- **Fieldname:** `custom_notification_recipients`
+- **Fieldtype:** Small Text
+- **Read Only:** ✅ (optional)
+
+#### Step 2: Enable auto-population (code)
+This app now populates the field on every Opportunity save.
+
+#### Step 3: Use it in Notification
+- **Document Type:** Opportunity  
+- **Receiver By Document Field:** `custom_notification_recipients`
 
 ---
 

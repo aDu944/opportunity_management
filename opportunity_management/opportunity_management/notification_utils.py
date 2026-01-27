@@ -266,6 +266,29 @@ def get_opportunity_assignee_recipients_for_notification(doc, method=None):
     return recipients_list
 
 
+def set_opportunity_notification_recipients(doc, method=None):
+    """
+    Populate a custom field with notification recipients for ERPNext v15.
+
+    Requires a custom field on Opportunity, e.g.:
+    - fieldname: custom_notification_recipients
+    - fieldtype: Small Text
+
+    Stores a comma-separated list of emails for Notification "Receiver By Document Field".
+    """
+    if not doc:
+        return
+
+    fieldname = "custom_notification_recipients"
+
+    # Only attempt if the field exists on the doc
+    if not hasattr(doc, fieldname):
+        return
+
+    recipients = get_opportunity_assignee_recipients_for_notification(doc, method)
+    doc.set(fieldname, ", ".join(recipients))
+
+
 def get_todo_recipients_for_notification(doc, method=None):
     """
     Hook function for ToDo notifications.
