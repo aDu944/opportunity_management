@@ -437,9 +437,12 @@ window.sort_team_opportunities_handler = function(column) {
 
 // Function to create quotation from opportunity
 window.create_quotation = function(opportunity_name) {
-    // Use the same approach as the opportunity doctype "Make Quotation" button
-    frappe.route_options = {
-        "opportunity": opportunity_name
-    };
-    frappe.new_doc("Quotation");
+    if (!opportunity_name) {
+        return;
+    }
+
+    frappe.model.open_mapped_doc({
+        method: "erpnext.crm.doctype.opportunity.opportunity.make_quotation",
+        source_name: opportunity_name
+    });
 };

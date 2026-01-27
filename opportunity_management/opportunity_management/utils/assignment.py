@@ -86,7 +86,12 @@ def get_user_from_engineer(engineer_name):
     """
     if not engineer_name:
         return None
-    
+
+    # If the value is actually an Employee ID, resolve it directly
+    if frappe.db.exists("Employee", engineer_name):
+        employee = frappe.get_doc("Employee", engineer_name)
+        return employee.user_id
+
     try:
         engineer = frappe.get_doc("Responsible Engineer", engineer_name)
         
@@ -105,8 +110,8 @@ def get_user_from_engineer(engineer_name):
             return user
         
         return None
-    except Exception as e:
-        frappe.log_error(f"Error getting user from engineer {engineer_name}: {str(e)}")
+    except Exception:
+        # Avoid noisy logs if the value isn't a Responsible Engineer
         return None
 
 

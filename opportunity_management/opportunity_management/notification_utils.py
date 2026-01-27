@@ -273,6 +273,10 @@ def get_opportunity_assignee_recipients_for_notification(doc, method=None):
     # Include the creator (assigner) explicitly
     if doc.owner:
         recipients.add(doc.owner)
+        # Include owner's department managers as well
+        owner_managers = get_department_managers(doc.owner)
+        for mgr in owner_managers:
+            recipients.add(mgr)
 
     recipients_list = list(recipients)
     frappe.logger().info(
@@ -348,6 +352,10 @@ def log_opportunity_notification_from_email_queue(doc, method=None):
     sent_at = getattr(doc, "send_after", None) or getattr(doc, "creation", None)
     message_id = getattr(doc, "message_id", None) or ""
 
+    recipients = _normalize_recipients(recipients)
+    subject = _truncate_value(subject, 140)
+    status = _normalize_email_status(status)
+
     try:
         log = frappe.get_doc({
             "doctype": "Opportunity Notification Log",
@@ -370,8 +378,8 @@ def log_opportunity_notification_from_email_queue(doc, method=None):
         )
     except Exception as e:
         frappe.log_error(
-            f"Error logging notification for Opportunity {reference_name}: {str(e)}",
-            "Opportunity Notification Log Error"
+            message=f"Error logging notification for Opportunity {reference_name}: {str(e)}",
+            title="Opportunity Notification Log Error"
         )
 
 
@@ -385,7 +393,7 @@ def update_opportunity_notification_log_status(doc, method=None):
     if reference_doctype != "Opportunity" or not reference_name:
         return
 
-    status = getattr(doc, "status", None) or "Queued"
+    status = _normalize_email_status(getattr(doc, "status", None) or "Queued")
     try:
         frappe.db.set_value(
             "Opportunity Notification Log",
@@ -396,15 +404,15 @@ def update_opportunity_notification_log_status(doc, method=None):
         )
         update_opportunity_last_notification_fields(
             reference_name,
-            getattr(doc, "recipients", None) or getattr(doc, "recipient", None) or "",
-            getattr(doc, "subject", None) or "",
+            _normalize_recipients(getattr(doc, "recipients", None) or getattr(doc, "recipient", None) or ""),
+            _truncate_value(getattr(doc, "subject", None) or "", 140),
             status,
             getattr(doc, "send_after", None) or getattr(doc, "modified", None)
         )
     except Exception as e:
         frappe.log_error(
-            f"Error updating notification log status for {doc.name}: {str(e)}",
-            "Opportunity Notification Log Status Error"
+            message=f"Error updating notification log status for {doc.name}: {str(e)}",
+            title="Opportunity Notification Log Status Error"
         )
 
 
@@ -419,11 +427,14 @@ def update_opportunity_last_notification_fields(opportunity_name, recipients, su
     if meta.has_field("custom_last_notification_sent"):
         fields["custom_last_notification_sent"] = sent_at
     if meta.has_field("custom_last_notification_recipients"):
-        fields["custom_last_notification_recipients"] = recipients
+        field = meta.get_field("custom_last_notification_recipients")
+        fields["custom_last_notification_recipients"] = _truncate_for_field(_normalize_recipients(recipients), field)
     if meta.has_field("custom_last_notification_subject"):
-        fields["custom_last_notification_subject"] = subject
+        field = meta.get_field("custom_last_notification_subject")
+        fields["custom_last_notification_subject"] = _truncate_for_field(subject, field)
     if meta.has_field("custom_last_notification_status"):
-        fields["custom_last_notification_status"] = status
+        field = meta.get_field("custom_last_notification_status")
+        fields["custom_last_notification_status"] = _truncate_for_field(status, field)
 
     if fields:
         frappe.db.set_value(
@@ -432,3 +443,54 @@ def update_opportunity_last_notification_fields(opportunity_name, recipients, su
             fields,
             update_modified=False
         )
+
+
+def _normalize_email_status(status):
+    if not status:
+        return "Queued"
+
+    normalized = str(status).strip()
+    mapping = {
+        "Not Sent": "Queued",
+        "Open": "Queued",
+        "Queued": "Queued",
+        "Sent": "Sent",
+        "Delivered": "Sent",
+        "Failed": "Failed",
+        "Error": "Failed"
+    }
+    return mapping.get(normalized, "Queued")
+
+
+def _normalize_recipients(recipients):
+    if recipients is None:
+        return ""
+    if isinstance(recipients, (list, tuple, set)):
+        return ", ".join([str(r) for r in recipients if r])
+    return str(recipients)
+
+
+def _truncate_value(value, limit):
+    if value is None:
+        return ""
+    text = str(value)
+    if limit and len(text) > limit:
+        return text[:limit]
+    return text
+
+
+def _truncate_for_field(value, field):
+    if value is None:
+        return ""
+    text = str(value)
+
+    if not field:
+        return text
+
+    if field.fieldtype == "Data":
+        return _truncate_value(text, 140)
+    if field.fieldtype in ("Small Text", "Text"):
+        return _truncate_value(text, 1000)
+    if field.fieldtype == "Select":
+        return _truncate_value(text, 140)
+    return text
