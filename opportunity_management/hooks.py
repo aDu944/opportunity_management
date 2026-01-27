@@ -62,7 +62,18 @@ fixtures = [
         "doctype": "Custom Field",
         "filters": [
             ["dt", "in", ["Opportunity"]],
-            ["fieldname", "in", ["custom_resp_eng", "custom_reminder_7_sent", "custom_reminder_3_sent", "custom_reminder_1_sent", "custom_reminder_0_sent"]]
+            ["fieldname", "in", [
+                "custom_resp_eng",
+                "custom_reminder_7_sent",
+                "custom_reminder_3_sent",
+                "custom_reminder_1_sent",
+                "custom_reminder_0_sent",
+                "custom_notification_recipients",
+                "custom_last_notification_sent",
+                "custom_last_notification_recipients",
+                "custom_last_notification_subject",
+                "custom_last_notification_status"
+            ]]
         ]
     },
     {
