@@ -180,3 +180,114 @@ def get_opportunity_recipients_for_notification(doc, method=None):
         List of user emails
     """
     return get_opportunity_notification_recipients(doc.name)
+
+
+def _get_user_from_responsible_engineer(engineer_name):
+    """Resolve Responsible Engineer -> user id/email."""
+    if not engineer_name:
+        return None
+
+    try:
+        engineer = frappe.get_doc("Responsible Engineer", engineer_name)
+
+        if hasattr(engineer, "employee") and engineer.employee:
+            employee = frappe.get_doc("Employee", engineer.employee)
+            return employee.user_id
+
+        if hasattr(engineer, "user") and engineer.user:
+            return engineer.user
+
+        if hasattr(engineer, "email") and engineer.email:
+            return frappe.db.get_value("User", {"email": engineer.email}, "name")
+
+    except Exception:
+        # Fallback: engineer_name might be an Employee record
+        employee = frappe.db.get_value("Employee", engineer_name, ["user_id"], as_dict=True)
+        if employee and employee.user_id:
+            return employee.user_id
+
+    return None
+
+
+def get_opportunity_assignee_recipients_for_notification(doc, method=None):
+    """
+    Hook function for Opportunity notifications (assignees + their managers).
+
+    Recipients:
+    1. All assigned users (custom_resp_eng + open ToDos allocated_to)
+    2. Department managers/system managers of each assigned user
+
+    Args:
+        doc: The Opportunity document
+        method: The method name (optional)
+
+    Returns:
+        List of user emails
+    """
+    recipients = set()
+    assigned_users = set()
+
+    if not doc:
+        return []
+
+    # From custom_resp_eng child table
+    if doc.get("custom_resp_eng"):
+        for row in doc.custom_resp_eng:
+            user_id = _get_user_from_responsible_engineer(row.responsible_engineer)
+            if user_id:
+                assigned_users.add(user_id)
+
+    # From open ToDos linked to this opportunity
+    todos = frappe.get_all(
+        "ToDo",
+        filters={
+            "reference_type": "Opportunity",
+            "reference_name": doc.name,
+            "status": "Open"
+        },
+        fields=["allocated_to"]
+    )
+
+    for todo in todos:
+        if todo.allocated_to:
+            assigned_users.add(todo.allocated_to)
+
+    # Add assigned users and their department managers
+    for user_id in assigned_users:
+        recipients.add(user_id)
+        dept_managers = get_department_managers(user_id)
+        for mgr in dept_managers:
+            recipients.add(mgr)
+
+    recipients_list = list(recipients)
+    frappe.logger().info(
+        f"Opportunity {doc.name} notification recipients (assignees+managers): {recipients_list}"
+    )
+    return recipients_list
+
+
+def get_todo_recipients_for_notification(doc, method=None):
+    """
+    Hook function for ToDo notifications.
+
+    Recipients:
+    1. The allocated user (allocated_to)
+    2. Department managers/system managers of the allocated user
+
+    Args:
+        doc: The ToDo document
+        method: The method name (optional)
+
+    Returns:
+        List of user emails
+    """
+    recipients = set()
+
+    if doc and doc.allocated_to:
+        recipients.add(doc.allocated_to)
+
+        dept_managers = get_department_managers(doc.allocated_to)
+        for mgr in dept_managers:
+            recipients.add(mgr)
+
+    return list(recipients)

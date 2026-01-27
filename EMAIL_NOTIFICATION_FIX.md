@@ -92,6 +92,16 @@ To change the notification email format:
    - **Recipients:** Add/remove who gets emails
    - **Conditions:** When to send (e.g., only send 3 days before)
 
+### Opportunity Recipients (Assigned Users + Their Managers)
+
+If your Notification **Document Type = Opportunity** and you want:
+- **Assigned users** (from `custom_resp_eng` and open ToDos)
+- **Department managers** of those assigned users
+
+Use this **Custom** recipient method in the Notification UI:
+
+`opportunity_management.opportunity_management.notification_utils.get_opportunity_assignee_recipients_for_notification`
+
 ---
 
 ## Email Template Examples
