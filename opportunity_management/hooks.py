@@ -14,6 +14,7 @@ doc_events = {
     "Opportunity": {
         # Keep assignment hooks disabled to avoid duplicates.
         "validate": "opportunity_management.opportunity_management.notification_utils.set_opportunity_notification_recipients",
+        "on_update": "opportunity_management.opportunity_management.notification_utils.send_closing_date_extended_notification",
     },
     "Email Queue": {
         "after_insert": "opportunity_management.opportunity_management.notification_utils.log_opportunity_notification_from_email_queue",

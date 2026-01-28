@@ -370,6 +370,52 @@ def set_opportunity_notification_recipients(doc, method=None):
     doc.set(fieldname, ", ".join(recipients))
 
 
+def send_closing_date_extended_notification(doc, method=None):
+    """
+    Send a dedicated notification when the Opportunity closing date is extended.
+
+    Sends only when expected_closing increases compared to the previous value.
+    """
+    if not doc or not getattr(doc, "expected_closing", None):
+        return
+
+    try:
+        previous = doc.get_doc_before_save() if hasattr(doc, "get_doc_before_save") else None
+        if not previous or not getattr(previous, "expected_closing", None):
+            return
+
+        old_date = frappe.utils.getdate(previous.expected_closing)
+        new_date = frappe.utils.getdate(doc.expected_closing)
+
+        if not old_date or not new_date or new_date <= old_date:
+            return
+
+        recipients = get_opportunity_assignee_recipients_for_notification(doc)
+        if not recipients:
+            return
+
+        template_name = "Opportunity Closing Date Extended"
+        if frappe.db.exists("Email Template", template_name):
+            template = frappe.get_doc("Email Template", template_name)
+            subject = frappe.render_template(template.subject or "", {"doc": doc})
+            message = frappe.render_template(template.response or template.response_html or "", {"doc": doc})
+        else:
+            subject = f"Closing Date Extended - Opportunity {doc.name}"
+            message = f"The closing date for Opportunity {doc.name} has been extended."
+
+        frappe.sendmail(
+            recipients=recipients,
+            subject=subject,
+            message=message,
+            now=True
+        )
+    except Exception as e:
+        frappe.log_error(
+            f"Error sending closing date extended notification for {getattr(doc, 'name', '')}: {str(e)}",
+            "Closing Date Extended Notification Error"
+        )
+
+
 
 def log_opportunity_notification_from_email_queue(doc, method=None):
     """Log notifications sent for Opportunities via Email Queue."""
