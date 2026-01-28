@@ -380,6 +380,13 @@ def send_closing_date_extended_notification(doc, method=None):
         return
 
     try:
+        # If user has set up a Notification, avoid sending duplicate emails
+        if frappe.db.exists("Notification", {"document_type": "Opportunity", "enabled": 1, "name": "Opportunity Closing Date Extended"}):
+            return
+
+        if frappe.db.exists("Notification", {"document_type": "Opportunity", "enabled": 1, "email_template": "Opportunity Closing Date Extended"}):
+            return
+
         previous = doc.get_doc_before_save() if hasattr(doc, "get_doc_before_save") else None
         if not previous or not getattr(previous, "expected_closing", None):
             return
@@ -390,21 +397,43 @@ def send_closing_date_extended_notification(doc, method=None):
         if not old_date or not new_date or new_date <= old_date:
             return
 
-        recipients = get_opportunity_assignee_recipients_for_notification(doc)
+        recipients = set()
+        custom_recipients = getattr(doc, "custom_notification_recipients", None)
+        if custom_recipients:
+            recipients.update([r.strip() for r in custom_recipients.split(",") if r.strip()])
+
+        if not recipients:
+            recipients.update(get_opportunity_assignee_recipients_for_notification(doc))
+
+        # Ensure department managers for responsible parties and owner are included
+        for party in _get_opportunity_party_rows(doc):
+            info = _get_responsible_party_info(party)
+            user_id = info.get("user_id")
+            if user_id:
+                recipients.update(get_department_managers(user_id))
+
+        if doc.owner:
+            recipients.update(get_department_managers(doc.owner))
+
+        recipients = [r for r in recipients if r]
         if not recipients:
             return
 
         template_name = "Opportunity Closing Date Extended"
-        if frappe.db.exists("Email Template", template_name):
-            template = frappe.get_doc("Email Template", template_name)
-            subject = frappe.render_template(template.subject or "", {"doc": doc})
-            message = frappe.render_template(template.response or template.response_html or "", {"doc": doc})
-        else:
-            subject = f"Closing Date Extended - Opportunity {doc.name}"
-            message = f"The closing date for Opportunity {doc.name} has been extended."
+        if not frappe.db.exists("Email Template", template_name):
+            frappe.log_error(
+                f"Email Template '{template_name}' not found. Skipping plain email.",
+                "Closing Date Extended Notification Error"
+            )
+            return
+
+        template = frappe.get_doc("Email Template", template_name)
+        message_html = template.response_html or template.response or ""
+        subject = frappe.render_template(template.subject or "", {"doc": doc})
+        message = frappe.render_template(message_html, {"doc": doc})
 
         frappe.sendmail(
-            recipients=recipients,
+            recipients=list(recipients),
             subject=subject,
             message=message,
             now=True

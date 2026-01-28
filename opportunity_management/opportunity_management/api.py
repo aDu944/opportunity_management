@@ -43,6 +43,62 @@ def _get_assigned_user_ids(doc):
     return users
 
 
+def _get_assignment_map(opportunity_names):
+    """Bulk resolve assigned users for opportunities without loading full docs."""
+    assignment_map = {name: set() for name in opportunity_names}
+    if not opportunity_names:
+        return assignment_map
+
+    meta = frappe.get_meta("Opportunity")
+
+    # Cache responsible party resolution
+    party_cache = {}
+
+    def _resolve_user_id(party_name):
+        if not party_name:
+            return None
+        if party_name in party_cache:
+            return party_cache[party_name]
+        info = notification_utils._get_responsible_party_info(party_name)
+        user_id = info.get("user_id")
+        party_cache[party_name] = user_id
+        return user_id
+
+    resp_party_field = meta.get_field("custom_responsible_party")
+    if resp_party_field and resp_party_field.options:
+        rows = frappe.get_all(
+            resp_party_field.options,
+            filters={
+                "parenttype": "Opportunity",
+                "parentfield": "custom_responsible_party",
+                "parent": ["in", opportunity_names],
+            },
+            fields=["parent", "responsible_party"],
+        )
+        for row in rows:
+            user_id = _resolve_user_id(row.responsible_party)
+            if user_id:
+                assignment_map[row.parent].add(user_id)
+
+    resp_eng_field = meta.get_field("custom_resp_eng")
+    if resp_eng_field and resp_eng_field.options:
+        rows = frappe.get_all(
+            resp_eng_field.options,
+            filters={
+                "parenttype": "Opportunity",
+                "parentfield": "custom_resp_eng",
+                "parent": ["in", opportunity_names],
+            },
+            fields=["parent", "responsible_engineer"],
+        )
+        for row in rows:
+            user_id = _resolve_user_id(row.responsible_engineer)
+            if user_id:
+                assignment_map[row.parent].add(user_id)
+
+    return assignment_map
+
+
 def _is_user_assigned(user, doc):
     if not doc:
         return False
@@ -669,30 +725,54 @@ def get_team_opportunities(team=None, include_completed=False):
     opps = frappe.get_all(
         "Opportunity",
         filters={"status": status_filter},
-        fields=["name", "party_name", "expected_closing", "status"]
+        fields=["name", "party_name", "expected_closing", "status", "owner"]
     )
 
-    for row in opps:
-        opp = frappe.get_doc("Opportunity", row.name)
+    if not opps:
+        return {"opportunities": [], "employee_stats": []}
 
-        assigned_users = _get_assigned_user_ids(opp)
-        if not assigned_users and opp.owner:
-            assigned_users = {opp.owner}
+    opp_names = [o.name for o in opps]
+    assignment_map = _get_assignment_map(opp_names)
+
+    assigned_users_set = set()
+    for row in opps:
+        assigned_users = assignment_map.get(row.name) or set()
+        if not assigned_users and row.owner:
+            assigned_users = {row.owner}
+        assigned_users_set.update(assigned_users)
+
+    user_map = {u.name: (u.full_name or u.name) for u in frappe.get_all(
+        "User",
+        filters={"name": ["in", list(assigned_users_set)]} if assigned_users_set else {},
+        fields=["name", "full_name"]
+    )}
+
+    employee_dept_map = {e.user_id: e.department for e in frappe.get_all(
+        "Employee",
+        filters={"user_id": ["in", list(assigned_users_set)], "status": "Active"} if assigned_users_set else {},
+        fields=["user_id", "department"]
+    )}
+
+    quotations = frappe.get_all(
+        "Quotation",
+        filters={"opportunity": ["in", opp_names], "docstatus": ["!=", 2]},
+        fields=["opportunity"]
+    )
+    quotation_opps = {q.opportunity for q in quotations}
+
+    for row in opps:
+        assigned_users = assignment_map.get(row.name) or set()
+        if not assigned_users and row.owner:
+            assigned_users = {row.owner}
 
         # Build assignee list with departments
         assignees = []
         assigned_departments = set()
         for user in assigned_users:
-            user_doc = frappe.get_doc("User", user)
-            employee_name = user_doc.full_name or user
-
-            department = None
-            employee = frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, "name")
-            if employee:
-                emp_doc = frappe.get_doc("Employee", employee)
-                department = getattr(emp_doc, "department", None)
-                if department:
-                    assigned_departments.add(department)
+            employee_name = user_map.get(user, user)
+            department = employee_dept_map.get(user)
+            if department:
+                assigned_departments.add(department)
 
             assignees.append({
                 "user": user,
@@ -703,19 +783,13 @@ def get_team_opportunities(team=None, include_completed=False):
         # Filter by team if specified (skip filtering for "All Teams")
         if team and team != "All Teams":
             if team not in assigned_departments:
-                # Also include if owner is in team
-                owner_dept = None
-                if opp.owner:
-                    owner_dept = frappe.db.get_value("Employee", {"user_id": opp.owner, "status": "Active"}, "department")
+                owner_dept = employee_dept_map.get(row.owner)
                 if owner_dept != team:
                     continue
 
-        has_quotation = frappe.db.exists("Quotation", {
-            "opportunity": opp.name,
-            "docstatus": ["!=", 2]
-        })
+        has_quotation = row.name in quotation_opps
 
-        closing_date = getdate(opp.expected_closing) if opp.expected_closing else None
+        closing_date = getdate(row.expected_closing) if row.expected_closing else None
         days_remaining = date_diff(closing_date, today) if closing_date else None
 
         if include_completed:
@@ -737,13 +811,13 @@ def get_team_opportunities(team=None, include_completed=False):
         else:
             urgency = "low"
 
-        opp_map[opp.name] = {
-            "opportunity": opp.name,
-            "customer": opp.party_name,
-            "closing_date": str(opp.expected_closing) if opp.expected_closing else None,
+        opp_map[row.name] = {
+            "opportunity": row.name,
+            "customer": row.party_name,
+            "closing_date": str(row.expected_closing) if row.expected_closing else None,
             "days_remaining": days_remaining,
             "urgency": urgency,
-            "status": opp.status,
+            "status": row.status,
             "has_quotation": has_quotation,
             "assignees": assignees
         }
@@ -782,8 +856,14 @@ def get_employee_opportunity_stats(team=None):
     opps = frappe.get_all(
         "Opportunity",
         filters={"status": ["not in", ["Closed", "Lost", "Converted"]]},
-        fields=["name", "expected_closing", "status", "owner"]
+        fields=["name", "expected_closing", "owner"]
     )
+
+    if not opps:
+        return []
+
+    opp_names = [o.name for o in opps]
+    assignment_map = _get_assignment_map(opp_names)
 
     for opp in opps:
         if not opp.expected_closing:
@@ -791,8 +871,7 @@ def get_employee_opportunity_stats(team=None):
         if getdate(opp.expected_closing) < today:
             continue
 
-        opp_doc = frappe.get_doc("Opportunity", opp.name)
-        assigned_users = _get_assigned_user_ids(opp_doc)
+        assigned_users = assignment_map.get(opp.name) or set()
         if not assigned_users and opp.owner:
             assigned_users = {opp.owner}
 
@@ -846,15 +925,30 @@ def get_available_teams():
         fields=["name", "owner"]
     )
 
-    for opp_row in opps:
-        opp = frappe.get_doc("Opportunity", opp_row.name)
-        assigned_users = _get_assigned_user_ids(opp)
+    if not opps:
+        return []
+
+    opp_names = [o.name for o in opps]
+    assignment_map = _get_assignment_map(opp_names)
+
+    assigned_users_set = set()
+    for opp in opps:
+        assigned_users = assignment_map.get(opp.name) or set()
         if not assigned_users and opp.owner:
             assigned_users = {opp.owner}
+        assigned_users_set.update(assigned_users)
 
-        for user in assigned_users:
-            department = frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, "department")
-            if department:
-                departments.add(department)
+    if not assigned_users_set:
+        return []
+
+    employee_depts = frappe.get_all(
+        "Employee",
+        filters={"user_id": ["in", list(assigned_users_set)], "status": "Active"},
+        fields=["department"]
+    )
+
+    for row in employee_depts:
+        if row.department:
+            departments.add(row.department)
 
     return sorted(departments)
