@@ -146,7 +146,7 @@ function render_summary(page) {
         const overdue = opportunities.filter(o => o.urgency === 'overdue').length;
         const dueToday = opportunities.filter(o => o.urgency === 'due_today').length;
         const critical = opportunities.filter(o => o.urgency === 'critical').length;
-        const total = opportunities.filter(o => o.days_remaining === null || o.days_remaining >= 0).length;
+        const total = opportunities.filter(o => o.days_remaining !== null).length;
 
         const summaryHtml = `
             <div class="row" style="margin-bottom: 20px; gap: 15px;">
@@ -216,8 +216,8 @@ function sort_my_opportunities(page, column) {
                 bVal = b.closing_date || '9999-12-31';
                 break;
             case 'days_remaining':
-                aVal = a.days_remaining !== null ? a.days_remaining : 9999;
-                bVal = b.days_remaining !== null ? b.days_remaining : 9999;
+                aVal = a.days_remaining !== null ? a.days_remaining : -9999;
+                bVal = b.days_remaining !== null ? b.days_remaining : -9999;
                 break;
             default:
                 return 0;
@@ -238,7 +238,7 @@ function render_opportunities(page) {
     // Filter out overdue opportunities if checkbox is checked (only for open opportunities)
     const hideOverdue = page.fields_dict.hide_overdue ? page.fields_dict.hide_overdue.get_value() : false;
     if (hideOverdue && page.current_tab === 'open') {
-        opportunities = opportunities.filter(opp => opp.days_remaining === null || opp.days_remaining >= 0);
+        opportunities = opportunities.filter(opp => opp.days_remaining !== null && opp.days_remaining >= 0);
     }
 
     if (!opportunities.length) {
@@ -292,12 +292,10 @@ function render_opportunities(page) {
 
         // Highlight rows based on days remaining
         let rowStyle = '';
-        if (opp.days_remaining !== null) {
-            if (opp.days_remaining < 0) {
-                rowStyle = 'background: #f8d7da; border-left: 4px solid #dc3545; font-weight: bold;'; // Red for overdue
-            } else if (opp.days_remaining <= 3) {
-                rowStyle = 'background: #fff3cd; border-left: 4px solid #fd7e14; font-weight: bold;'; // Orange for due within 3 days
-            }
+        if (opp.days_remaining === null || opp.days_remaining < 0) {
+            rowStyle = 'background: #f8d7da; border-left: 4px solid #dc3545; font-weight: bold;'; // Red for overdue
+        } else if (opp.days_remaining <= 3) {
+            rowStyle = 'background: #fff3cd; border-left: 4px solid #fd7e14; font-weight: bold;'; // Orange for due within 3 days
         }
 
         html += `
@@ -310,7 +308,7 @@ function render_opportunities(page) {
                 <td>${opp.customer || 'N/A'}</td>
                 ${statusColumn}
                 <td>${opp.closing_date || 'Not set'}</td>
-                ${page.current_tab === 'open' ? `<td style="text-align: center;">${opp.days_remaining !== null ? opp.days_remaining : '-'}</td>` : ''}
+                ${page.current_tab === 'open' ? `<td style="text-align: center;">${opp.days_remaining !== null ? opp.days_remaining : 'No date'}</td>` : ''}
                 <td style="text-align: center;">
                     <span class="badge" style="background: #6c757d; color: white;">${itemsCount} items</span>
                 </td>
@@ -332,7 +330,7 @@ function render_opportunities(page) {
 
 function getUrgencyBadge(urgency, days) {
     const badges = {
-        'overdue': `<span class="badge" style="background: #dc3545; color: white;">⚠️ OVERDUE (${Math.abs(days)} days)</span>`,
+        'overdue': `<span class="badge" style="background: #dc3545; color: white;">⚠️ OVERDUE (${days === null ? 'No date' : Math.abs(days) + ' days'})</span>`,
         'due_today': '<span class="badge" style="background: #dc3545; color: white;">🔴 DUE TODAY</span>',
         'critical': '<span class="badge" style="background: #fd7e14; color: white;">🟠 Tomorrow</span>',
         'high': '<span class="badge" style="background: #ffc107;">🟡 3 days</span>',

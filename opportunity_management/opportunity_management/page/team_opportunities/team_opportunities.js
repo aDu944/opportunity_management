@@ -200,7 +200,7 @@ function render_team_summary(page) {
     const overdue = opportunities.filter(o => o.urgency === 'overdue').length;
     const dueToday = opportunities.filter(o => o.urgency === 'due_today').length;
     const dueSoon = opportunities.filter(o => o.days_remaining !== null && o.days_remaining <= 2 && o.days_remaining >= 0).length;
-    const total = opportunities.filter(o => o.days_remaining === null || o.days_remaining >= 0).length;
+    const total = opportunities.filter(o => o.days_remaining !== null).length;
 
     const summaryHtml = `
         <div class="row" style="margin-bottom: 20px; gap: 15px;">
@@ -312,8 +312,8 @@ function sort_team_opportunities(page, column) {
                 bVal = b.closing_date || '9999-12-31';
                 break;
             case 'days_remaining':
-                aVal = a.days_remaining !== null ? a.days_remaining : 9999;
-                bVal = b.days_remaining !== null ? b.days_remaining : 9999;
+                aVal = a.days_remaining !== null ? a.days_remaining : -9999;
+                bVal = b.days_remaining !== null ? b.days_remaining : -9999;
                 break;
             default:
                 return 0;
@@ -334,7 +334,7 @@ function render_team_opportunities(page) {
     // Filter out overdue opportunities if checkbox is checked
     const hideOverdue = page.fields_dict.hide_overdue ? page.fields_dict.hide_overdue.get_value() : false;
     if (hideOverdue) {
-        opportunities = opportunities.filter(opp => opp.days_remaining === null || opp.days_remaining >= 0);
+        opportunities = opportunities.filter(opp => opp.days_remaining !== null && opp.days_remaining >= 0);
     }
     
     if (!opportunities.length) {
@@ -381,12 +381,10 @@ function render_team_opportunities(page) {
 
         // Highlight rows based on days remaining
         let rowStyle = '';
-        if (opp.days_remaining !== null) {
-            if (opp.days_remaining < 0) {
-                rowStyle = 'background: #f8d7da; border-left: 4px solid #dc3545; font-weight: bold;'; // Red for overdue
-            } else if (opp.days_remaining <= 3) {
-                rowStyle = 'background: #fff3cd; border-left: 4px solid #fd7e14; font-weight: bold;'; // Orange for due within 3 days
-            }
+        if (opp.days_remaining === null || opp.days_remaining < 0) {
+            rowStyle = 'background: #f8d7da; border-left: 4px solid #dc3545; font-weight: bold;'; // Red for overdue
+        } else if (opp.days_remaining <= 3) {
+            rowStyle = 'background: #fff3cd; border-left: 4px solid #fd7e14; font-weight: bold;'; // Orange for due within 3 days
         }
 
         html += `
@@ -398,7 +396,7 @@ function render_team_opportunities(page) {
                 </td>
                 <td>${opp.customer || 'N/A'}</td>
                 <td>${opp.closing_date || 'Not set'}</td>
-                <td style="text-align: center;">${opp.days_remaining !== null ? opp.days_remaining : '-'}</td>
+                <td style="text-align: center;">${opp.days_remaining !== null ? opp.days_remaining : 'No date'}</td>
                 <td>${assigneesList}</td>
                 <td>
                     <a onclick="create_quotation('${opp.opportunity}')" 
@@ -416,7 +414,7 @@ function render_team_opportunities(page) {
 
 function getUrgencyBadge(urgency, days) {
     const badges = {
-        'overdue': `<span class="badge" style="background: #dc3545; color: white;">⚠️ OVERDUE (${Math.abs(days)} days)</span>`,
+        'overdue': `<span class="badge" style="background: #dc3545; color: white;">⚠️ OVERDUE (${days === null ? 'No date' : Math.abs(days) + ' days'})</span>`,
         'due_today': '<span class="badge" style="background: #dc3545; color: white;">🔴 DUE TODAY</span>',
         'critical': '<span class="badge" style="background: #fd7e14; color: white;">🟠 Tomorrow</span>',
         'high': '<span class="badge" style="background: #ffc107;">🟡 3 days</span>',

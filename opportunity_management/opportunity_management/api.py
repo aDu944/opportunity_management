@@ -111,10 +111,10 @@ def get_personal_opportunities(user, include_completed=False):
 
         if include_completed:
             urgency = "completed"
+        elif days_remaining is None:
+            urgency = "overdue"
         elif has_quotation:
             urgency = "low"
-        elif days_remaining is None:
-            urgency = "unknown"
         elif days_remaining < 0:
             urgency = "overdue"
         elif days_remaining == 0:
@@ -139,6 +139,9 @@ def get_personal_opportunities(user, include_completed=False):
                     "description": item.description
                 })
 
+        status_color = "gray" if days_remaining is None else ("red" if days_remaining < 0 else ("red" if days_remaining == 0 else ("orange" if days_remaining <= 3 else ("yellow" if days_remaining <= 7 else "green"))))
+        status_label = "Overdue (no closing date)" if days_remaining is None else (f"Overdue by {abs(days_remaining)} days" if days_remaining < 0 else ("Due today" if days_remaining == 0 else f"{days_remaining} days remaining"))
+
         opportunities.append({
             "todo_name": None,
             "opportunity": opp.name,
@@ -151,8 +154,8 @@ def get_personal_opportunities(user, include_completed=False):
             "urgency": urgency,
             "items": items,
             "status": opp.status,
-            "status_color": "gray" if days_remaining is None else ("red" if days_remaining < 0 else ("red" if days_remaining == 0 else ("orange" if days_remaining <= 3 else ("yellow" if days_remaining <= 7 else "green")))),
-            "status_label": "No closing date" if days_remaining is None else (f"Overdue by {abs(days_remaining)} days" if days_remaining < 0 else ("Due today" if days_remaining == 0 else f"{days_remaining} days remaining")),
+            "status_color": status_color,
+            "status_label": status_label,
             "opportunity_status": opp.status,
             "priority": None,
             "assigned_by": opp.owner,
@@ -230,10 +233,10 @@ def get_team_opportunities_for_user(user, include_completed=False):
 
         if include_completed:
             urgency = "completed"
+        elif days_remaining is None:
+            urgency = "overdue"
         elif has_quotation:
             urgency = "low"
-        elif days_remaining is None:
-            urgency = "unknown"
         elif days_remaining < 0:
             urgency = "overdue"
         elif days_remaining == 0:
@@ -717,10 +720,10 @@ def get_team_opportunities(team=None, include_completed=False):
 
         if include_completed:
             urgency = "completed"
+        elif days_remaining is None:
+            urgency = "overdue"
         elif has_quotation:
             urgency = "low"
-        elif days_remaining is None:
-            urgency = "unknown"
         elif days_remaining < 0:
             urgency = "overdue"
         elif days_remaining == 0:
