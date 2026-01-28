@@ -21,7 +21,8 @@ doc_events = {
         "on_update": "opportunity_management.opportunity_management.notification_utils.update_opportunity_notification_log_status",
     },
     "Quotation": {
-        "on_submit": "opportunity_management.quotation_handler.on_quotation_submit",
+        "after_insert": "opportunity_management.quotation_handler.on_quotation_save",
+        "on_update": "opportunity_management.quotation_handler.on_quotation_save",
     }
 }
 

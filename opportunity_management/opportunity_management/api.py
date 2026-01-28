@@ -160,10 +160,6 @@ def get_personal_opportunities(user, include_completed=False):
         else:
             if has_quotation:
                 continue
-        has_draft_quotation = frappe.db.exists("Quotation", {
-            "opportunity": opp.name,
-            "docstatus": 0
-        })
 
         closing_date = getdate(opp.expected_closing) if opp.expected_closing else None
         days_remaining = date_diff(closing_date, today) if closing_date else None
@@ -281,6 +277,10 @@ def get_team_opportunities_for_user(user, include_completed=False):
         has_quotation = frappe.db.exists("Quotation", {
             "opportunity": opp.name,
             "docstatus": ["!=", 2]
+        })
+        has_draft_quotation = frappe.db.exists("Quotation", {
+            "opportunity": opp.name,
+            "docstatus": 0
         })
 
         closing_date = getdate(opp.expected_closing) if opp.expected_closing else None

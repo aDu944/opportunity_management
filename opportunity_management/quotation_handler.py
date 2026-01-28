@@ -3,10 +3,16 @@ from frappe import _
 from frappe.utils import nowdate, getdate
 
 
-def on_quotation_submit(doc, method):
+def on_quotation_save(doc, method):
     """
-    When a Quotation is submitted, close the Opportunity and notify assignees.
+    When a Quotation is saved (draft), close the Opportunity and notify assignees
+    if it has items and total > 0.
     """
+    if not doc or doc.docstatus == 2:
+        return
+
+    if not doc.items or (doc.get("grand_total") or 0) <= 0:
+        return
     opportunity_name = doc.get("opportunity")
 
     if not opportunity_name:
@@ -14,6 +20,9 @@ def on_quotation_submit(doc, method):
         opportunity_name = find_linked_opportunity(doc)
 
     if opportunity_name:
+        opp_status = frappe.db.get_value("Opportunity", opportunity_name, "status")
+        if opp_status in ["Closed", "Converted"]:
+            return
         close_opportunity(opportunity_name, doc.name)
         notify_opportunity_assignees(opportunity_name, doc.name)
         update_assignment_log(opportunity_name, doc.name)
