@@ -190,7 +190,9 @@ function load_team_opportunities(page) {
                 page.employee_stats = r.message.employee_stats || [];
                 
                 // Sort by days remaining (ascending) by default
-                sort_team_opportunities(page, 'days_remaining');
+                page.sort_by = 'days_remaining';
+                page.sort_order = 'asc';
+                sort_team_opportunities(page, 'days_remaining', { toggle: false });
                 
                 render_team_summary(page);
                 render_employee_cards(page);
@@ -292,11 +294,12 @@ function getEmployeeCardColor(opportunityCount) {
     }
 }
 
-function sort_team_opportunities(page, column) {
+function sort_team_opportunities(page, column, options = {}) {
+    const toggle = options.toggle !== false;
     // Toggle sort order if clicking same column
-    if (page.sort_by === column) {
+    if (toggle && page.sort_by === column) {
         page.sort_order = page.sort_order === 'asc' ? 'desc' : 'asc';
-    } else {
+    } else if (page.sort_by !== column) {
         page.sort_by = column;
         page.sort_order = 'asc';
     }
@@ -362,13 +365,17 @@ function render_team_opportunities(page) {
     };
 
     let html = `
-        <table class="table table-bordered" style="background: white;">
-            <thead style="background: #f5f5f5; cursor: pointer;">
+        <div style="background: linear-gradient(135deg, #eef2f7, #f7f9fc); padding: 12px; border-radius: 14px;">
+        <table class="table table-bordered" style="background: transparent; border-collapse: separate; border-spacing: 0 8px;">
+            <thead style="background: transparent; cursor: pointer;">
                 <tr>
                     <th onclick="window.sort_team_opportunities_handler('opportunity')">Opportunity${getSortIcon('opportunity')}</th>
+                    <th>Request No.</th>
+                    <th>Request Title</th>
                     <th onclick="window.sort_team_opportunities_handler('customer')">Customer${getSortIcon('customer')}</th>
                     <th onclick="window.sort_team_opportunities_handler('closing_date')">Closing Date${getSortIcon('closing_date')}</th>
                     <th onclick="window.sort_team_opportunities_handler('days_remaining')">Days Left${getSortIcon('days_remaining')}</th>
+                    <th>Quotation</th>
                     <th>Assigned To</th>
                     <th>Actions</th>
                 </tr>
@@ -387,35 +394,57 @@ function render_team_opportunities(page) {
         }).join('');
 
         // Highlight rows based on days remaining
-        let rowStyle = '';
+        let rowStyle = 'background: rgba(255,255,255,0.75); backdrop-filter: blur(6px);';
+        let rowBorder = '#e5e7eb';
         if (opp.days_remaining === null || opp.days_remaining < 0) {
-            rowStyle = 'background: #f8d7da; border-left: 4px solid #dc3545; font-weight: bold;'; // Red for overdue
+            rowBorder = '#dc3545';
         } else if (opp.days_remaining <= 3) {
-            rowStyle = 'background: #fff3cd; border-left: 4px solid #fd7e14; font-weight: bold;'; // Orange for due within 3 days
+            rowBorder = '#fd7e14';
+        } else if (opp.days_remaining <= 7) {
+            rowBorder = '#f1c21b';
+        } else {
+            rowBorder = '#28a745';
         }
+
+        const quotationBadge = opp.has_draft_quotation
+            ? '<span class="badge" style="background: #6f42c1; color: white;">Draft</span>'
+            : (opp.has_quotation ? '<span class="badge" style="background: #17a2b8; color: white;">Created</span>' : '<span class="badge" style="background: #e9ecef; color: #666;">None</span>');
+
+        const tenderNo = opp.tender_no && opp.tender_no !== '0' && opp.tender_no !== 0 ? opp.tender_no : 'N/A';
+        const tenderTitle = opp.tender_title && opp.tender_title !== '0' && opp.tender_title !== 0 ? opp.tender_title : 'N/A';
 
         html += `
             <tr data-urgency="${opp.urgency}" style="${rowStyle}">
                 <td>
-                    <a href="/app/opportunity/${opp.opportunity}" target="_blank">
+                    <a href="/app/opportunity/${opp.opportunity}" target="_blank" style="display:block; padding:12px; border-left:4px solid ${rowBorder}; border-radius:10px 0 0 10px; color:#1f2937;">
                         ${opp.opportunity}
                     </a>
                 </td>
-                <td>${opp.customer || 'N/A'}</td>
-                <td>${opp.closing_date || 'Not set'}</td>
-                <td style="text-align: center;">${opp.days_remaining !== null ? opp.days_remaining : 'No date'}</td>
-                <td>${assigneesList}</td>
-                <td>
-                    <a onclick="create_quotation('${opp.opportunity}')" 
-                       class="btn btn-xs btn-success" style="cursor: pointer;">
-                        Create Quotation
-                    </a>
+                <td style="padding:12px;">${tenderNo}</td>
+                <td style="padding:12px;">${tenderTitle}</td>
+                <td style="padding:12px;">${opp.customer || 'N/A'}</td>
+                <td style="padding:12px;">${opp.closing_date || 'Not set'}</td>
+                <td style="text-align: center; padding:12px;">${opp.days_remaining !== null ? opp.days_remaining : 'No date'}</td>
+                <td style="text-align: center; padding:12px;">${quotationBadge}</td>
+                <td style="padding:12px;">${assigneesList}</td>
+                <td style="padding:12px; border-radius:0 10px 10px 0;">
+                    ${opp.has_quotation && opp.quotation_name ? `
+                        <a href="/app/quotation/${opp.quotation_name}" 
+                           class="btn btn-xs btn-default" style="cursor: pointer;">
+                            View Quotation
+                        </a>
+                    ` : `
+                        <a onclick="create_quotation('${opp.opportunity}')"
+                           class="btn btn-xs btn-success" style="cursor: pointer;">
+                            Create Quotation
+                        </a>
+                    `}
                 </td>
             </tr>
         `;
     });
 
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
     page.main.find('.opportunities-list').html(html);
 }
 
@@ -437,7 +466,7 @@ window.sort_team_opportunities_handler = function(column) {
     // Find the page object
     const page = frappe.pages['team-opportunities'].page;
     if (page && page.opportunities) {
-        sort_team_opportunities(page, column);
+        sort_team_opportunities(page, column, { toggle: true });
     }
 };
 

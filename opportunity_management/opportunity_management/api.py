@@ -125,12 +125,13 @@ def get_personal_opportunities(user, include_completed=False):
     """
     Get personal opportunity tasks for a user.
     """
-    status_filter = ["in", ["Closed", "Lost", "Converted"]] if include_completed else ["not in", ["Closed", "Lost", "Converted"]]
-    opps = frappe.get_all(
-        "Opportunity",
-        filters={"status": status_filter},
-        fields=["name"]
-    )
+    status_filter = None if include_completed else ["not in", ["Closed", "Lost", "Converted"]]
+    opp_filters = {"status": status_filter} if status_filter else {}
+        opps = frappe.get_all(
+            "Opportunity",
+            filters=opp_filters,
+            fields=["name", "custom_tender_no", "custom_tender_title"]
+        )
 
     opportunities = []
     today = getdate(nowdate())
@@ -147,6 +148,21 @@ def get_personal_opportunities(user, include_completed=False):
         has_quotation = frappe.db.exists("Quotation", {
             "opportunity": opp.name,
             "docstatus": ["!=", 2]
+        })
+        has_draft_quotation = frappe.db.exists("Quotation", {
+            "opportunity": opp.name,
+            "docstatus": 0
+        })
+
+        if include_completed:
+            if opp.status not in ["Closed", "Lost", "Converted"] and not has_quotation:
+                continue
+        else:
+            if has_quotation:
+                continue
+        has_draft_quotation = frappe.db.exists("Quotation", {
+            "opportunity": opp.name,
+            "docstatus": 0
         })
 
         closing_date = getdate(opp.expected_closing) if opp.expected_closing else None
@@ -191,12 +207,16 @@ def get_personal_opportunities(user, include_completed=False):
             "opportunity_name": opp.name,
             "customer": opp.party_name,
             "party_name": opp.party_name,
+            "tender_no": opp.custom_tender_no,
+            "tender_title": opp.custom_tender_title,
             "closing_date": opp.expected_closing,
             "expected_closing": opp.expected_closing,
             "days_remaining": days_remaining,
             "urgency": urgency,
             "items": items,
             "status": opp.status,
+            "has_quotation": bool(has_quotation),
+            "has_draft_quotation": bool(has_draft_quotation),
             "status_color": status_color,
             "status_label": status_label,
             "opportunity_status": opp.status,
@@ -304,6 +324,8 @@ def get_team_opportunities_for_user(user, include_completed=False):
             "urgency": urgency,
             "items": items,
             "status": opp.status,
+            "has_quotation": bool(has_quotation),
+            "has_draft_quotation": bool(has_draft_quotation),
             "status_color": "gray" if days_remaining is None else ("red" if days_remaining < 0 else ("red" if days_remaining == 0 else ("orange" if days_remaining <= 3 else ("yellow" if days_remaining <= 7 else "green")))),
             "status_label": "No closing date" if days_remaining is None else (f"Overdue by {abs(days_remaining)} days" if days_remaining < 0 else ("Due today" if days_remaining == 0 else f"{days_remaining} days remaining")),
             "opportunity_status": opp.status,
@@ -700,11 +722,12 @@ def get_team_opportunities(team=None, include_completed=False):
     opp_map = {}
     today = getdate(nowdate())
 
-    status_filter = ["in", ["Closed", "Lost", "Converted"]] if include_completed else ["not in", ["Closed", "Lost", "Converted"]]
+    status_filter = None if include_completed else ["not in", ["Closed", "Lost", "Converted"]]
+    opp_filters = {"status": status_filter} if status_filter else {}
     opps = frappe.get_all(
         "Opportunity",
-        filters={"status": status_filter},
-        fields=["name", "party_name", "expected_closing", "status", "owner"]
+        filters=opp_filters,
+        fields=["name", "party_name", "expected_closing", "status", "owner", "custom_tender_no", "custom_tender_title"]
     )
 
     if not opps:
@@ -735,9 +758,15 @@ def get_team_opportunities(team=None, include_completed=False):
     quotations = frappe.get_all(
         "Quotation",
         filters={"opportunity": ["in", opp_names], "docstatus": ["!=", 2]},
-        fields=["opportunity"]
+        fields=["name", "opportunity", "docstatus", "modified"]
     )
     quotation_opps = {q.opportunity for q in quotations}
+    draft_quotation_opps = {q.opportunity for q in quotations if q.docstatus == 0}
+    quotation_name_map = {}
+    for q in quotations:
+        current = quotation_name_map.get(q.opportunity)
+        if not current or (q.modified and q.modified > current["modified"]):
+            quotation_name_map[q.opportunity] = {"name": q.name, "modified": q.modified}
 
     for row in opps:
         assigned_users = assignment_map.get(row.name) or set()
@@ -765,6 +794,14 @@ def get_team_opportunities(team=None, include_completed=False):
                 continue
 
         has_quotation = row.name in quotation_opps
+        has_draft_quotation = row.name in draft_quotation_opps
+
+        if include_completed:
+            if row.status not in ["Closed", "Lost", "Converted"] and not has_quotation:
+                continue
+        else:
+            if has_quotation:
+                continue
 
         closing_date = getdate(row.expected_closing) if row.expected_closing else None
         days_remaining = date_diff(closing_date, today) if closing_date else None
@@ -791,11 +828,15 @@ def get_team_opportunities(team=None, include_completed=False):
         opp_map[row.name] = {
             "opportunity": row.name,
             "customer": row.party_name,
+            "tender_no": row.custom_tender_no,
+            "tender_title": row.custom_tender_title,
             "closing_date": str(row.expected_closing) if row.expected_closing else None,
             "days_remaining": days_remaining,
             "urgency": urgency,
             "status": row.status,
             "has_quotation": has_quotation,
+            "has_draft_quotation": has_draft_quotation,
+            "quotation_name": quotation_name_map.get(row.name, {}).get("name"),
             "assignees": assignees
         }
 
