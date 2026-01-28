@@ -38,50 +38,8 @@ def get_department_managers(user_email):
 
         department = employee.department
 
-        # Get all active employees in the same department who are managers
-        # or have System Manager role
+        # Get users with Management role in the same department
         managers = []
-
-        # Method 1: Get employees marked as managers in the department
-        dept_managers = frappe.db.sql("""
-            SELECT DISTINCT e.user_id
-            FROM `tabEmployee` e
-            INNER JOIN `tabDepartment` d ON d.name = e.department
-            WHERE e.department = %(department)s
-                AND e.status = 'Active'
-                AND e.user_id IS NOT NULL
-                AND e.user_id != ''
-                AND (
-                    e.name = d.department_head
-                    OR e.reports_to IS NULL
-                    OR e.designation LIKE '%%Manager%%'
-                    OR e.designation LIKE '%%Head%%'
-                    OR e.designation LIKE '%%Director%%'
-                )
-        """, {"department": department}, as_dict=True)
-
-        for mgr in dept_managers:
-            if mgr.user_id and mgr.user_id not in managers:
-                managers.append(mgr.user_id)
-
-        # Method 2: Get users with System Manager role in the same department
-        system_managers = frappe.db.sql("""
-            SELECT DISTINCT e.user_id
-            FROM `tabEmployee` e
-            INNER JOIN `tabHas Role` hr ON hr.parent = e.user_id
-            WHERE e.department = %(department)s
-                AND e.status = 'Active'
-                AND e.user_id IS NOT NULL
-                AND e.user_id != ''
-                AND hr.role = 'System Manager'
-                AND hr.parenttype = 'User'
-        """, {"department": department}, as_dict=True)
-
-        for mgr in system_managers:
-            if mgr.user_id and mgr.user_id not in managers:
-                managers.append(mgr.user_id)
-
-        # Method 3: Get users with Management role in the same department
         management_role = frappe.db.sql("""
             SELECT DISTINCT e.user_id
             FROM `tabEmployee` e
@@ -257,7 +215,7 @@ def _get_user_from_responsible_engineer(engineer_name):
 
 
 def _get_opportunity_party_rows(doc):
-    """Return list of party identifiers from new or legacy field."""
+    """Return list of party identifiers from Responsible Party only."""
     parties = []
     if not doc:
         return parties
@@ -265,13 +223,6 @@ def _get_opportunity_party_rows(doc):
     if doc.get("custom_responsible_party"):
         for row in doc.custom_responsible_party:
             party = getattr(row, "responsible_party", None) or row.get("responsible_party")
-            if party:
-                parties.append(party)
-        return parties
-
-    if doc.get("custom_resp_eng"):
-        for row in doc.custom_resp_eng:
-            party = getattr(row, "responsible_engineer", None) or row.get("responsible_engineer")
             if party:
                 parties.append(party)
 

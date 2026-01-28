@@ -46,6 +46,9 @@ frappe.pages['my-opportunities'].on_page_load = function(wrapper) {
                     </div>
                 </div>
             </div>
+            <div style="margin: -8px 0 16px 0; padding: 10px 12px; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px; color: #856404; font-size: 13px;">
+                Note: Opportunities without a Responsible Party are hidden.
+            </div>
             <div class="summary-cards"></div>
             <div class="opportunities-list"></div>
         </div>

@@ -80,22 +80,6 @@ def _get_assignment_map(opportunity_names):
             if user_id:
                 assignment_map[row.parent].add(user_id)
 
-    resp_eng_field = meta.get_field("custom_resp_eng")
-    if resp_eng_field and resp_eng_field.options:
-        rows = frappe.get_all(
-            resp_eng_field.options,
-            filters={
-                "parenttype": "Opportunity",
-                "parentfield": "custom_resp_eng",
-                "parent": ["in", opportunity_names],
-            },
-            fields=["parent", "responsible_engineer"],
-        )
-        for row in rows:
-            user_id = _resolve_user_id(row.responsible_engineer)
-            if user_id:
-                assignment_map[row.parent].add(user_id)
-
     return assignment_map
 
 
@@ -154,7 +138,10 @@ def get_personal_opportunities(user, include_completed=False):
     for row in opps:
         opp = frappe.get_doc("Opportunity", row.name)
 
-        if not _is_user_assigned(user, opp):
+        assigned_users = _get_assigned_user_ids(opp)
+        if not assigned_users:
+            continue
+        if user not in assigned_users and opp.owner != user:
             continue
 
         has_quotation = frappe.db.exists("Quotation", {
@@ -256,6 +243,8 @@ def get_team_opportunities_for_user(user, include_completed=False):
 
         assigned_in_dept = False
         assigned_users = _get_assigned_user_ids(opp)
+        if not assigned_users:
+            continue
         for assigned_user in assigned_users:
             engineer_dept = frappe.db.get_value(
                 "Employee",
@@ -265,16 +254,6 @@ def get_team_opportunities_for_user(user, include_completed=False):
             if engineer_dept == employee_dept:
                 assigned_in_dept = True
                 break
-
-        # Also include if owner is in the same department
-        if not assigned_in_dept and opp.owner:
-            owner_dept = frappe.db.get_value(
-                "Employee",
-                {"user_id": opp.owner, "status": "Active"},
-                "department"
-            )
-            if owner_dept == employee_dept:
-                assigned_in_dept = True
 
         if not assigned_in_dept:
             continue
@@ -524,8 +503,8 @@ def get_kpi_breakdown(breakdown_type="employee", from_date=None, to_date=None):
     for opp_row in closed_opps:
         opp = frappe.get_doc("Opportunity", opp_row.name)
         assigned_users = _get_assigned_user_ids(opp)
-        if not assigned_users and opp.owner:
-            assigned_users = {opp.owner}
+        if not assigned_users:
+            continue
 
         for user_id in assigned_users:
             key, name_field, name_value = _get_key_and_name(user_id)
@@ -560,8 +539,8 @@ def get_kpi_breakdown(breakdown_type="employee", from_date=None, to_date=None):
     for opp_row in open_opps:
         opp = frappe.get_doc("Opportunity", opp_row.name)
         assigned_users = _get_assigned_user_ids(opp)
-        if not assigned_users and opp.owner:
-            assigned_users = {opp.owner}
+        if not assigned_users:
+            continue
 
         for user_id in assigned_users:
             key, name_field, name_value = _get_key_and_name(user_id)
@@ -611,8 +590,8 @@ def calculate_user_metrics(date_range="all", from_date=None, to_date=None):
     for opp_row in closed_opps:
         opp = frappe.get_doc("Opportunity", opp_row.name)
         assigned_users = _get_assigned_user_ids(opp)
-        if not assigned_users and opp.owner:
-            assigned_users = {opp.owner}
+        if not assigned_users:
+            continue
 
         for user in assigned_users:
             if user not in user_data:
@@ -737,8 +716,8 @@ def get_team_opportunities(team=None, include_completed=False):
     assigned_users_set = set()
     for row in opps:
         assigned_users = assignment_map.get(row.name) or set()
-        if not assigned_users and row.owner:
-            assigned_users = {row.owner}
+        if not assigned_users:
+            continue
         assigned_users_set.update(assigned_users)
 
     user_map = {u.name: (u.full_name or u.name) for u in frappe.get_all(
@@ -762,8 +741,8 @@ def get_team_opportunities(team=None, include_completed=False):
 
     for row in opps:
         assigned_users = assignment_map.get(row.name) or set()
-        if not assigned_users and row.owner:
-            assigned_users = {row.owner}
+        if not assigned_users:
+            continue
 
         # Build assignee list with departments
         assignees = []
@@ -783,9 +762,7 @@ def get_team_opportunities(team=None, include_completed=False):
         # Filter by team if specified (skip filtering for "All Teams")
         if team and team != "All Teams":
             if team not in assigned_departments:
-                owner_dept = employee_dept_map.get(row.owner)
-                if owner_dept != team:
-                    continue
+                continue
 
         has_quotation = row.name in quotation_opps
 
@@ -872,8 +849,8 @@ def get_employee_opportunity_stats(team=None):
             continue
 
         assigned_users = assignment_map.get(opp.name) or set()
-        if not assigned_users and opp.owner:
-            assigned_users = {opp.owner}
+        if not assigned_users:
+            continue
 
         for user in assigned_users:
             user_counts[user] = user_counts.get(user, 0) + 1
@@ -934,8 +911,8 @@ def get_available_teams():
     assigned_users_set = set()
     for opp in opps:
         assigned_users = assignment_map.get(opp.name) or set()
-        if not assigned_users and opp.owner:
-            assigned_users = {opp.owner}
+        if not assigned_users:
+            continue
         assigned_users_set.update(assigned_users)
 
     if not assigned_users_set:

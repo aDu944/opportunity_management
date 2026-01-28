@@ -17,7 +17,7 @@ frappe.pages['team-opportunities'].on_page_load = function(wrapper) {
     // Add team filter
     page.add_field({
         fieldname: 'team_filter',
-        label: 'Filter by Team',
+        label: '',
         fieldtype: 'Select',
         options: '\nAll Teams',
         change: function() {
@@ -57,6 +57,9 @@ frappe.pages['team-opportunities'].on_page_load = function(wrapper) {
                     </div>
                 </div>
             </div>
+            <div style="margin: -8px 0 16px 0; padding: 10px 12px; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px; color: #856404; font-size: 13px;">
+                Note: Opportunities without a Responsible Party are hidden.
+            </div>
             <div class="summary-cards"></div>
             <div class="employee-cards" style="margin-bottom: 20px;"></div>
             <div class="opportunities-list"></div>
@@ -78,6 +81,7 @@ function load_teams(page) {
                 });
                 page.fields_dict.team_filter.df.options = options;
                 page.fields_dict.team_filter.df.label = '';
+                page.fields_dict.team_filter.df.placeholder = '';
                 page.fields_dict.team_filter.refresh();
                 
                 // Move the field to the custom container and ensure it's visible
@@ -94,6 +98,7 @@ function load_teams(page) {
                     'width': '100%',
                     'padding-left': '12px'
                 });
+                page.fields_dict.team_filter.$input.attr('placeholder', '');
                 
                 // Move the hide overdue field
                 const $overdueContainer = page.main.find('#overdue-filter-container');
@@ -151,6 +156,7 @@ function load_teams(page) {
                     'width': '100%',
                     'padding-left': '12px'
                 });
+                page.fields_dict.team_filter.$input.attr('placeholder', '');
                 
                 // Move the hide overdue field
                 const $overdueContainer = page.main.find('#overdue-filter-container');
