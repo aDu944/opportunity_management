@@ -127,11 +127,11 @@ def get_personal_opportunities(user, include_completed=False):
     """
     status_filter = None if include_completed else ["not in", ["Closed", "Lost", "Converted"]]
     opp_filters = {"status": status_filter} if status_filter else {}
-        opps = frappe.get_all(
-            "Opportunity",
-            filters=opp_filters,
-            fields=["name", "custom_tender_no", "custom_tender_title"]
-        )
+    opps = frappe.get_all(
+        "Opportunity",
+        filters=opp_filters,
+        fields=["name", "custom_tender_no", "custom_tender_title"]
+    )
 
     opportunities = []
     today = getdate(nowdate())
