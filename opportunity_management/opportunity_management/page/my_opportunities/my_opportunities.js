@@ -146,26 +146,27 @@ function render_summary(page) {
         const overdue = opportunities.filter(o => o.urgency === 'overdue').length;
         const dueToday = opportunities.filter(o => o.urgency === 'due_today').length;
         const critical = opportunities.filter(o => o.urgency === 'critical').length;
-        const total = opportunities.filter(o => o.days_remaining !== null).length;
+        const hideOverdue = page.fields_dict.hide_overdue ? page.fields_dict.hide_overdue.get_value() : false;
+        const total = opportunities.filter(o => o.days_remaining !== null && (!hideOverdue || o.days_remaining >= 0)).length;
 
         const summaryHtml = `
             <div class="row" style="margin-bottom: 20px; gap: 15px;">
                 <div class="col" style="flex: 1;">
                     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
-                        <h3 style="margin: 0; font-size: 32px; font-weight: 600;">${total}</h3>
-                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">Total Open</p>
+                        <h3 style="margin: 0; font-size: 32px; font-weight: 600; color: #ffffff !important;">${total}</h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px; color: #ffffff !important;">Total Open</p>
                     </div>
                 </div>
                 <div class="col" style="flex: 1;">
                     <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);">
-                        <h3 style="margin: 0; font-size: 32px; font-weight: 600;">${overdue}</h3>
-                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">Overdue</p>
+                        <h3 style="margin: 0; font-size: 32px; font-weight: 600; color: #ffffff !important;">${overdue}</h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px; color: #ffffff !important;">Overdue</p>
                     </div>
                 </div>
                 <div class="col" style="flex: 1;">
-                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(254, 225, 64, 0.4);">
-                        <h3 style="margin: 0; font-size: 32px; font-weight: 600;">${dueToday}</h3>
-                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">Due Today</p>
+                    <div style="background: #e03131; color: white; padding: 20px; border-radius: 12px; box-shadow: 0 8px 24px rgba(224,49,49,0.55); border: 2px solid rgba(255,255,255,0.35);">
+                        <h3 style="margin: 0; font-size: 32px; font-weight: 600; color: #ffffff !important;">${dueToday}</h3>
+                        <p style="margin: 5px 0 0 0; font-weight: 700; font-size: 14px; letter-spacing: 0.3px; text-transform: uppercase; color: #ffffff !important;">Due Today</p>
                     </div>
                 </div>
                 <div class="col" style="flex: 1;">

@@ -786,7 +786,9 @@ def get_employee_opportunity_stats(team=None):
     )
 
     for opp in opps:
-        if opp.expected_closing and getdate(opp.expected_closing) < today:
+        if not opp.expected_closing:
+            continue
+        if getdate(opp.expected_closing) < today:
             continue
 
         opp_doc = frappe.get_doc("Opportunity", opp.name)
