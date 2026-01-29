@@ -174,6 +174,11 @@ def _get_responsible_party_info(party_name):
         if info["user_id"] and not info["email"]:
             info["email"] = frappe.db.get_value("User", info["user_id"], "email")
 
+        if not info["user_id"] and info["email"]:
+            user_from_email = frappe.db.get_value("User", {"email": info["email"]}, "name")
+            if user_from_email:
+                info["user_id"] = user_from_email
+
         return info
 
     # Fallback: Employee ID directly
