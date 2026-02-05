@@ -22,7 +22,6 @@ doc_events = {
     },
     "Quotation": {
         "after_insert": "opportunity_management.quotation_handler.on_quotation_save",
-        "on_update": "opportunity_management.quotation_handler.on_quotation_save",
     }
 }
 
