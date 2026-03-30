@@ -973,15 +973,35 @@ def get_available_teams():
 
 
 @frappe.whitelist()
+def get_my_fcm_token():
+    """Return the FCM token currently stored for the logged-in user."""
+    user = frappe.session.user
+    employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
+    if not employee:
+        return {"token": None}
+    token = frappe.db.get_value("Employee", employee, "custom_fcm_token")
+    return {"token": token}
+
+
+@frappe.whitelist()
 def register_fcm_token(token):
     """Store the FCM token on the Employee record for the logged-in user.
-    Uses raw SQL to bypass all hooks and permission checks.
+    If a different token is already stored (another device), sends a force_logout
+    FCM message to that device before replacing the token.
     """
     try:
+        from opportunity_management.opportunity_management.fcm_utils import send_fcm
         user = frappe.session.user
         employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
         if not employee:
             return {"status": "no_employee", "user": user}
+
+        # Evict previously registered device if it's a different token
+        old_token = frappe.db.get_value("Employee", employee, "custom_fcm_token")
+        if old_token and old_token != token:
+            send_fcm(old_token, title="Session Ended", body="You have been logged in on another device.",
+                     data={"type": "force_logout"})
+
         frappe.db.sql(
             "UPDATE `tabEmployee` SET `custom_fcm_token` = %s WHERE `name` = %s",
             (token, employee),
