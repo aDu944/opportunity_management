@@ -75,14 +75,18 @@ def broadcast_notification(title, body):
 @frappe.whitelist()
 def get_recent_checkins(limit=50):
     """Return recent employee check-ins."""
-    checkins = frappe.db.sql("""
+    # custom_outside_zone is optional — only include if the column exists
+    has_outside_zone = frappe.db.has_column("Employee Checkin", "custom_outside_zone")
+    outside_col = "ec.custom_outside_zone," if has_outside_zone else "0 AS custom_outside_zone,"
+
+    checkins = frappe.db.sql(f"""
         SELECT
             ec.name,
             ec.employee,
             e.employee_name,
             ec.log_type,
             ec.time,
-            ec.custom_outside_zone,
+            {outside_col}
             ec.latitude,
             ec.longitude
         FROM `tabEmployee Checkin` ec
