@@ -1,7 +1,7 @@
 Notification #1:
-Document Type: ToDo
+Document Type: Opportunity
 
-Subject: New Opportunity Assigned: {{ doc.reference_name }}
+Subject: New Opportunity Assigned: {{ doc.name }}
 <!DOCTYPE html>
 <html>
 <head>
@@ -24,17 +24,20 @@ Subject: New Opportunity Assigned: {{ doc.reference_name }}
                     <tr>
                         <td align="center" style="background-color: #40E0D0; padding: 25px 20px;">
                             <h1 style="color: #ffffff; margin: 0; font-weight: 600; font-size: 24px;">New Opportunity Assigned</h1>
-                            <p style="color: #e6ffe6; margin: 10px 0 0 0; font-size: 16px;">Opportunity ID: #{{ doc.reference_name }}</p>
+                            <p style="color: #e6ffe6; margin: 10px 0 0 0; font-size: 16px;">Opportunity ID: #{{ doc.name }}</p>
                         </td>
                     </tr>
                     
                     <!-- Content Area -->
                     <tr>
                         <td style="padding: 30px 20px;">
+                            {% set opportunity = doc %}
+                            {% set customer_display = opportunity.custom_man_customer_name if (opportunity.party_name == "General - عامة (USD)" or opportunity.party_name == "General - عامة (IQD)") and opportunity.custom_man_customer_name else opportunity.party_name %}
+                            {% set responsible_party_name = (frappe.db.get_value("Responsible Party", opportunity.custom_responsible_party[0].responsible_party, "display_name") if opportunity.custom_responsible_party else (frappe.db.get_value("Employee", opportunity.custom_resp_eng[0].responsible_engineer, "employee_name") if opportunity.custom_resp_eng else (frappe.get_fullname(opportunity.owner) or opportunity.owner))) %}
                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
                                 <tr>
                                     <td style="color: #444; font-size: 16px; padding-bottom: 15px;">
-                                        Dear {{ frappe.get_doc("User", doc.allocated_to).full_name or doc.allocated_to }},
+                                        Dear {{ responsible_party_name }},
                                     </td>
                                 </tr>
                                 <tr>
@@ -44,9 +47,6 @@ Subject: New Opportunity Assigned: {{ doc.reference_name }}
                                 </tr>
                                 
                                 <!-- Opportunity Info Card -->
-                                {% set opportunity = frappe.get_doc("Opportunity", doc.reference_name) %}
-                                {% set customer_display = opportunity.custom_man_customer_name if (opportunity.party_name == "General - عامة (USD)" or opportunity.party_name == "General - عامة (IQD)") and opportunity.custom_man_customer_name else opportunity.party_name %}
-                                
                                 <tr>
                                     <td style="padding: 0 0 25px 0;">
                                         <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #f8f9fa; border-left: 4px solid #40E0D0; border-radius: 6px;">
@@ -171,11 +171,11 @@ Subject: New Opportunity Assigned: {{ doc.reference_name }}
                                 <tr>
                                     <td align="center" style="padding: 10px 0 25px 0;">
                                         <!--[if mso]>
-                                        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ frappe.utils.get_url() }}/app/todo/{{ doc.name }}" style="height:45px;v-text-anchor:middle;width:200px;" arcsize="50%" stroke="f" fillcolor="#40E0D0">
+                                        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ frappe.utils.get_url() }}/app/opportunity/{{ opportunity.name }}" style="height:45px;v-text-anchor:middle;width:200px;" arcsize="50%" stroke="f" fillcolor="#40E0D0">
                                         <w:anchorlock/>
                                         <center>
                                         <![endif]-->
-                                        <a href="{{ frappe.utils.get_url() }}/app/todo/{{ doc.name }}" style="display: inline-block; background-color: #40E0D0; color: #ffffff; font-weight: 600; text-decoration: none; padding: 12px 25px; border-radius: 50px; font-size: 16px; box-shadow: 0 4px 10px rgba(64,224,208,0.3); mso-padding-alt: 0; text-underline-color: #40E0D0;"><!--[if mso]><i style="letter-spacing: 25px;mso-font-width:-100%;mso-text-raise:20pt">&nbsp;</i><![endif]--><span style="mso-text-raise:10pt;">View Task</span><!--[if mso]><i style="letter-spacing: 25px;mso-font-width:-100%">&nbsp;</i><![endif]--></a>
+                                        <a href="{{ frappe.utils.get_url() }}/app/opportunity/{{ opportunity.name }}" style="display: inline-block; background-color: #40E0D0; color: #ffffff; font-weight: 600; text-decoration: none; padding: 12px 25px; border-radius: 50px; font-size: 16px; box-shadow: 0 4px 10px rgba(64,224,208,0.3); mso-padding-alt: 0; text-underline-color: #40E0D0;"><!--[if mso]><i style="letter-spacing: 25px;mso-font-width:-100%;mso-text-raise:20pt">&nbsp;</i><![endif]--><span style="mso-text-raise:10pt;">View Opportunity</span><!--[if mso]><i style="letter-spacing: 25px;mso-font-width:-100%">&nbsp;</i><![endif]--></a>
                                         <!--[if mso]>
                                         </center>
                                         </v:roundrect>
@@ -210,9 +210,9 @@ Subject: New Opportunity Assigned: {{ doc.reference_name }}
 
 
 Notification #2:
-Document Type: ToDo
+Document Type: Opportunity
 
-Subject: Reminder - Opportunity {{ doc.reference_name }} Closing in 3 days
+Subject: Reminder - Opportunity {{ doc.name }} Closing in 3 days
 
 <!DOCTYPE html>
 <html>
@@ -236,20 +236,20 @@ Subject: Reminder - Opportunity {{ doc.reference_name }} Closing in 3 days
                     <tr>
                         <td align="center" style="background-color: #ffc107; padding: 25px 20px;">
                             <h1 style="color: #ffffff; margin: 0; font-weight: 600; font-size: 24px;">Important Reminder</h1>
-                            <p style="color: #fff3cd; margin: 10px 0 0 0; font-size: 16px;">Opportunity ID: #{{ doc.reference_name }}</p>
+                            <p style="color: #fff3cd; margin: 10px 0 0 0; font-size: 16px;">Opportunity ID: #{{ doc.name }}</p>
                         </td>
                     </tr>
                     
                     <!-- Content Area -->
                     <tr>
                         <td style="padding: 30px 20px;">
-                            {% set opportunity = frappe.get_doc("Opportunity", doc.reference_name) %}
+                            {% set opportunity = doc %}
                             {% set customer_display = opportunity.custom_man_customer_name if (opportunity.party_name == "General - عامة (USD)" or opportunity.party_name == "General - عامة (IQD)") and opportunity.custom_man_customer_name else opportunity.party_name %}
                             
                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
                                 <tr>
                                     <td style="color: #444; font-size: 16px; padding-bottom: 15px;">
-                                        Dear {{ frappe.get_doc("User", doc.allocated_to).full_name or doc.allocated_to }},
+                                        Dear {{ responsible_party_name }},
                                     </td>
                                 </tr>
                                 <tr>
@@ -360,9 +360,9 @@ Subject: Reminder - Opportunity {{ doc.reference_name }} Closing in 3 days
 </html>
 
 Notification #3:
-Document Type: ToDo
+Document Type: Opportunity
 
-Subject: Urgent Reminder - Opportunity {{ doc.reference_name }} Closing in 1 days
+Subject: Urgent Reminder - Opportunity {{ doc.name }} Closing in 1 days
 
 <!DOCTYPE html>
 <html>
@@ -386,20 +386,20 @@ Subject: Urgent Reminder - Opportunity {{ doc.reference_name }} Closing in 1 day
                     <tr>
                         <td align="center" style="background-color: #ff6b6b; padding: 25px 20px;">
                             <h1 style="color: #ffffff; margin: 0; font-weight: 600; font-size: 24px;">Urgent Reminder</h1>
-                            <p style="color: #ffe6e6; margin: 10px 0 0 0; font-size: 16px;">Opportunity ID: #{{ doc.reference_name }}</p>
+                            <p style="color: #ffe6e6; margin: 10px 0 0 0; font-size: 16px;">Opportunity ID: #{{ doc.name }}</p>
                         </td>
                     </tr>
                     
                     <!-- Content Area -->
                     <tr>
                         <td style="padding: 30px 20px;">
-                            {% set opportunity = frappe.get_doc("Opportunity", doc.reference_name) %}
+                            {% set opportunity = doc %}
                             {% set customer_display = opportunity.custom_man_customer_name if (opportunity.party_name == "General - عامة (USD)" or opportunity.party_name == "General - عامة (IQD)") and opportunity.custom_man_customer_name else opportunity.party_name %}
                             
                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
                                 <tr>
                                     <td style="color: #444; font-size: 16px; padding-bottom: 15px;">
-                                        Dear {{ frappe.get_doc("User", doc.allocated_to).full_name or doc.allocated_to }},
+                                        Dear {{ responsible_party_name }},
                                     </td>
                                 </tr>
                                 <tr>
@@ -510,9 +510,9 @@ Subject: Urgent Reminder - Opportunity {{ doc.reference_name }} Closing in 1 day
 </html>
 
 Notification #4:
-Document Type: ToDo
+Document Type: Opportunity
 
-Subject: 🚨 CRITICAL ALERT 🚨 Opportunity {{ doc.reference_name }} Closing in 0 days
+Subject: 🚨 CRITICAL ALERT 🚨 Opportunity {{ doc.name }} Closing in 0 days
 
 <!DOCTYPE html>
 <html>
@@ -536,20 +536,20 @@ Subject: 🚨 CRITICAL ALERT 🚨 Opportunity {{ doc.reference_name }} Closing i
                     <tr>
                         <td align="center" style="background-color: #dc3545; padding: 25px 20px;">
                             <h1 style="color: #ffffff; margin: 0; font-weight: 600; font-size: 24px;">🚨 CRITICAL ALERT 🚨</h1>
-                            <p style="color: #ffe6e6; margin: 10px 0 0 0; font-size: 16px;">Opportunity ID: #{{ doc.reference_name }}</p>
+                            <p style="color: #ffe6e6; margin: 10px 0 0 0; font-size: 16px;">Opportunity ID: #{{ doc.name }}</p>
                         </td>
                     </tr>
                     
                     <!-- Content Area -->
                     <tr>
                         <td style="padding: 30px 20px;">
-                            {% set opportunity = frappe.get_doc("Opportunity", doc.reference_name) %}
+                            {% set opportunity = doc %}
                             {% set customer_display = opportunity.custom_man_customer_name if (opportunity.party_name == "General - عامة (USD)" or opportunity.party_name == "General - عامة (IQD)") and opportunity.custom_man_customer_name else opportunity.party_name %}
                             
                             <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
                                 <tr>
                                     <td style="color: #444; font-size: 16px; padding-bottom: 15px;">
-                                        Dear {{ frappe.get_doc("User", doc.allocated_to).full_name or doc.allocated_to }},
+                                        Dear {{ responsible_party_name }},
                                     </td>
                                 </tr>
                                 <tr>

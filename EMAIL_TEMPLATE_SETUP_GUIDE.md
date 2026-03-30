@@ -63,7 +63,7 @@ The email templates are included in the code. After deployment, Frappe will auto
 
 3. **Save and Enable**
 
-**Note:** Your client script already creates ToDos when assigning. This notification is OPTIONAL - only enable if you want assignment emails in addition to the ToDos.
+**Note:** Assignments are handled on Opportunity. This notification is OPTIONAL - only enable it if you want assignment emails.
 
 ---
 

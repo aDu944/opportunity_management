@@ -11,13 +11,33 @@ app_license = "MIT"
 # Hook into Opportunity save/update events
 # DISABLED: Using client script for assignment instead to avoid duplicates
 doc_events = {
-    # "Opportunity": {
-    #     "on_update": "opportunity_management.opportunity_management.utils.assignment.on_opportunity_update",
-    #     "after_insert": "opportunity_management.opportunity_management.utils.assignment.on_opportunity_insert",
-    # },
+    "Opportunity": {
+        # Keep assignment hooks disabled to avoid duplicates.
+        "validate": "opportunity_management.opportunity_management.notification_utils.set_opportunity_notification_recipients",
+        "on_update": "opportunity_management.opportunity_management.notification_utils.send_closing_date_extended_notification",
+    },
+    "Email Queue": {
+        "after_insert": "opportunity_management.opportunity_management.notification_utils.log_opportunity_notification_from_email_queue",
+        "on_update": "opportunity_management.opportunity_management.notification_utils.update_opportunity_notification_log_status",
+    },
     "Quotation": {
-        "on_submit": "opportunity_management.quotation_handler.on_quotation_submit",
-    }
+        "after_insert": "opportunity_management.quotation_handler.on_quotation_save",
+    },
+    "Employee Checkin": {
+        "after_insert": "opportunity_management.opportunity_management.ess_hooks.on_checkin_insert",
+    },
+    "Leave Application": {
+        "on_update": "opportunity_management.opportunity_management.ess_hooks.on_leave_application_update",
+    },
+    "Salary Slip": {
+        "on_submit": "opportunity_management.opportunity_management.ess_hooks.on_salary_slip_submit",
+    },
+    "Expense Claim": {
+        "on_update": "opportunity_management.opportunity_management.ess_hooks.on_expense_claim_update",
+    },
+    "Announcement": {
+        "after_insert": "opportunity_management.opportunity_management.ess_hooks.on_announcement_insert",
+    },
 }
 
 # ============================================================================
@@ -29,6 +49,14 @@ scheduler_events = {
     "cron": {
         "0 8 * * *": [
             "opportunity_management.opportunity_management.tasks.send_opportunity_reminders"
+        ],
+        # Daily closings summary for Management role (7:30 AM)
+        "30 7 * * *": [
+            "opportunity_management.opportunity_management.tasks.send_management_daily_closing_summary"
+        ],
+        # Weekly manager digest (Mondays at 9:00 AM)
+        "0 9 * * 1": [
+            "opportunity_management.opportunity_management.tasks.send_manager_weekly_digest"
         ]
     }
 }
@@ -49,8 +77,26 @@ fixtures = [
     {
         "doctype": "Custom Field",
         "filters": [
+            ["dt", "in", ["Employee Checkin"]],
+            ["fieldname", "in", ["custom_outside_zone"]]
+        ]
+    },
+    {
+        "doctype": "Custom Field",
+        "filters": [
             ["dt", "in", ["Opportunity"]],
-            ["fieldname", "in", ["custom_resp_eng", "custom_reminder_7_sent", "custom_reminder_3_sent", "custom_reminder_1_sent", "custom_reminder_0_sent"]]
+            ["fieldname", "in", [
+                "custom_resp_eng",
+                "custom_reminder_7_sent",
+                "custom_reminder_3_sent",
+                "custom_reminder_1_sent",
+                "custom_reminder_0_sent",
+                "custom_notification_recipients",
+                "custom_last_notification_sent",
+                "custom_last_notification_recipients",
+                "custom_last_notification_subject",
+                "custom_last_notification_status"
+            ]]
         ]
     },
     {

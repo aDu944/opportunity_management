@@ -7,7 +7,7 @@ frappe.pages['my-opportunities'].on_page_load = function(wrapper) {
 
     // Initialize page data
     page.current_tab = 'open'; // 'open' or 'completed'
-    page.sort_by = 'urgency';
+    page.sort_by = 'closing_date';
     page.sort_order = 'asc';
 
     // Add refresh button
@@ -15,27 +15,39 @@ frappe.pages['my-opportunities'].on_page_load = function(wrapper) {
         load_opportunities(page);
     }, 'primary');
 
-    // Add filter for urgency (only for open opportunities)
+    // Add hide overdue filter
     page.add_field({
-        fieldname: 'urgency_filter',
-        label: 'Filter by Urgency',
-        fieldtype: 'Select',
-        options: '\nAll\nOverdue\nDue Today\nCritical (1 day)\nHigh (3 days)\nMedium (7 days)\nLow',
+        fieldname: 'hide_overdue',
+        label: 'Hide Overdue Opportunities',
+        fieldtype: 'Check',
+        default: 1,
         change: function() {
-            filter_opportunities(page);
+            render_opportunities(page);
         }
     });
 
     // Add tabs
     page.main.html(`
         <div class="opportunities-container">
-            <div class="tabs-container" style="margin-bottom: 20px;">
-                <button class="btn btn-default tab-btn" data-tab="open" style="margin-right: 10px;">
-                    Open Opportunities
-                </button>
-                <button class="btn btn-default tab-btn" data-tab="completed">
-                    Completed Opportunities
-                </button>
+            <div class="filter-section" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="tabs-container">
+                            <button class="btn btn-default tab-btn" data-tab="open" style="margin-right: 10px;">
+                                Open Opportunities
+                            </button>
+                            <button class="btn btn-default tab-btn" data-tab="completed">
+                                Completed Opportunities
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div id="overdue-filter-container" style="display: flex; align-items: center; justify-content: flex-end;"></div>
+                    </div>
+                </div>
+            </div>
+            <div style="margin: -8px 0 16px 0; padding: 10px 12px; background: #fff3cd; border: 1px solid #ffeeba; border-radius: 8px; color: #856404; font-size: 13px;">
+                Note: Opportunities without a Responsible Party are hidden.
             </div>
             <div class="summary-cards"></div>
             <div class="opportunities-list"></div>
@@ -51,19 +63,16 @@ frappe.pages['my-opportunities'].on_page_load = function(wrapper) {
         page.main.find('.tab-btn').removeClass('btn-primary').addClass('btn-default');
         $(this).removeClass('btn-default').addClass('btn-primary');
 
-        // Show/hide urgency filter based on tab
-        if (tab === 'completed') {
-            page.fields_dict.urgency_filter.$wrapper.hide();
-        } else {
-            page.fields_dict.urgency_filter.$wrapper.show();
-        }
-
         // Reload data
         load_opportunities(page);
     });
 
     // Set initial active tab
     page.main.find('.tab-btn[data-tab="open"]').addClass('btn-primary').removeClass('btn-default');
+
+    // Move the hide overdue field to the custom container
+    const $overdueContainer = page.main.find('#overdue-filter-container');
+    $overdueContainer.html(page.fields_dict.hide_overdue.$wrapper);
 
     load_opportunities(page);
 };
@@ -81,6 +90,14 @@ function load_opportunities(page) {
         callback: function(r) {
             if (r.message) {
                 page.opportunities = r.message;
+                
+                // Sort by days remaining for open opportunities, closing date for completed
+                if (is_completed) {
+                    sort_my_opportunities(page, 'closing_date');
+                } else {
+                    sort_my_opportunities(page, 'days_remaining');
+                }
+                
                 render_summary(page);
                 render_opportunities(page);
             }
@@ -132,26 +149,27 @@ function render_summary(page) {
         const overdue = opportunities.filter(o => o.urgency === 'overdue').length;
         const dueToday = opportunities.filter(o => o.urgency === 'due_today').length;
         const critical = opportunities.filter(o => o.urgency === 'critical').length;
-        const total = opportunities.length;
+        const hideOverdue = page.fields_dict.hide_overdue ? page.fields_dict.hide_overdue.get_value() : false;
+        const total = opportunities.filter(o => o.days_remaining !== null && (!hideOverdue || o.days_remaining >= 0)).length;
 
         const summaryHtml = `
             <div class="row" style="margin-bottom: 20px; gap: 15px;">
                 <div class="col" style="flex: 1;">
                     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
-                        <h3 style="margin: 0; font-size: 32px; font-weight: 600;">${total}</h3>
-                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">Total Open</p>
+                        <h3 style="margin: 0; font-size: 32px; font-weight: 600; color: #ffffff !important;">${total}</h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px; color: #ffffff !important;">Total Open</p>
                     </div>
                 </div>
                 <div class="col" style="flex: 1;">
                     <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);">
-                        <h3 style="margin: 0; font-size: 32px; font-weight: 600;">${overdue}</h3>
-                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">Overdue</p>
+                        <h3 style="margin: 0; font-size: 32px; font-weight: 600; color: #ffffff !important;">${overdue}</h3>
+                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px; color: #ffffff !important;">Overdue</p>
                     </div>
                 </div>
                 <div class="col" style="flex: 1;">
-                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(254, 225, 64, 0.4);">
-                        <h3 style="margin: 0; font-size: 32px; font-weight: 600;">${dueToday}</h3>
-                        <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">Due Today</p>
+                    <div style="background: #e03131; color: white; padding: 20px; border-radius: 12px; box-shadow: 0 8px 24px rgba(224,49,49,0.55); border: 2px solid rgba(255,255,255,0.35);">
+                        <h3 style="margin: 0; font-size: 32px; font-weight: 600; color: #ffffff !important;">${dueToday}</h3>
+                        <p style="margin: 5px 0 0 0; font-weight: 700; font-size: 14px; letter-spacing: 0.3px; text-transform: uppercase; color: #ffffff !important;">Due Today</p>
                     </div>
                 </div>
                 <div class="col" style="flex: 1;">
@@ -202,8 +220,8 @@ function sort_my_opportunities(page, column) {
                 bVal = b.closing_date || '9999-12-31';
                 break;
             case 'days_remaining':
-                aVal = a.days_remaining !== null ? a.days_remaining : 9999;
-                bVal = b.days_remaining !== null ? b.days_remaining : 9999;
+                aVal = a.days_remaining !== null ? a.days_remaining : -9999;
+                bVal = b.days_remaining !== null ? b.days_remaining : -9999;
                 break;
             default:
                 return 0;
@@ -219,12 +237,20 @@ function sort_my_opportunities(page, column) {
 }
 
 function render_opportunities(page) {
-    const opportunities = page.opportunities;
+    let opportunities = page.opportunities;
+
+    // Filter out overdue opportunities if checkbox is checked (only for open opportunities)
+    const hideOverdue = page.fields_dict.hide_overdue ? page.fields_dict.hide_overdue.get_value() : false;
+    if (hideOverdue && page.current_tab === 'open') {
+        opportunities = opportunities.filter(opp => opp.days_remaining !== null && opp.days_remaining >= 0);
+    }
 
     if (!opportunities.length) {
         const message = page.current_tab === 'completed'
             ? '<h4>No completed opportunities!</h4>'
-            : '<h4>🎉 No open opportunities!</h4><p>You have no pending tasks.</p>';
+            : hideOverdue 
+                ? '<h4>🎉 No open opportunities!</h4><p>You have no pending tasks (overdue hidden).</p>'
+                : '<h4>🎉 No open opportunities!</h4><p>You have no pending tasks.</p>';
 
         page.main.find('.opportunities-list').html(`
             <div style="text-align: center; padding: 40px; color: #666;">
@@ -242,15 +268,18 @@ function render_opportunities(page) {
     };
 
     let html = `
-        <table class="table table-bordered" style="background: white;">
-            <thead style="background: #f5f5f5; cursor: pointer;">
+        <div style="background: linear-gradient(135deg, #eef2f7, #f7f9fc); padding: 12px; border-radius: 14px;">
+        <table class="table table-bordered" style="background: transparent; border-collapse: separate; border-spacing: 0 8px;">
+            <thead style="background: transparent; cursor: pointer;">
                 <tr>
-                    <th onclick="window.sort_my_opportunities_handler('urgency')">Urgency${getSortIcon('urgency')}</th>
                     <th onclick="window.sort_my_opportunities_handler('opportunity')">Opportunity${getSortIcon('opportunity')}</th>
+                    <th>Request No.</th>
+                    <th>Request Title</th>
                     <th onclick="window.sort_my_opportunities_handler('customer')">Customer${getSortIcon('customer')}</th>
                     ${page.current_tab === 'completed' ? `<th onclick="window.sort_my_opportunities_handler('status')">Status${getSortIcon('status')}</th>` : ''}
                     <th onclick="window.sort_my_opportunities_handler('closing_date')">Closing Date${getSortIcon('closing_date')}</th>
-                    <th onclick="window.sort_my_opportunities_handler('days_remaining')">Days Left${getSortIcon('days_remaining')}</th>
+                    ${page.current_tab === 'open' ? `<th onclick="window.sort_my_opportunities_handler('days_remaining')">Days Left${getSortIcon('days_remaining')}</th>` : ''}
+                    ${page.current_tab === 'open' ? `<th>Quotation</th>` : ''}
                     <th>Items</th>
                     ${page.current_tab === 'open' ? '<th>Actions</th>' : ''}
                 </tr>
@@ -269,30 +298,49 @@ function render_opportunities(page) {
 
         const itemsCount = opp.items ? opp.items.length : 0;
 
-        // Highlight rows with closing date today
-        const rowStyle = opp.urgency === 'due_today'
-            ? 'background: linear-gradient(90deg, #fff3cd 0%, #ffffff 100%); border-left: 4px solid #ffc107;'
+        // Highlight rows based on days remaining
+        let rowStyle = 'background: rgba(255,255,255,0.75); backdrop-filter: blur(6px);';
+        let rowBorder = '#e5e7eb';
+        if (opp.days_remaining === null || opp.days_remaining < 0) {
+            rowBorder = '#dc3545';
+        } else if (opp.days_remaining <= 3) {
+            rowBorder = '#fd7e14';
+        } else if (opp.days_remaining <= 7) {
+            rowBorder = '#f1c21b';
+        } else {
+            rowBorder = '#28a745';
+        }
+
+        const quotationBadge = page.current_tab === 'open'
+            ? (opp.has_draft_quotation
+                ? '<span class="badge" style="background: #6f42c1; color: white;">Draft</span>'
+                : (opp.has_quotation ? '<span class="badge" style="background: #17a2b8; color: white;">Created</span>' : '<span class="badge" style="background: #e9ecef; color: #666;">None</span>'))
             : '';
+
+        const tenderNo = opp.tender_no && opp.tender_no !== '0' && opp.tender_no !== 0 ? opp.tender_no : 'N/A';
+        const tenderTitle = opp.tender_title && opp.tender_title !== '0' && opp.tender_title !== 0 ? opp.tender_title : 'N/A';
 
         html += `
             <tr data-urgency="${opp.urgency}" style="${rowStyle}">
-                <td>${urgencyBadge}</td>
                 <td>
-                    <a href="/app/opportunity/${opp.opportunity}" target="_blank">
+                    <a href="/app/opportunity/${opp.opportunity}" target="_blank" style="display:block; padding:12px; border-left:4px solid ${rowBorder}; border-radius:10px 0 0 10px; color:#1f2937;">
                         ${opp.opportunity}
                     </a>
                 </td>
-                <td>${opp.customer || 'N/A'}</td>
+                <td style="padding:12px;">${tenderNo}</td>
+                <td style="padding:12px;">${tenderTitle}</td>
+                <td style="padding:12px;">${opp.customer || 'N/A'}</td>
                 ${statusColumn}
-                <td>${opp.closing_date || 'Not set'}</td>
-                <td style="text-align: center;">${opp.days_remaining !== null ? opp.days_remaining : '-'}</td>
-                <td style="text-align: center;">
+                <td style="padding:12px;">${opp.closing_date || 'Not set'}</td>
+                ${page.current_tab === 'open' ? `<td style="text-align: center; padding:12px;">${opp.days_remaining !== null ? opp.days_remaining : 'No date'}</td>` : ''}
+                ${page.current_tab === 'open' ? `<td style="text-align: center; padding:12px;">${quotationBadge}</td>` : ''}
+                <td style="text-align: center; padding:12px; border-radius:0 10px 10px 0;">
                     <span class="badge" style="background: #6c757d; color: white;">${itemsCount} items</span>
                 </td>
                 ${page.current_tab === 'open' ? `
-                <td>
-                    <a href="/app/quotation/new-quotation-1?opportunity=${opp.opportunity}"
-                       class="btn btn-xs btn-success">
+                <td style="padding:12px;">
+                    <a onclick="create_quotation('${opp.opportunity}')" 
+                       class="btn btn-xs btn-success" style="cursor: pointer;">
                         Create Quotation
                     </a>
                 </td>
@@ -301,13 +349,13 @@ function render_opportunities(page) {
         `;
     });
 
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
     page.main.find('.opportunities-list').html(html);
 }
 
 function getUrgencyBadge(urgency, days) {
     const badges = {
-        'overdue': `<span class="badge" style="background: #dc3545; color: white;">⚠️ OVERDUE (${Math.abs(days)} days)</span>`,
+        'overdue': `<span class="badge" style="background: #dc3545; color: white;">⚠️ OVERDUE (${days === null ? 'No date' : Math.abs(days) + ' days'})</span>`,
         'due_today': '<span class="badge" style="background: #dc3545; color: white;">🔴 DUE TODAY</span>',
         'critical': '<span class="badge" style="background: #fd7e14; color: white;">🟠 Tomorrow</span>',
         'high': '<span class="badge" style="background: #ffc107;">🟡 3 days</span>',
@@ -336,28 +384,11 @@ window.sort_my_opportunities_handler = function(column) {
     }
 };
 
-function filter_opportunities(page) {
-    const filter = page.fields_dict.urgency_filter.get_value();
-    const rows = page.main.find('tbody tr');
-    
-    if (!filter || filter === 'All') {
-        rows.show();
-        return;
-    }
-
-    const filterMap = {
-        'Overdue': 'overdue',
-        'Due Today': 'due_today',
-        'Critical (1 day)': 'critical',
-        'High (3 days)': 'high',
-        'Medium (7 days)': 'medium',
-        'Low': 'low'
+// Function to create quotation from opportunity
+window.create_quotation = function(opportunity_name) {
+    // Use the same approach as the opportunity doctype "Make Quotation" button
+    frappe.route_options = {
+        "opportunity": opportunity_name
     };
-
-    const urgencyValue = filterMap[filter];
-    
-    rows.each(function() {
-        const rowUrgency = $(this).data('urgency');
-        $(this).toggle(rowUrgency === urgencyValue);
-    });
-}
+    frappe.new_doc("Quotation");
+};

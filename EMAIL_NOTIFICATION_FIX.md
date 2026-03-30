@@ -92,6 +92,27 @@ To change the notification email format:
    - **Recipients:** Add/remove who gets emails
    - **Conditions:** When to send (e.g., only send 3 days before)
 
+### Opportunity Recipients (Assigned Users + Their Managers)
+
+If your Notification **Document Type = Opportunity** and you want:
+- **Assigned users** (from `custom_resp_eng` and open ToDos)
+- **Department managers** of those assigned users
+
+ERPNext v15 doesn't show the Custom Method recipient. Use a **Document Field** instead.
+
+#### Step 1: Create a Custom Field on Opportunity
+- **Label:** Notification Recipients
+- **Fieldname:** `custom_notification_recipients`
+- **Fieldtype:** Small Text
+- **Read Only:** ✅ (optional)
+
+#### Step 2: Enable auto-population (code)
+This app now populates the field on every Opportunity save.
+
+#### Step 3: Use it in Notification
+- **Document Type:** Opportunity  
+- **Receiver By Document Field:** `custom_notification_recipients`
+
 ---
 
 ## Email Template Examples

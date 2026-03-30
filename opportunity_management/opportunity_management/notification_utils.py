@@ -38,34 +38,9 @@ def get_department_managers(user_email):
 
         department = employee.department
 
-        # Get all active employees in the same department who are managers
-        # or have System Manager role
+        # Get users with Management role in the same department
         managers = []
-
-        # Method 1: Get employees marked as managers in the department
-        dept_managers = frappe.db.sql("""
-            SELECT DISTINCT e.user_id
-            FROM `tabEmployee` e
-            INNER JOIN `tabDepartment` d ON d.name = e.department
-            WHERE e.department = %(department)s
-                AND e.status = 'Active'
-                AND e.user_id IS NOT NULL
-                AND e.user_id != ''
-                AND (
-                    e.name = d.department_head
-                    OR e.reports_to IS NULL
-                    OR e.designation LIKE '%%Manager%%'
-                    OR e.designation LIKE '%%Head%%'
-                    OR e.designation LIKE '%%Director%%'
-                )
-        """, {"department": department}, as_dict=True)
-
-        for mgr in dept_managers:
-            if mgr.user_id and mgr.user_id not in managers:
-                managers.append(mgr.user_id)
-
-        # Method 2: Get users with System Manager role in the same department
-        system_managers = frappe.db.sql("""
+        management_role = frappe.db.sql("""
             SELECT DISTINCT e.user_id
             FROM `tabEmployee` e
             INNER JOIN `tabHas Role` hr ON hr.parent = e.user_id
@@ -73,11 +48,11 @@ def get_department_managers(user_email):
                 AND e.status = 'Active'
                 AND e.user_id IS NOT NULL
                 AND e.user_id != ''
-                AND hr.role = 'System Manager'
+                AND hr.role = 'Management'
                 AND hr.parenttype = 'User'
         """, {"department": department}, as_dict=True)
 
-        for mgr in system_managers:
+        for mgr in management_role:
             if mgr.user_id and mgr.user_id not in managers:
                 managers.append(mgr.user_id)
 
@@ -113,18 +88,13 @@ def get_opportunity_notification_recipients(opportunity_name):
         # Get the opportunity document
         opportunity = frappe.get_doc("Opportunity", opportunity_name)
 
-        # 1. Get responsible engineers
-        if opportunity.get("custom_resp_eng"):
-            for row in opportunity.custom_resp_eng:
-                if row.responsible_engineer:
-                    # Get user_id from Responsible Engineer
-                    emp = frappe.db.get_value(
-                        "Employee",
-                        row.responsible_engineer,
-                        "user_id"
-                    )
-                    if emp:
-                        recipients.add(emp)
+        # 1. Get responsible parties/users
+        for party in _get_opportunity_party_rows(opportunity):
+            info = _get_responsible_party_info(party)
+            if info.get("user_id"):
+                recipients.add(info.get("user_id"))
+            elif info.get("email"):
+                recipients.add(info.get("email"))
 
         # 2. Get managers from the department of the user who owns/modified the opportunity
         # Try owner first (creator), then modified_by (last person who edited)
@@ -134,23 +104,6 @@ def get_opportunity_notification_recipients(opportunity_name):
             dept_managers = get_department_managers(assigner_email)
             for mgr in dept_managers:
                 recipients.add(mgr)
-
-        # Also check ToDos to see who assigned them
-        todos = frappe.get_all(
-            "ToDo",
-            filters={
-                "reference_type": "Opportunity",
-                "reference_name": opportunity_name,
-                "status": "Open"
-            },
-            fields=["assigned_by"]
-        )
-
-        for todo in todos:
-            if todo.assigned_by:
-                dept_managers = get_department_managers(todo.assigned_by)
-                for mgr in dept_managers:
-                    recipients.add(mgr)
 
         frappe.logger().info(
             f"Opportunity {opportunity_name} recipients: {list(recipients)}"
@@ -180,3 +133,431 @@ def get_opportunity_recipients_for_notification(doc, method=None):
         List of user emails
     """
     return get_opportunity_notification_recipients(doc.name)
+
+
+def _get_responsible_party_info(party_name):
+    """Resolve a Responsible Party/Employee/Shareholder to user_id/email."""
+    info = {"user_id": None, "email": None}
+
+    if not party_name:
+        return info
+
+    # Preferred: Responsible Party doctype (standalone)
+    if frappe.db.exists("DocType", "Responsible Party") and frappe.db.exists("Responsible Party", party_name):
+        party = frappe.get_doc("Responsible Party", party_name)
+
+        user_id = getattr(party, "user_id", None)
+        employee = getattr(party, "employee", None)
+        shareholder = getattr(party, "shareholder", None)
+        email = getattr(party, "email", None)
+
+        if user_id:
+            info["user_id"] = user_id
+        if email:
+            info["email"] = email
+
+        if not info["user_id"] and employee:
+            emp = frappe.db.get_value("Employee", employee, ["user_id", "prefered_email", "company_email", "personal_email"], as_dict=True)
+            if emp:
+                info["user_id"] = emp.user_id
+                info["email"] = info["email"] or emp.prefered_email or emp.company_email or emp.personal_email
+
+        if shareholder and not info["email"]:
+            contact = frappe.db.get_value(
+                "Dynamic Link",
+                {"link_doctype": "Shareholder", "link_name": shareholder, "parenttype": "Contact"},
+                "parent"
+            )
+            if contact:
+                info["email"] = frappe.db.get_value("Contact", contact, "email_id")
+
+        if info["user_id"] and not info["email"]:
+            info["email"] = frappe.db.get_value("User", info["user_id"], "email")
+
+        if not info["user_id"] and info["email"]:
+            user_from_email = frappe.db.get_value("User", {"email": info["email"]}, "name")
+            if user_from_email:
+                info["user_id"] = user_from_email
+
+        return info
+
+    # Fallback: Employee ID directly
+    if frappe.db.exists("Employee", party_name):
+        emp = frappe.db.get_value("Employee", party_name, ["user_id", "prefered_email", "company_email", "personal_email"], as_dict=True)
+        if emp:
+            info["user_id"] = emp.user_id
+            info["email"] = emp.prefered_email or emp.company_email or emp.personal_email
+        return info
+
+    # Fallback: Shareholder ID directly
+    if frappe.db.exists("Shareholder", party_name):
+        contact = frappe.db.get_value(
+            "Dynamic Link",
+            {"link_doctype": "Shareholder", "link_name": party_name, "parenttype": "Contact"},
+            "parent"
+        )
+        if contact:
+            info["email"] = frappe.db.get_value("Contact", contact, "email_id")
+        return info
+
+    # Legacy: Responsible Engineer as child table entry
+    if frappe.db.exists("Responsible Engineer", party_name):
+        engineer = frappe.get_doc("Responsible Engineer", party_name)
+        employee = getattr(engineer, "employee", None)
+        if employee:
+            emp = frappe.db.get_value("Employee", employee, ["user_id", "prefered_email", "company_email", "personal_email"], as_dict=True)
+            if emp:
+                info["user_id"] = emp.user_id
+                info["email"] = emp.prefered_email or emp.company_email or emp.personal_email
+        return info
+
+    return info
+
+
+def _get_user_from_responsible_engineer(engineer_name):
+    """Resolve to user_id for assignment logic."""
+    return _get_responsible_party_info(engineer_name).get("user_id")
+
+
+def _get_opportunity_party_rows(doc):
+    """Return list of party identifiers from Responsible Party only."""
+    parties = []
+    if not doc:
+        return parties
+
+    if doc.get("custom_responsible_party"):
+        for row in doc.custom_responsible_party:
+            party = getattr(row, "responsible_party", None) or row.get("responsible_party")
+            if party:
+                parties.append(party)
+
+    return parties
+
+
+def get_opportunity_assigned_users(doc):
+    """Return all assigned users for an Opportunity."""
+    assigned_users = set()
+
+    if not doc:
+        return assigned_users
+
+    for party in _get_opportunity_party_rows(doc):
+        user_id = _get_user_from_responsible_engineer(party)
+        if user_id:
+            assigned_users.add(user_id)
+
+    return assigned_users
+
+
+def get_opportunity_assignee_recipients_for_notification(doc, method=None):
+    """
+    Hook function for Opportunity notifications (assignees + their managers).
+
+    Recipients:
+    1. All assigned users (custom_responsible_party or custom_resp_eng)
+    2. Department managers/system managers of each assigned user
+    3. Opportunity creator (owner)
+
+    Args:
+        doc: The Opportunity document
+        method: The method name (optional)
+
+    Returns:
+        List of user emails
+    """
+    recipients = set()
+    assigned_users = get_opportunity_assigned_users(doc)
+    assigned_emails = set()
+
+    if not doc:
+        return []
+
+    # Add assigned users and their department managers
+    for user_id in assigned_users:
+        recipients.add(user_id)
+        dept_managers = get_department_managers(user_id)
+        for mgr in dept_managers:
+            recipients.add(mgr)
+
+    # Add assignees with no user_id (e.g., shareholders)
+    for party in _get_opportunity_party_rows(doc):
+        info = _get_responsible_party_info(party)
+        if info.get("email") and not info.get("user_id"):
+            assigned_emails.add(info.get("email"))
+
+    # Include the creator (assigner) explicitly
+    if doc.owner:
+        recipients.add(doc.owner)
+        # Include owner's department managers as well
+        owner_managers = get_department_managers(doc.owner)
+        for mgr in owner_managers:
+            recipients.add(mgr)
+
+    for email in assigned_emails:
+        recipients.add(email)
+
+    recipients_list = list(recipients)
+    frappe.logger().info(
+        f"Opportunity {doc.name} notification recipients (assignees+managers): {recipients_list}"
+    )
+    return recipients_list
+
+
+def set_opportunity_notification_recipients(doc, method=None):
+    """
+    Populate a custom field with notification recipients for ERPNext v15.
+
+    Requires a custom field on Opportunity, e.g.:
+    - fieldname: custom_notification_recipients
+    - fieldtype: Small Text
+
+    Stores a comma-separated list of emails for Notification "Receiver By Document Field".
+    """
+    if not doc:
+        return
+
+    fieldname = "custom_notification_recipients"
+
+    # Only attempt if the field exists on the doc
+    if not hasattr(doc, fieldname):
+        return
+
+    recipients = get_opportunity_assignee_recipients_for_notification(doc, method)
+    doc.set(fieldname, ", ".join(recipients))
+
+
+def send_closing_date_extended_notification(doc, method=None):
+    """
+    Send a dedicated notification when the Opportunity closing date is extended.
+
+    Sends only when expected_closing increases compared to the previous value.
+    """
+    if not doc or not getattr(doc, "expected_closing", None):
+        return
+
+    try:
+        # If user has set up a Notification, avoid sending duplicate emails
+        if frappe.db.exists("Notification", {"document_type": "Opportunity", "enabled": 1, "name": "Opportunity Closing Date Extended"}):
+            return
+
+        if frappe.db.exists("Notification", {"document_type": "Opportunity", "enabled": 1, "email_template": "Opportunity Closing Date Extended"}):
+            return
+
+        previous = doc.get_doc_before_save() if hasattr(doc, "get_doc_before_save") else None
+        if not previous or not getattr(previous, "expected_closing", None):
+            return
+
+        old_date = frappe.utils.getdate(previous.expected_closing)
+        new_date = frappe.utils.getdate(doc.expected_closing)
+
+        if not old_date or not new_date or new_date <= old_date:
+            return
+
+        recipients = set()
+        custom_recipients = getattr(doc, "custom_notification_recipients", None)
+        if custom_recipients:
+            recipients.update([r.strip() for r in custom_recipients.split(",") if r.strip()])
+
+        if not recipients:
+            recipients.update(get_opportunity_assignee_recipients_for_notification(doc))
+
+        # Ensure department managers for responsible parties and owner are included
+        for party in _get_opportunity_party_rows(doc):
+            info = _get_responsible_party_info(party)
+            user_id = info.get("user_id")
+            if user_id:
+                recipients.update(get_department_managers(user_id))
+
+        if doc.owner:
+            recipients.update(get_department_managers(doc.owner))
+
+        recipients = [r for r in recipients if r]
+        if not recipients:
+            return
+
+        template_name = "Opportunity Closing Date Extended"
+        if not frappe.db.exists("Email Template", template_name):
+            frappe.log_error(
+                f"Email Template '{template_name}' not found. Skipping plain email.",
+                "Closing Date Extended Notification Error"
+            )
+            return
+
+        template = frappe.get_doc("Email Template", template_name)
+        message_html = template.response_html or template.response or ""
+        subject = frappe.render_template(template.subject or "", {"doc": doc})
+        message = frappe.render_template(message_html, {"doc": doc})
+
+        frappe.sendmail(
+            recipients=list(recipients),
+            subject=subject,
+            message=message,
+            now=True
+        )
+    except Exception as e:
+        frappe.log_error(
+            f"Error sending closing date extended notification for {getattr(doc, 'name', '')}: {str(e)}",
+            "Closing Date Extended Notification Error"
+        )
+
+
+
+def log_opportunity_notification_from_email_queue(doc, method=None):
+    """Log notifications sent for Opportunities via Email Queue."""
+    if not doc:
+        return
+
+    reference_doctype = getattr(doc, "reference_doctype", None)
+    reference_name = getattr(doc, "reference_name", None)
+
+    if reference_doctype != "Opportunity" or not reference_name:
+        return
+
+    recipients = getattr(doc, "recipients", None) or getattr(doc, "recipient", None) or ""
+    subject = getattr(doc, "subject", None) or ""
+    status = getattr(doc, "status", None) or "Queued"
+    sent_at = getattr(doc, "send_after", None) or getattr(doc, "creation", None)
+    message_id = getattr(doc, "message_id", None) or ""
+
+    recipients = _normalize_recipients(recipients)
+    subject = _truncate_value(subject, 140)
+    status = _normalize_email_status(status)
+
+    try:
+        log = frappe.get_doc({
+            "doctype": "Opportunity Notification Log",
+            "opportunity": reference_name,
+            "recipients": recipients,
+            "subject": subject,
+            "status": status,
+            "email_queue": doc.name,
+            "sent_at": sent_at,
+            "message_id": message_id,
+        })
+        log.insert(ignore_permissions=True)
+
+        update_opportunity_last_notification_fields(
+            reference_name,
+            recipients,
+            subject,
+            status,
+            sent_at
+        )
+    except Exception as e:
+        frappe.log_error(
+            message=f"Error logging notification for Opportunity {reference_name}: {str(e)}",
+            title="Opportunity Notification Log Error"
+        )
+
+
+def update_opportunity_notification_log_status(doc, method=None):
+    """Update notification log status when Email Queue status changes."""
+    if not doc:
+        return
+
+    reference_doctype = getattr(doc, "reference_doctype", None)
+    reference_name = getattr(doc, "reference_name", None)
+    if reference_doctype != "Opportunity" or not reference_name:
+        return
+
+    status = _normalize_email_status(getattr(doc, "status", None) or "Queued")
+    try:
+        frappe.db.set_value(
+            "Opportunity Notification Log",
+            {"email_queue": doc.name},
+            "status",
+            status,
+            update_modified=False
+        )
+        update_opportunity_last_notification_fields(
+            reference_name,
+            _normalize_recipients(getattr(doc, "recipients", None) or getattr(doc, "recipient", None) or ""),
+            _truncate_value(getattr(doc, "subject", None) or "", 140),
+            status,
+            getattr(doc, "send_after", None) or getattr(doc, "modified", None)
+        )
+    except Exception as e:
+        frappe.log_error(
+            message=f"Error updating notification log status for {doc.name}: {str(e)}",
+            title="Opportunity Notification Log Status Error"
+        )
+
+
+def update_opportunity_last_notification_fields(opportunity_name, recipients, subject, status, sent_at):
+    """Update last notification fields on Opportunity if they exist."""
+    if not opportunity_name:
+        return
+
+    fields = {}
+    meta = frappe.get_meta("Opportunity")
+
+    if meta.has_field("custom_last_notification_sent"):
+        fields["custom_last_notification_sent"] = sent_at
+    if meta.has_field("custom_last_notification_recipients"):
+        field = meta.get_field("custom_last_notification_recipients")
+        fields["custom_last_notification_recipients"] = _truncate_for_field(_normalize_recipients(recipients), field)
+    if meta.has_field("custom_last_notification_subject"):
+        field = meta.get_field("custom_last_notification_subject")
+        fields["custom_last_notification_subject"] = _truncate_for_field(subject, field)
+    if meta.has_field("custom_last_notification_status"):
+        field = meta.get_field("custom_last_notification_status")
+        fields["custom_last_notification_status"] = _truncate_for_field(status, field)
+
+    if fields:
+        frappe.db.set_value(
+            "Opportunity",
+            opportunity_name,
+            fields,
+            update_modified=False
+        )
+
+
+def _normalize_email_status(status):
+    if not status:
+        return "Queued"
+
+    normalized = str(status).strip()
+    mapping = {
+        "Not Sent": "Queued",
+        "Open": "Queued",
+        "Queued": "Queued",
+        "Sent": "Sent",
+        "Delivered": "Sent",
+        "Failed": "Failed",
+        "Error": "Failed"
+    }
+    return mapping.get(normalized, "Queued")
+
+
+def _normalize_recipients(recipients):
+    if recipients is None:
+        return ""
+    if isinstance(recipients, (list, tuple, set)):
+        return ", ".join([str(r) for r in recipients if r])
+    return str(recipients)
+
+
+def _truncate_value(value, limit):
+    if value is None:
+        return ""
+    text = str(value)
+    if limit and len(text) > limit:
+        return text[:limit]
+    return text
+
+
+def _truncate_for_field(value, field):
+    if value is None:
+        return ""
+    text = str(value)
+
+    if not field:
+        return text
+
+    if field.fieldtype == "Data":
+        return _truncate_value(text, 140)
+    if field.fieldtype in ("Small Text", "Text"):
+        return _truncate_value(text, 1000)
+    if field.fieldtype == "Select":
+        return _truncate_value(text, 140)
+    return text

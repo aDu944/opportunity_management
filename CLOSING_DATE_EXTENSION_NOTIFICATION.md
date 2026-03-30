@@ -70,7 +70,9 @@ After deployment, the email template will be automatically available in your sys
 
 ---
 
-### Step 2: Create the Notification
+### Step 2: Create the Notification (Optional)
+
+**Note:** The app now sends this notification automatically on Opportunity update when the closing date is extended. You can keep the Email Template only, or still configure a Notification in the UI if you prefer.
 
 1. Go to: **Setup → Email → Notification → New**
 
