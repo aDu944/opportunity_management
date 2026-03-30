@@ -975,12 +975,15 @@ def get_available_teams():
 @frappe.whitelist()
 def register_fcm_token(token):
     """Store the FCM token on the Employee record for the logged-in user.
-    Uses db.set_value to bypass field-level permission restrictions.
+    Uses raw SQL to bypass all hooks and permission checks.
     """
     user = frappe.session.user
     employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
     if not employee:
         return {"status": "no_employee"}
-    frappe.db.set_value("Employee", employee, "custom_fcm_token", token, update_modified=False)
+    frappe.db.sql(
+        "UPDATE `tabEmployee` SET `custom_fcm_token` = %s WHERE `name` = %s",
+        (token, employee),
+    )
     frappe.db.commit()
-    return {"status": "ok"}
+    return {"status": "ok", "employee": employee}
