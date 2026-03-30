@@ -27,6 +27,7 @@ doc_events = {
         "after_insert": "opportunity_management.opportunity_management.ess_hooks.on_checkin_insert",
     },
     "Leave Application": {
+        "after_insert": "opportunity_management.opportunity_management.ess_hooks.on_leave_application_insert",
         "on_update": "opportunity_management.opportunity_management.ess_hooks.on_leave_application_update",
     },
     "Salary Slip": {
