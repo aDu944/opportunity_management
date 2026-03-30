@@ -22,7 +22,10 @@ doc_events = {
     },
     "Quotation": {
         "after_insert": "opportunity_management.quotation_handler.on_quotation_save",
-    }
+    },
+    "Employee Checkin": {
+        "after_insert": "opportunity_management.opportunity_management.ess_hooks.on_checkin_insert",
+    },
 }
 
 # ============================================================================
@@ -59,6 +62,13 @@ website_route_rules = [
 # Fixtures (Optional - for exporting custom fields, etc.)
 # ============================================================================
 fixtures = [
+    {
+        "doctype": "Custom Field",
+        "filters": [
+            ["dt", "in", ["Employee Checkin"]],
+            ["fieldname", "in", ["custom_outside_zone"]]
+        ]
+    },
     {
         "doctype": "Custom Field",
         "filters": [
