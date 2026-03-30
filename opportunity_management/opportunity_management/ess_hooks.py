@@ -1,9 +1,96 @@
 """
 ESS (Employee Self Service) document event hooks.
+Handles email alerts and FCM push notifications triggered by HR document events.
 """
 
 import frappe
 from frappe.utils import format_datetime
+from opportunity_management.opportunity_management.fcm_utils import send_fcm_to_employee, send_fcm_to_user
+
+
+# ---------------------------------------------------------------------------
+# Leave Application
+# ---------------------------------------------------------------------------
+
+def on_leave_application_update(doc, method=None):
+    """Notify employee when their leave is approved or rejected."""
+    status = doc.status
+    if status not in ("Approved", "Rejected"):
+        return
+
+    employee_id = doc.employee
+    employee_name = frappe.db.get_value("Employee", employee_id, "employee_name") or employee_id
+
+    if status == "Approved":
+        title = "إجازتك تمت الموافقة عليها ✓"
+        body = f"تمت الموافقة على طلب إجازتك من {doc.from_date} إلى {doc.to_date}."
+    else:
+        title = "طلب الإجازة مرفوض"
+        body = f"تم رفض طلب إجازتك من {doc.from_date} إلى {doc.to_date}."
+
+    send_fcm_to_employee(employee_id, title=title, body=body, data={"doctype": "Leave Application", "name": doc.name})
+
+
+# ---------------------------------------------------------------------------
+# Salary Slip
+# ---------------------------------------------------------------------------
+
+def on_salary_slip_submit(doc, method=None):
+    """Notify employee when their payslip is ready."""
+    employee_id = doc.employee
+
+    title = "قسيمة الراتب جاهزة 💰"
+    body = f"قسيمة راتبك لشهر {doc.month_name or doc.start_date} أصبحت متاحة."
+
+    send_fcm_to_employee(employee_id, title=title, body=body, data={"doctype": "Salary Slip", "name": doc.name})
+
+
+# ---------------------------------------------------------------------------
+# Expense Claim
+# ---------------------------------------------------------------------------
+
+def on_expense_claim_update(doc, method=None):
+    """Notify employee when their expense claim is approved or rejected."""
+    status = doc.approval_status
+    if status not in ("Approved", "Rejected"):
+        return
+
+    employee_id = doc.employee
+
+    if status == "Approved":
+        title = "تمت الموافقة على المصروف ✓"
+        body = f"تمت الموافقة على مطالبة المصروف بمبلغ {doc.total_claimed_amount} {doc.currency or ''}."
+    else:
+        title = "مطالبة المصروف مرفوضة"
+        body = f"تم رفض مطالبة المصروف بمبلغ {doc.total_claimed_amount} {doc.currency or ''}."
+
+    send_fcm_to_employee(employee_id, title=title, body=body, data={"doctype": "Expense Claim", "name": doc.name})
+
+
+# ---------------------------------------------------------------------------
+# HR Notice / Announcement (custom doctype or Notice Board)
+# ---------------------------------------------------------------------------
+
+def on_announcement_insert(doc, method=None):
+    """Broadcast a notification to all active employees when an announcement is published."""
+    if doc.get("status") and doc.status != "Active":
+        return
+
+    title = doc.get("title") or doc.get("subject") or "إعلان جديد"
+    body = doc.get("description") or doc.get("content") or ""
+    # Truncate long body
+    if len(body) > 100:
+        body = body[:97] + "…"
+
+    employees = frappe.db.get_all(
+        "Employee",
+        filters={"status": "Active"},
+        fields=["name", "custom_fcm_token"],
+    )
+    for emp in employees:
+        if emp.get("custom_fcm_token"):
+            from opportunity_management.opportunity_management.fcm_utils import send_fcm
+            send_fcm(emp["custom_fcm_token"], title=title, body=body, data={"doctype": "Announcement", "name": doc.name})
 
 
 def on_checkin_insert(doc, method=None):

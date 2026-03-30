@@ -26,6 +26,18 @@ doc_events = {
     "Employee Checkin": {
         "after_insert": "opportunity_management.opportunity_management.ess_hooks.on_checkin_insert",
     },
+    "Leave Application": {
+        "on_update": "opportunity_management.opportunity_management.ess_hooks.on_leave_application_update",
+    },
+    "Salary Slip": {
+        "on_submit": "opportunity_management.opportunity_management.ess_hooks.on_salary_slip_submit",
+    },
+    "Expense Claim": {
+        "on_update": "opportunity_management.opportunity_management.ess_hooks.on_expense_claim_update",
+    },
+    "Announcement": {
+        "after_insert": "opportunity_management.opportunity_management.ess_hooks.on_announcement_insert",
+    },
 }
 
 # ============================================================================
