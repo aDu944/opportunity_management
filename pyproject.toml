@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "Custom Opportunity Assignment and Notification Management"
 requires-python = ">=3.10"
 authors = [{ name = "ALKHORA", email = "as@alkhora.com" }]
-dependencies = []
+dependencies = ["firebase-admin"]
 
 [tool.setuptools]
 include-package-data = true
