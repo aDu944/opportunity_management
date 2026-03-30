@@ -12,23 +12,139 @@ from opportunity_management.opportunity_management.fcm_utils import send_fcm_to_
 # Leave Application
 # ---------------------------------------------------------------------------
 
+def _get_hr_manager_emails():
+    """Return emails of all System Manager users (HR)."""
+    rows = frappe.db.sql(
+        """
+        SELECT DISTINCT u.email
+        FROM `tabUser` u
+        JOIN `tabHas Role` r ON r.parent = u.name
+        WHERE r.role = 'System Manager'
+          AND u.enabled = 1
+          AND u.email != 'Administrator'
+          AND u.email IS NOT NULL
+          AND u.email != ''
+        """,
+        as_dict=True,
+    )
+    return [r["email"] for r in rows]
+
+
+def on_leave_application_insert(doc, method=None):
+    """Email HR/managers when an employee submits a new leave request."""
+    employee_name = frappe.db.get_value("Employee", doc.employee, "employee_name") or doc.employee
+    recipients = _get_hr_manager_emails()
+    if not recipients:
+        return
+
+    subject = f"طلب إجازة جديد — {employee_name} | New Leave Request — {employee_name}"
+    link = f"{frappe.utils.get_url()}/app/leave-application/{doc.name}"
+
+    message = f"""
+<p>A new leave application has been submitted and requires your review.</p>
+
+<table style="border-collapse:collapse;width:100%;max-width:500px">
+  <tr>
+    <td style="padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold">Employee</td>
+    <td style="padding:8px 12px;border:1px solid #ddd">{employee_name} ({doc.employee})</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold">Leave Type</td>
+    <td style="padding:8px 12px;border:1px solid #ddd">{doc.leave_type}</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold">From</td>
+    <td style="padding:8px 12px;border:1px solid #ddd">{doc.from_date}</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold">To</td>
+    <td style="padding:8px 12px;border:1px solid #ddd">{doc.to_date}</td>
+  </tr>
+  {"<tr><td style='padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold'>Half Day</td><td style='padding:8px 12px;border:1px solid #ddd'>Yes</td></tr>" if doc.get("half_day") else ""}
+  {"<tr><td style='padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold'>Reason</td><td style='padding:8px 12px;border:1px solid #ddd'>" + (doc.description or "") + "</td></tr>" if doc.get("description") else ""}
+</table>
+
+<p style="margin-top:16px">
+  <a href="{link}"
+     style="background:#1565C0;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold">
+    Review Leave Request
+  </a>
+</p>
+
+<p style="color:#888;font-size:12px;margin-top:24px">
+  This notification was sent automatically by the ALKHORA ESS system.
+</p>
+"""
+    frappe.sendmail(recipients=recipients, subject=subject, message=message, now=True)
+
+
 def on_leave_application_update(doc, method=None):
-    """Notify employee when their leave is approved or rejected."""
+    """Notify employee (FCM + email) when their leave is approved or rejected."""
     status = doc.status
     if status not in ("Approved", "Rejected"):
         return
 
     employee_id = doc.employee
     employee_name = frappe.db.get_value("Employee", employee_id, "employee_name") or employee_id
+    employee_user = frappe.db.get_value("Employee", employee_id, "user_id")
 
     if status == "Approved":
-        title = "إجازتك تمت الموافقة عليها ✓"
-        body = f"تمت الموافقة على طلب إجازتك من {doc.from_date} إلى {doc.to_date}."
+        fcm_title = "إجازتك تمت الموافقة عليها ✓"
+        fcm_body = f"تمت الموافقة على طلب إجازتك من {doc.from_date} إلى {doc.to_date}."
+        email_subject = f"Leave Approved — {employee_name}"
+        status_html = "<span style='color:#2e7d32;font-weight:bold'>Approved ✓</span>"
     else:
-        title = "طلب الإجازة مرفوض"
-        body = f"تم رفض طلب إجازتك من {doc.from_date} إلى {doc.to_date}."
+        fcm_title = "طلب الإجازة مرفوض"
+        fcm_body = f"تم رفض طلب إجازتك من {doc.from_date} إلى {doc.to_date}."
+        email_subject = f"Leave Rejected — {employee_name}"
+        status_html = "<span style='color:#c62828;font-weight:bold'>Rejected ✗</span>"
 
-    send_fcm_to_employee(employee_id, title=title, body=body, data={"doctype": "Leave Application", "name": doc.name})
+    # FCM push notification
+    send_fcm_to_employee(employee_id, title=fcm_title, body=fcm_body,
+                         data={"doctype": "Leave Application", "name": doc.name, "screen": "leave"})
+
+    # Email to employee
+    if not employee_user:
+        return
+    employee_email = frappe.db.get_value("User", employee_user, "email")
+    if not employee_email:
+        return
+
+    link = f"{frappe.utils.get_url()}/app/leave-application/{doc.name}"
+    message = f"""
+<p>Your leave application status has been updated.</p>
+
+<table style="border-collapse:collapse;width:100%;max-width:500px">
+  <tr>
+    <td style="padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold">Status</td>
+    <td style="padding:8px 12px;border:1px solid #ddd">{status_html}</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold">Leave Type</td>
+    <td style="padding:8px 12px;border:1px solid #ddd">{doc.leave_type}</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold">From</td>
+    <td style="padding:8px 12px;border:1px solid #ddd">{doc.from_date}</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold">To</td>
+    <td style="padding:8px 12px;border:1px solid #ddd">{doc.to_date}</td>
+  </tr>
+</table>
+
+<p style="margin-top:16px">
+  <a href="{link}"
+     style="background:#1565C0;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold">
+    View Leave Application
+  </a>
+</p>
+
+<p style="color:#888;font-size:12px;margin-top:24px">
+  This notification was sent automatically by the ALKHORA ESS system.
+</p>
+"""
+    frappe.sendmail(recipients=[employee_email], subject=email_subject, message=message, now=True)
 
 
 # ---------------------------------------------------------------------------
