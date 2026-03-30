@@ -1011,3 +1011,65 @@ def register_fcm_token(token):
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "register_fcm_token error")
         frappe.throw(str(e))
+
+
+@frappe.whitelist()
+def submit_late_checkin_leave(employee):
+    """Auto-submit a half-day Time-Off Leave for a late check-in (9:15:01–9:59:59).
+    If the employee has remaining balance, uses Time-Off Leave type.
+    If balance is exhausted, submits the same type — ERPNext will mark it as LWP.
+    """
+    today = frappe.utils.today()
+    leave_type = "Time-Off Leave - زمنية"
+
+    # Avoid duplicate: if a leave already exists for today, skip
+    existing = frappe.db.exists("Leave Application", {
+        "employee": employee,
+        "from_date": today,
+        "to_date": today,
+        "leave_type": leave_type,
+        "docstatus": ["!=", 2],
+    })
+    if existing:
+        return {"status": "already_exists", "leave": existing}
+
+    # Check remaining balance
+    try:
+        from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
+        balance = get_leave_balance_on(employee, leave_type, today)
+    except Exception:
+        # Fallback balance calculation
+        allocated = frappe.db.get_value(
+            "Leave Allocation",
+            {"employee": employee, "leave_type": leave_type, "docstatus": 1},
+            "total_leaves_allocated",
+        ) or 0
+        used = frappe.db.count(
+            "Leave Application",
+            {"employee": employee, "leave_type": leave_type, "docstatus": 1},
+        )
+        balance = float(allocated) - float(used)
+
+    description = (
+        "Auto-submitted: late check-in"
+        if balance > 0
+        else "Auto-submitted: late check-in (balance exhausted — half-day deduction)"
+    )
+
+    doc = frappe.get_doc({
+        "doctype": "Leave Application",
+        "employee": employee,
+        "leave_type": leave_type,
+        "from_date": today,
+        "to_date": today,
+        "half_day": 1,
+        "half_day_date": today,
+        "description": description,
+        "status": "Open",
+    })
+    doc.insert(ignore_permissions=True)
+    doc.submit()
+    frappe.db.commit()
+
+    status = "time_off_leave" if balance > 0 else "half_day_deduction"
+    return {"status": status, "leave": doc.name, "balance_before": balance}
