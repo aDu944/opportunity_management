@@ -977,13 +977,17 @@ def register_fcm_token(token):
     """Store the FCM token on the Employee record for the logged-in user.
     Uses raw SQL to bypass all hooks and permission checks.
     """
-    user = frappe.session.user
-    employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
-    if not employee:
-        return {"status": "no_employee"}
-    frappe.db.sql(
-        "UPDATE `tabEmployee` SET `custom_fcm_token` = %s WHERE `name` = %s",
-        (token, employee),
-    )
-    frappe.db.commit()
-    return {"status": "ok", "employee": employee}
+    try:
+        user = frappe.session.user
+        employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
+        if not employee:
+            return {"status": "no_employee", "user": user}
+        frappe.db.sql(
+            "UPDATE `tabEmployee` SET `custom_fcm_token` = %s WHERE `name` = %s",
+            (token, employee),
+        )
+        frappe.db.commit()
+        return {"status": "ok", "employee": employee}
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "register_fcm_token error")
+        frappe.throw(str(e))
