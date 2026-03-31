@@ -69,10 +69,16 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
             notification=messaging.Notification(title=title, body=body),
             data={str(k): str(v) for k, v in (data or {}).items()},
             token=token,
-            android=messaging.AndroidConfig(priority="high"),
+            android=messaging.AndroidConfig(
+                priority="high",
+                notification=messaging.AndroidNotification(
+                    channel_id="alkhora_ess_main",
+                    sound="bell",
+                ),
+            ),
             apns=messaging.APNSConfig(
                 payload=messaging.APNSPayload(
-                    aps=messaging.Aps(sound="default", badge=1)
+                    aps=messaging.Aps(sound="bell.caf", badge=1)
                 )
             ),
         )
