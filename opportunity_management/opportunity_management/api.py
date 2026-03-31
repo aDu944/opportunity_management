@@ -1014,8 +1014,9 @@ def register_fcm_token(token):
 
 
 @frappe.whitelist()
-def submit_late_checkin_leave(employee):
-    """Auto-submit a half-day Time-Off Leave for a late check-in (9:15:01–9:59:59).
+def submit_late_checkin_leave(employee, checkin_time=None):
+    """Auto-submit a Time-Off Leave for a late check-in (9:15:01–9:59:59).
+    Records the time range: from 09:00:00 to the actual check-in time.
     If the employee has remaining balance, uses Time-Off Leave type.
     If balance is exhausted, submits the same type — ERPNext will mark it as LWP.
     """
@@ -1056,6 +1057,8 @@ def submit_late_checkin_leave(employee):
         else "Auto-submitted: late check-in (balance exhausted — half-day deduction)"
     )
 
+    to_time = checkin_time or frappe.utils.now_datetime().strftime("%H:%M:%S")
+
     doc = frappe.get_doc({
         "doctype": "Leave Application",
         "employee": employee,
@@ -1064,6 +1067,8 @@ def submit_late_checkin_leave(employee):
         "to_date": today,
         "half_day": 1,
         "half_day_date": today,
+        "custom_from_time": "09:00:00",
+        "custom_to_time": to_time,
         "description": description,
         "status": "Open",
     })
