@@ -1078,3 +1078,15 @@ def submit_late_checkin_leave(employee, checkin_time=None):
 
     status = "time_off_leave" if balance > 0 else "half_day_deduction"
     return {"status": status, "leave": doc.name, "balance_before": balance}
+
+
+@frappe.whitelist()
+def mark_notifications_as_read():
+    """Mark all Notification Log entries for the current user as read."""
+    frappe.db.sql("""
+        UPDATE `tabNotification Log`
+        SET `read` = 1
+        WHERE `for_user` = %s AND `read` = 0
+    """, frappe.session.user)
+    frappe.db.commit()
+    return {"status": "ok"}
