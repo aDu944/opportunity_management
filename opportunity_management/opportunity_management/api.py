@@ -1090,3 +1090,26 @@ def mark_notifications_as_read():
     """, frappe.session.user)
     frappe.db.commit()
     return {"status": "ok"}
+
+
+@frappe.whitelist()
+def get_expense_categories():
+    """Return active ESS Expense Categories with their mapped accounts."""
+    try:
+        categories = frappe.db.get_all(
+            "ESS Expense Category",
+            filters={"is_active": 1},
+            fields=["name", "category_name", "category_name_ar", "account"],
+            order_by="category_name asc",
+        )
+        # Fetch account currency for each account
+        for cat in categories:
+            if cat.get("account"):
+                currency = frappe.db.get_value(
+                    "Account", cat["account"], "account_currency"
+                ) or "IQD"
+                cat["account_currency"] = currency
+        return categories
+    except Exception:
+        # DocType may not exist yet — return empty so app doesn't crash
+        return []
