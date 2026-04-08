@@ -57,6 +57,23 @@ def _get_app():
         return None
 
 
+def _create_notification_log(user: str, title: str, body: str) -> None:
+    """Write a Notification Log entry so the employee sees it in-app."""
+    try:
+        doc = frappe.get_doc({
+            "doctype": "Notification Log",
+            "subject": title,
+            "email_content": body,
+            "for_user": user,
+            "type": "Alert",
+            "read": 0,
+        })
+        doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+    except Exception as e:
+        frappe.log_error(str(e), "FCM Notification Log Error")
+
+
 def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
     """Send an FCM notification to a single device token. Returns True on success."""
     app = _get_app()
@@ -94,7 +111,12 @@ def send_fcm_to_employee(employee_id: str, title: str, body: str, data: dict = N
     token = frappe.db.get_value("Employee", employee_id, "custom_fcm_token")
     if not token:
         return False
-    return send_fcm(token, title, body, data)
+    ok = send_fcm(token, title, body, data)
+    if ok:
+        user = frappe.db.get_value("Employee", employee_id, "user_id")
+        if user:
+            _create_notification_log(user, title, body)
+    return ok
 
 
 def send_fcm_to_user(user_email: str, title: str, body: str, data: dict = None) -> bool:
