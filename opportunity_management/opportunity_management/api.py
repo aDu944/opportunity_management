@@ -1099,8 +1099,8 @@ def get_expense_categories():
         categories = frappe.db.get_all(
             "ESS Expense Category",
             filters={"is_active": 1},
-            fields=["name", "category_name_ar", "account"],
-            order_by="name asc",
+            fields=["name", "category_name", "category_name_ar", "account"],
+            order_by="category_name asc",
         )
         # Fetch account currency for each account
         for cat in categories:
