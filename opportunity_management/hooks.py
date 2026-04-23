@@ -61,7 +61,11 @@ scheduler_events = {
         # Weekly manager digest (Mondays at 9:00 AM)
         "0 9 * * 1": [
             "opportunity_management.opportunity_management.tasks.send_manager_weekly_digest"
-        ]
+        ],
+        # Process scheduled FCM broadcasts every 5 minutes
+        "*/5 * * * *": [
+            "opportunity_management.opportunity_management.api.process_scheduled_broadcasts"
+        ],
     }
 }
 

@@ -1187,6 +1187,194 @@ def get_bank_balances(company=None):
         }
 
 
+def _is_system_manager() -> bool:
+    return "System Manager" in set(frappe.get_roles(frappe.session.user))
+
+
+def _resolve_recipient_employees(mode: str, departments=None, roles=None, employees=None):
+    """Resolve a recipients_mode + filters into a list of Employee IDs with FCM tokens."""
+    base_filters = {"status": "Active"}
+    if mode == "all":
+        rows = frappe.db.get_all(
+            "Employee",
+            filters=base_filters,
+            fields=["name"],
+        )
+    elif mode == "department":
+        depts = [d.strip() for d in (departments or "").split(",") if d.strip()]
+        if not depts:
+            return []
+        rows = frappe.db.get_all(
+            "Employee",
+            filters={**base_filters, "department": ["in", depts]},
+            fields=["name"],
+        )
+    elif mode == "role":
+        roles_list = [r.strip() for r in (roles or "").split(",") if r.strip()]
+        if not roles_list:
+            return []
+        # Find users with any of the roles, then map to employees
+        user_rows = frappe.db.sql(
+            """
+            SELECT DISTINCT u.name
+            FROM `tabUser` u
+            INNER JOIN `tabHas Role` r ON r.parent = u.name
+            WHERE u.enabled = 1 AND r.role IN %(roles)s
+            """,
+            {"roles": tuple(roles_list)},
+            as_dict=True,
+        )
+        users = [u["name"] for u in user_rows]
+        if not users:
+            return []
+        rows = frappe.db.get_all(
+            "Employee",
+            filters={**base_filters, "user_id": ["in", users]},
+            fields=["name"],
+        )
+    elif mode == "specific":
+        emp_list = [e.strip() for e in (employees or "").split(",") if e.strip()]
+        if not emp_list:
+            return []
+        rows = frappe.db.get_all(
+            "Employee",
+            filters={**base_filters, "name": ["in", emp_list]},
+            fields=["name"],
+        )
+    else:
+        return []
+    return [r["name"] for r in rows]
+
+
+@frappe.whitelist()
+def get_notification_picker_meta():
+    """Return departments, roles, and active employees for the broadcast picker UI."""
+    if not _is_system_manager():
+        return {"error": "permission_denied", "message": "Only System Managers can broadcast notifications."}
+
+    departments = frappe.db.get_all(
+        "Department",
+        filters={"is_group": 0},
+        fields=["name", "department_name"],
+        order_by="department_name asc",
+    )
+    # Common roles users typically broadcast to (filter out system roles)
+    excluded = {"Administrator", "All", "Guest", "System Manager", "Desk User"}
+    role_rows = frappe.db.get_all(
+        "Role",
+        filters={"disabled": 0},
+        fields=["name"],
+        order_by="name asc",
+    )
+    roles = [r["name"] for r in role_rows if r["name"] not in excluded]
+
+    employees = frappe.db.get_all(
+        "Employee",
+        filters={"status": "Active"},
+        fields=["name", "employee_name", "department"],
+        order_by="employee_name asc",
+        limit_page_length=2000,
+    )
+    return {
+        "departments": departments,
+        "roles": roles,
+        "employees": employees,
+    }
+
+
+@frappe.whitelist()
+def send_admin_notification(title, body, recipients_mode="all",
+                             departments=None, roles=None, employees=None,
+                             scheduled_at=None):
+    """
+    Send an FCM notification (or schedule one) to a set of employees.
+    Restricted to System Manager. Logs the action as an ESS Broadcast doc.
+    """
+    if not _is_system_manager():
+        return {"error": "permission_denied", "message": "Only System Managers can broadcast notifications."}
+
+    title = (title or "").strip()
+    body = (body or "").strip()
+    if not title or not body:
+        return {"error": "invalid", "message": "Title and body are required."}
+
+    # Create the broadcast record (audit log)
+    broadcast = frappe.get_doc({
+        "doctype": "ESS Broadcast",
+        "title": title,
+        "body": body,
+        "recipients_mode": recipients_mode,
+        "departments": departments or "",
+        "roles": roles or "",
+        "employees": employees or "",
+        "status": "Scheduled" if scheduled_at else "Draft",
+        "scheduled_at": scheduled_at or None,
+    })
+    broadcast.insert(ignore_permissions=True)
+    frappe.db.commit()
+
+    if scheduled_at:
+        return {"status": "scheduled", "broadcast": broadcast.name, "scheduled_at": scheduled_at}
+
+    # Send immediately
+    result = _execute_broadcast(broadcast.name)
+    return {"status": "sent", "broadcast": broadcast.name, **result}
+
+
+def _execute_broadcast(broadcast_name: str) -> dict:
+    """Execute a broadcast: resolve recipients, send FCM to each, update the record."""
+    from opportunity_management.opportunity_management.fcm_utils import send_fcm_to_employee
+
+    doc = frappe.get_doc("ESS Broadcast", broadcast_name)
+    employees = _resolve_recipient_employees(
+        doc.recipients_mode, doc.departments, doc.roles, doc.employees
+    )
+
+    sent = 0
+    failed = 0
+    errors = []
+    for emp_id in employees:
+        try:
+            ok = send_fcm_to_employee(
+                emp_id,
+                doc.title,
+                doc.body,
+                data={"type": "admin_broadcast", "broadcast": doc.name},
+            )
+            if ok:
+                sent += 1
+            else:
+                failed += 1
+                errors.append(f"{emp_id}: no token or send failed")
+        except Exception as e:
+            failed += 1
+            errors.append(f"{emp_id}: {e}")
+
+    doc.db_set("sent_count", sent)
+    doc.db_set("failed_count", failed)
+    doc.db_set("sent_at", frappe.utils.now_datetime())
+    doc.db_set("status", "Sent" if sent > 0 else "Failed")
+    if errors:
+        doc.db_set("error_log", "\n".join(errors[:50]))
+    frappe.db.commit()
+    return {"sent": sent, "failed": failed, "total": len(employees)}
+
+
+def process_scheduled_broadcasts():
+    """Scheduler hook — fire any Scheduled broadcasts whose time has come."""
+    now = frappe.utils.now_datetime()
+    pending = frappe.db.get_all(
+        "ESS Broadcast",
+        filters={"status": "Scheduled", "scheduled_at": ["<=", now]},
+        fields=["name"],
+    )
+    for row in pending:
+        try:
+            _execute_broadcast(row["name"])
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), f"process_scheduled_broadcasts: {row['name']}")
+
+
 @frappe.whitelist()
 def get_expense_categories():
     """Return active ESS Expense Categories with their mapped accounts."""

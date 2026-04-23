@@ -1,0 +1,157 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:BRD-{YYYY}-{MM}-{#####}",
+ "creation": "2026-04-23 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "body",
+  "column_break_meta",
+  "status",
+  "scheduled_at",
+  "sent_at",
+  "section_break_recipients",
+  "recipients_mode",
+  "departments",
+  "roles",
+  "employees",
+  "section_break_results",
+  "sent_count",
+  "failed_count",
+  "column_break_results",
+  "error_log"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Title",
+   "reqd": 1
+  },
+  {
+   "fieldname": "body",
+   "fieldtype": "Small Text",
+   "label": "Body",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_meta",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nScheduled\nSent\nFailed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "scheduled_at",
+   "fieldtype": "Datetime",
+   "label": "Scheduled At"
+  },
+  {
+   "fieldname": "sent_at",
+   "fieldtype": "Datetime",
+   "label": "Sent At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_recipients",
+   "fieldtype": "Section Break",
+   "label": "Recipients"
+  },
+  {
+   "default": "all",
+   "fieldname": "recipients_mode",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Recipients Mode",
+   "options": "all\ndepartment\nrole\nspecific",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.recipients_mode==='department'",
+   "description": "Comma-separated department names",
+   "fieldname": "departments",
+   "fieldtype": "Small Text",
+   "label": "Departments"
+  },
+  {
+   "depends_on": "eval:doc.recipients_mode==='role'",
+   "description": "Comma-separated role names",
+   "fieldname": "roles",
+   "fieldtype": "Small Text",
+   "label": "Roles"
+  },
+  {
+   "depends_on": "eval:doc.recipients_mode==='specific'",
+   "description": "Comma-separated Employee IDs",
+   "fieldname": "employees",
+   "fieldtype": "Small Text",
+   "label": "Employees"
+  },
+  {
+   "fieldname": "section_break_results",
+   "fieldtype": "Section Break",
+   "label": "Results"
+  },
+  {
+   "default": "0",
+   "fieldname": "sent_count",
+   "fieldtype": "Int",
+   "label": "Sent Count",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "failed_count",
+   "fieldtype": "Int",
+   "label": "Failed Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_results",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "error_log",
+   "fieldtype": "Long Text",
+   "label": "Error Log",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 0,
+ "links": [],
+ "modified": "2026-04-23 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Opportunity Management",
+ "name": "ESS Broadcast",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 0,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
