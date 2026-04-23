@@ -1135,43 +1135,56 @@ def get_bank_balances(company=None):
     Return all GL accounts of type 'Bank' for the given company along with
     their current balance. Restricted to System Manager or Accounts Manager.
     """
-    roles = frappe.get_roles(frappe.session.user)
-    if not ({"System Manager", "Accounts Manager"} & set(roles)):
-        frappe.throw(_("Not permitted"), frappe.PermissionError)
+    try:
+        roles = set(frappe.get_roles(frappe.session.user))
+        if not ({"System Manager", "Accounts Manager"} & roles):
+            return {
+                "error": "permission_denied",
+                "message": "You need the System Manager or Accounts Manager role to view bank balances.",
+                "company": None,
+                "accounts": [],
+            }
 
-    if not company:
-        # Default to the user's first allowed company
-        company = frappe.defaults.get_user_default("Company") or frappe.db.get_value(
-            "Company", {}, "name"
+        if not company:
+            company = frappe.defaults.get_user_default("Company") or frappe.db.get_value(
+                "Company", {}, "name"
+            )
+
+        accounts = frappe.db.get_all(
+            "Account",
+            filters={
+                "company": company,
+                "account_type": "Bank",
+                "is_group": 0,
+                "disabled": 0,
+            },
+            fields=["name", "account_name", "account_currency"],
+            order_by="account_name asc",
         )
 
-    accounts = frappe.db.get_all(
-        "Account",
-        filters={
-            "company": company,
-            "account_type": "Bank",
-            "is_group": 0,
-            "disabled": 0,
-        },
-        fields=["name", "account_name", "account_currency"],
-        order_by="account_name asc",
-    )
-
-    from erpnext.accounts.utils import get_balance_on
-    today = frappe.utils.nowdate()
-    results = []
-    for acc in accounts:
-        try:
-            balance = get_balance_on(account=acc["name"], date=today)
-        except Exception:
-            balance = 0
-        results.append({
-            "name": acc["name"],
-            "account_name": acc["account_name"],
-            "account_currency": acc.get("account_currency") or "IQD",
-            "balance": flt(balance),
-        })
-    return {"company": company, "accounts": results}
+        from erpnext.accounts.utils import get_balance_on
+        today = frappe.utils.nowdate()
+        results = []
+        for acc in accounts:
+            try:
+                balance = get_balance_on(account=acc["name"], date=today)
+            except Exception:
+                balance = 0
+            results.append({
+                "name": acc["name"],
+                "account_name": acc["account_name"],
+                "account_currency": acc.get("account_currency") or "IQD",
+                "balance": flt(balance),
+            })
+        return {"company": company, "accounts": results}
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "get_bank_balances error")
+        return {
+            "error": "server_error",
+            "message": "Failed to load bank balances.",
+            "company": None,
+            "accounts": [],
+        }
 
 
 @frappe.whitelist()
