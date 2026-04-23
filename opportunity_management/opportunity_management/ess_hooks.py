@@ -282,3 +282,49 @@ def on_checkin_insert(doc, method=None):
         message=message,
         now=True,
     )
+
+
+def on_notification_log_insert(doc, method=None):
+    """Send a push notification to the user's device when a Notification Log entry is created.
+
+    ERPNext writes to Notification Log directly when a Notification rule fires
+    (e.g. 'Journal Entry Submitted'). This hook bridges that to FCM so users
+    get a push notification on their phone.
+    """
+    try:
+        # Avoid recursion: skip when this very Log was created by our FCM helper
+        if doc.get('flags', {}).get('from_fcm_send'):
+            return
+
+        user = doc.get('for_user')
+        if not user or user == 'Administrator':
+            return
+
+        # Find the Employee linked to this user (must have an FCM token)
+        token = frappe.db.get_value('Employee', {'user_id': user}, 'custom_fcm_token')
+        if not token:
+            return
+
+        title = doc.get('subject') or 'Notification'
+        body = doc.get('email_content') or ''
+        # Strip HTML tags from body
+        import re
+        body = re.sub(r'<[^>]+>', '', body or '').strip()
+        if len(body) > 200:
+            body = body[:197] + '…'
+
+        from opportunity_management.opportunity_management.fcm_utils import send_fcm
+        send_fcm(
+            token,
+            title=title,
+            body=body,
+            data={
+                'type': 'notification_log',
+                'name': doc.name,
+                'document_type': doc.get('document_type') or '',
+                'document_name': doc.get('document_name') or '',
+            },
+        )
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), 'on_notification_log_insert error')
+

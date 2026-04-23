@@ -1093,6 +1093,88 @@ def mark_notifications_as_read():
 
 
 @frappe.whitelist()
+def notify_outside_zone_checkin(employee, location_name=None, checkin_time=None):
+    """
+    Called by the mobile app when an employee checks in outside any approved zone.
+    Sends an FCM push notification to all System Manager users.
+    """
+    from opportunity_management.opportunity_management.fcm_utils import send_fcm_to_user
+
+    emp_name = frappe.db.get_value("Employee", employee, "employee_name") or employee
+    loc_label = location_name or "Unknown Location"
+    time_label = checkin_time or frappe.utils.now_datetime().strftime("%H:%M")
+
+    title = "Check-in Outside Zone"
+    body = f"{emp_name} checked in outside approved zone ({loc_label}) at {time_label}."
+
+    # Find all active System Manager users
+    system_managers = frappe.db.sql("""
+        SELECT DISTINCT ur.parent AS user
+        FROM `tabHas Role` ur
+        INNER JOIN `tabUser` u ON u.name = ur.parent
+        WHERE ur.role = 'System Manager'
+          AND u.enabled = 1
+          AND u.user_type = 'System User'
+    """, as_dict=True)
+
+    sent = 0
+    for row in system_managers:
+        try:
+            ok = send_fcm_to_user(row["user"], title, body, data={"type": "outside_zone", "employee": employee})
+            if ok:
+                sent += 1
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "notify_outside_zone_checkin FCM error")
+
+    return {"status": "ok", "notified": sent}
+
+
+@frappe.whitelist()
+def get_bank_balances(company=None):
+    """
+    Return all GL accounts of type 'Bank' for the given company along with
+    their current balance. Restricted to System Manager or Accounts Manager.
+    """
+    roles = frappe.get_roles(frappe.session.user)
+    if not ({"System Manager", "Accounts Manager"} & set(roles)):
+        frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+    if not company:
+        # Default to the user's first allowed company
+        company = frappe.defaults.get_user_default("Company") or frappe.db.get_value(
+            "Company", {}, "name"
+        )
+
+    accounts = frappe.db.get_all(
+        "Account",
+        filters={
+            "company": company,
+            "account_type": "Bank",
+            "is_group": 0,
+            "disabled": 0,
+        },
+        fields=["name", "account_name", "account_currency"],
+        order_by="account_name asc",
+    )
+
+    from erpnext.accounts.utils import get_balance_on
+    today = frappe.utils.nowdate()
+    results = []
+    for acc in accounts:
+        try:
+            balance = get_balance_on(account=acc["name"], date=today)
+        except Exception:
+            balance = 0
+        results.append({
+            "name": acc["name"],
+            "account_name": acc["account_name"],
+            "account_currency": acc.get("account_currency") or "IQD",
+            "balance": flt(balance),
+        })
+    return {"company": company, "accounts": results}
+
+
+@frappe.whitelist()
 def get_expense_categories():
     """Return active ESS Expense Categories with their mapped accounts."""
     try:

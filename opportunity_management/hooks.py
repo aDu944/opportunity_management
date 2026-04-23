@@ -39,6 +39,9 @@ doc_events = {
     "Announcement": {
         "after_insert": "opportunity_management.opportunity_management.ess_hooks.on_announcement_insert",
     },
+    "Notification Log": {
+        "after_insert": "opportunity_management.opportunity_management.ess_hooks.on_notification_log_insert",
+    },
 }
 
 # ============================================================================
