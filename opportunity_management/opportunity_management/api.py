@@ -1201,12 +1201,22 @@ def _resolve_recipient_employees(mode: str, departments=None, roles=None, employ
             fields=["name"],
         )
     elif mode == "department":
-        depts = [d.strip() for d in (departments or "").split(",") if d.strip()]
-        if not depts:
+        dept_names = [d.strip() for d in (departments or "").split(",") if d.strip()]
+        if not dept_names:
+            return []
+        # Department is company-scoped — resolve display names to all matching
+        # Department records across companies, then filter employees.
+        dept_records = frappe.db.get_all(
+            "Department",
+            filters={"department_name": ["in", dept_names]},
+            fields=["name"],
+        )
+        dept_ids = [d["name"] for d in dept_records]
+        if not dept_ids:
             return []
         rows = frappe.db.get_all(
             "Employee",
-            filters={**base_filters, "department": ["in", depts]},
+            filters={**base_filters, "department": ["in", dept_ids]},
             fields=["name"],
         )
     elif mode == "role":
@@ -1252,12 +1262,24 @@ def get_notification_picker_meta():
     if not _is_system_manager():
         return {"error": "permission_denied", "message": "Only System Managers can broadcast notifications."}
 
-    departments = frappe.db.get_all(
+    # Department is company-scoped: the same display name can appear once per
+    # company. Deduplicate by department_name so the user sees each name once;
+    # the resolver fans the selection back out to all matching records.
+    raw_depts = frappe.db.get_all(
         "Department",
         filters={"is_group": 0},
-        fields=["name", "department_name"],
+        fields=["department_name"],
         order_by="department_name asc",
     )
+    seen = set()
+    departments = []
+    for d in raw_depts:
+        name = d.get("department_name")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        # Use department_name as both the picker value and display label.
+        departments.append({"name": name, "department_name": name})
     # Common roles users typically broadcast to (filter out system roles)
     excluded = {"Administrator", "All", "Guest", "System Manager", "Desk User"}
     role_rows = frappe.db.get_all(
