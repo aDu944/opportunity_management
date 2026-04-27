@@ -3,3 +3,4 @@ __pycache__/
 *.pyo
 .env
 opportunity_management/firebase_service_account.json
+*.egg-info/

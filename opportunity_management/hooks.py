@@ -130,14 +130,11 @@ fixtures = [
 # ============================================================================
 # Include FullCalendar library
 app_include_css = [
-    "https://cdn.jsdelivr.net/npm/fullcalendar@5.11.5/main.min.css"
+    "/assets/opportunity_management/fullcalendar/main.min.css"
 ]
 
 app_include_js = [
-    "https://cdn.jsdelivr.net/npm/fullcalendar@5.11.5/main.min.js",
-    "https://cdn.jsdelivr.net/npm/fullcalendar@5.11.5/daygrid/main.min.js",
-    "https://cdn.jsdelivr.net/npm/fullcalendar@5.11.5/timegrid/main.min.js",
-    "https://cdn.jsdelivr.net/npm/fullcalendar@5.11.5/list/main.min.js"
+    "/assets/opportunity_management/fullcalendar/main.min.js"
 ]
 
 # ============================================================================
