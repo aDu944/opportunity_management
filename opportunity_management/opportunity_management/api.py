@@ -1191,6 +1191,21 @@ def _is_system_manager() -> bool:
     return "System Manager" in set(frappe.get_roles(frappe.session.user))
 
 
+@frappe.whitelist()
+def get_my_roles():
+    """
+    Return the list of roles assigned to the currently authenticated user.
+
+    Frappe's built-in `frappe.get_roles` is not whitelisted for the HTTP API
+    when the caller is a non-admin (System Manager / Desk User), so the
+    mobile app needs this thin wrapper. Only returns the calling user's
+    own roles — never anyone else's.
+    """
+    if frappe.session.user == "Guest":
+        return []
+    return frappe.get_roles(frappe.session.user)
+
+
 def _resolve_recipient_employees(mode: str, departments=None, roles=None, employees=None):
     """Resolve a recipients_mode + filters into a list of Employee IDs with FCM tokens."""
     base_filters = {"status": "Active"}
