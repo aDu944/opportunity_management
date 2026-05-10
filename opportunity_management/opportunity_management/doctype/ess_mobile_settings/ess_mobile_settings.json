@@ -1,0 +1,261 @@
+{
+ "actions": [],
+ "creation": "2026-04-26 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_app",
+  "min_app_version",
+  "force_update_message_en",
+  "force_update_message_ar",
+  "section_break_maintenance",
+  "maintenance_mode",
+  "maintenance_message_en",
+  "maintenance_message_ar",
+  "section_break_banner",
+  "announcement_banner_en",
+  "announcement_banner_ar",
+  "section_break_modules",
+  "enable_bank_balances",
+  "enable_send_notification",
+  "enable_expenses",
+  "enable_holidays",
+  "column_break_modules",
+  "enable_announcements",
+  "enable_notifications",
+  "enable_approvals",
+  "enable_geofence_reminders",
+  "section_break_rules",
+  "checkin_window_start_hour",
+  "checkin_window_end_hour",
+  "late_checkin_threshold_minutes",
+  "default_leave_type_for_late_checkin",
+  "column_break_rules",
+  "outside_zone_allowed",
+  "default_geofence_radius_m",
+  "section_break_branding",
+  "primary_color_hex",
+  "support_email",
+  "support_whatsapp_number"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_app",
+   "fieldtype": "Section Break",
+   "label": "App Update Control"
+  },
+  {
+   "default": "1.0.0",
+   "description": "Users on lower versions are forced to update before they can use the app.",
+   "fieldname": "min_app_version",
+   "fieldtype": "Data",
+   "label": "Minimum App Version",
+   "reqd": 1
+  },
+  {
+   "default": "Please update ALKHORA ESS to the latest version to continue.",
+   "fieldname": "force_update_message_en",
+   "fieldtype": "Small Text",
+   "label": "Force Update Message (English)"
+  },
+  {
+   "default": "يرجى تحديث تطبيق ألخورة لأحدث إصدار للمتابعة.",
+   "fieldname": "force_update_message_ar",
+   "fieldtype": "Small Text",
+   "label": "Force Update Message (Arabic)"
+  },
+  {
+   "fieldname": "section_break_maintenance",
+   "fieldtype": "Section Break",
+   "label": "Maintenance Mode"
+  },
+  {
+   "default": "0",
+   "description": "When enabled, the app shows a maintenance screen instead of normal UI.",
+   "fieldname": "maintenance_mode",
+   "fieldtype": "Check",
+   "label": "Maintenance Mode"
+  },
+  {
+   "default": "We're performing scheduled maintenance. The app will be back shortly.",
+   "fieldname": "maintenance_message_en",
+   "fieldtype": "Small Text",
+   "label": "Maintenance Message (English)"
+  },
+  {
+   "default": "نجري حالياً صيانة مجدولة. سيعود التطبيق للعمل قريباً.",
+   "fieldname": "maintenance_message_ar",
+   "fieldtype": "Small Text",
+   "label": "Maintenance Message (Arabic)"
+  },
+  {
+   "fieldname": "section_break_banner",
+   "fieldtype": "Section Break",
+   "label": "Home Screen Banner"
+  },
+  {
+   "description": "Optional dismissible banner shown on the Home screen. Leave empty to hide.",
+   "fieldname": "announcement_banner_en",
+   "fieldtype": "Small Text",
+   "label": "Announcement Banner (English)"
+  },
+  {
+   "fieldname": "announcement_banner_ar",
+   "fieldtype": "Small Text",
+   "label": "Announcement Banner (Arabic)"
+  },
+  {
+   "fieldname": "section_break_modules",
+   "fieldtype": "Section Break",
+   "label": "Module Visibility"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_bank_balances",
+   "fieldtype": "Check",
+   "label": "Enable Bank Balances"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_send_notification",
+   "fieldtype": "Check",
+   "label": "Enable Send Notification (Admin)"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_expenses",
+   "fieldtype": "Check",
+   "label": "Enable Expenses"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_holidays",
+   "fieldtype": "Check",
+   "label": "Enable Holidays"
+  },
+  {
+   "fieldname": "column_break_modules",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_announcements",
+   "fieldtype": "Check",
+   "label": "Enable Announcements"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_notifications",
+   "fieldtype": "Check",
+   "label": "Enable Notifications"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_approvals",
+   "fieldtype": "Check",
+   "label": "Enable Approvals"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_geofence_reminders",
+   "fieldtype": "Check",
+   "label": "Enable Geofence Reminders"
+  },
+  {
+   "fieldname": "section_break_rules",
+   "fieldtype": "Section Break",
+   "label": "Business Rules"
+  },
+  {
+   "default": "9",
+   "fieldname": "checkin_window_start_hour",
+   "fieldtype": "Int",
+   "label": "Check-in Window Start Hour (24h)"
+  },
+  {
+   "default": "10",
+   "fieldname": "checkin_window_end_hour",
+   "fieldtype": "Int",
+   "label": "Check-in Window End Hour (24h, exclusive)"
+  },
+  {
+   "default": "15",
+   "fieldname": "late_checkin_threshold_minutes",
+   "fieldtype": "Int",
+   "label": "Late Check-in Threshold (minutes after start)"
+  },
+  {
+   "fieldname": "default_leave_type_for_late_checkin",
+   "fieldtype": "Link",
+   "label": "Default Leave Type for Late Check-in",
+   "options": "Leave Type"
+  },
+  {
+   "fieldname": "column_break_rules",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "description": "If unchecked, employees outside any approved zone cannot check in at all.",
+   "fieldname": "outside_zone_allowed",
+   "fieldtype": "Check",
+   "label": "Allow Check-in Outside Approved Zones"
+  },
+  {
+   "default": "100",
+   "fieldname": "default_geofence_radius_m",
+   "fieldtype": "Int",
+   "label": "Default Geofence Radius (metres)"
+  },
+  {
+   "fieldname": "section_break_branding",
+   "fieldtype": "Section Break",
+   "label": "Branding & Support"
+  },
+  {
+   "default": "#1565C0",
+   "description": "Primary brand colour as a hex string (e.g. #1565C0).",
+   "fieldname": "primary_color_hex",
+   "fieldtype": "Data",
+   "label": "Primary Colour (hex)"
+  },
+  {
+   "default": "hr@alkhora.com",
+   "fieldname": "support_email",
+   "fieldtype": "Data",
+   "label": "Support Email"
+  },
+  {
+   "fieldname": "support_whatsapp_number",
+   "fieldtype": "Data",
+   "label": "Support WhatsApp Number",
+   "description": "International format (e.g. +9647XXXXXXXX). Used for one-tap WhatsApp links."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-04-26 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Opportunity Management",
+ "name": "ESS Mobile Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 0,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 0,
+   "role": "System Manager",
+   "share": 0,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
