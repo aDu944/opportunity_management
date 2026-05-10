@@ -1629,6 +1629,91 @@ def _execute_broadcast(broadcast_name: str) -> dict:
     return {"sent": sent, "failed": failed, "total": len(employees)}
 
 
+def send_daily_checkin_reminders():
+    """
+    Scheduler hook (every 5 minutes) — sends a check-in reminder push to all
+    active employees who haven't checked in yet today.
+
+    Reads `daily_checkin_reminder_time` and `working_days` from
+    ESS Mobile Settings. Only fires once per day, only on working days, and
+    only within a 5-minute window after the configured time.
+    """
+    try:
+        s = frappe.get_single("ESS Mobile Settings")
+    except Exception:
+        return
+
+    reminder_time = (s.get("daily_checkin_reminder_time") or "").strip()
+    if not reminder_time or ":" not in reminder_time:
+        return
+
+    # Working days check (Frappe weekday: Mon=0..Sun=6)
+    working_days = {d.strip() for d in (s.get("working_days") or "Sun,Mon,Tue,Wed,Thu").split(",") if d.strip()}
+    day_map = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
+    now = frappe.utils.now_datetime()
+    if day_map[now.weekday()] not in working_days:
+        return
+
+    # Parse target HH:MM and require we're 0–5 minutes past it
+    try:
+        target_h, target_m = (int(x) for x in reminder_time.split(":"))
+    except (TypeError, ValueError):
+        return
+    target = now.replace(hour=target_h, minute=target_m, second=0, microsecond=0)
+    delta = (now - target).total_seconds()
+    if delta < 0 or delta > 300:
+        return
+
+    # Idempotency — only one dispatch per day
+    today_str = now.strftime("%Y-%m-%d")
+    last_sent = frappe.db.get_global("ess_last_daily_reminder_date")
+    if last_sent == today_str:
+        return
+
+    # Mark sent BEFORE the work so a slow run can't double-fire
+    frappe.db.set_global("ess_last_daily_reminder_date", today_str)
+    frappe.db.commit()
+
+    today = frappe.utils.today()
+    rows = frappe.db.sql(
+        """
+        SELECT e.name AS employee, e.employee_name, e.user_id, e.custom_fcm_token AS token
+        FROM `tabEmployee` e
+        WHERE e.status = 'Active'
+          AND e.custom_fcm_token IS NOT NULL
+          AND e.custom_fcm_token != ''
+          AND NOT EXISTS (
+              SELECT 1 FROM `tabEmployee Checkin` c
+              WHERE c.employee = e.name
+                AND DATE(c.time) = %s
+                AND c.log_type = 'IN'
+          )
+        """,
+        (today,),
+        as_dict=True,
+    )
+
+    title = "Check-in Reminder"
+    body = "Don't forget to check in for today. تذكّر تسجيل دخولك اليوم."
+
+    from opportunity_management.opportunity_management.fcm_utils import send_fcm
+    sent = 0
+    for r in rows:
+        try:
+            ok = send_fcm(
+                r["token"],
+                title=title,
+                body=body,
+                data={"type": "daily_reminder"},
+            )
+            if ok:
+                sent += 1
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "send_daily_checkin_reminders")
+
+    return {"sent": sent, "skipped_already_in": "ok", "candidates": len(rows)}
+
+
 def process_scheduled_broadcasts():
     """Scheduler hook — fire any Scheduled broadcasts whose time has come."""
     now = frappe.utils.now_datetime()

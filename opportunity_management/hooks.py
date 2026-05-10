@@ -62,9 +62,11 @@ scheduler_events = {
         "0 9 * * 1": [
             "opportunity_management.opportunity_management.tasks.send_manager_weekly_digest"
         ],
-        # Process scheduled FCM broadcasts every 5 minutes
+        # Every 5 minutes — process scheduled FCM broadcasts AND
+        # send the configured daily check-in reminder (if any).
         "*/5 * * * *": [
-            "opportunity_management.opportunity_management.api.process_scheduled_broadcasts"
+            "opportunity_management.opportunity_management.api.process_scheduled_broadcasts",
+            "opportunity_management.opportunity_management.api.send_daily_checkin_reminders",
         ],
     }
 }
