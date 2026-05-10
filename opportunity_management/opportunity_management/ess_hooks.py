@@ -152,13 +152,26 @@ def on_leave_application_update(doc, method=None):
 # ---------------------------------------------------------------------------
 
 def on_salary_slip_submit(doc, method=None):
-    """Notify employee when their payslip is ready."""
+    """Notify employee when their payslip is ready (gated by config)."""
+    if not _ess_setting_enabled("enable_payslip_notification", default=True):
+        return
+
     employee_id = doc.employee
 
     title = "قسيمة الراتب جاهزة 💰"
     body = f"قسيمة راتبك لشهر {doc.get("month_name") or doc.start_date} أصبحت متاحة."
 
     send_fcm_to_employee(employee_id, title=title, body=body, data={"doctype": "Salary Slip", "name": doc.name})
+
+
+def _ess_setting_enabled(key: str, default: bool = True) -> bool:
+    """Read a Check field from ESS Mobile Settings; defaults to [default] on
+    any error (e.g. doctype missing or single not yet created)."""
+    try:
+        v = frappe.db.get_single_value("ESS Mobile Settings", key)
+        return bool(int(v)) if v not in (None, "") else default
+    except Exception:
+        return default
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +202,8 @@ def on_expense_claim_update(doc, method=None):
 
 def on_announcement_insert(doc, method=None):
     """Broadcast a notification to all active employees when an announcement is published."""
+    if not _ess_setting_enabled("enable_announcement_push", default=True):
+        return
     if doc.get("status") and doc.status != "Active":
         return
 

@@ -1021,7 +1021,15 @@ def submit_late_checkin_leave(employee, checkin_time=None):
     If balance is exhausted, submits the same type — ERPNext will mark it as LWP.
     """
     today = frappe.utils.today()
+    # Default leave type can be overridden via ESS Mobile Settings → Attendance.
     leave_type = "Time-Off Leave - زمنية"
+    try:
+        s = frappe.get_single("ESS Mobile Settings")
+        configured = (s.get("default_leave_type_for_late_checkin") or "").strip()
+        if configured:
+            leave_type = configured
+    except Exception:
+        pass
 
     # Avoid duplicate: if a leave already exists for today, skip
     existing = frappe.db.exists("Leave Application", {
@@ -1712,6 +1720,90 @@ def send_daily_checkin_reminders():
             frappe.log_error(frappe.get_traceback(), "send_daily_checkin_reminders")
 
     return {"sent": sent, "skipped_already_in": "ok", "candidates": len(rows)}
+
+
+def auto_checkout_pending_employees():
+    """
+    Scheduler hook (every 5 minutes) — at the configured auto_checkout_hour
+    on a working day, force-create an OUT Employee Checkin for every employee
+    who has an open IN today but no matching OUT.
+
+    Uses a date-stamped global flag to fire at most once per day.
+    """
+    try:
+        s = frappe.get_single("ESS Mobile Settings")
+    except Exception:
+        return
+
+    hour = int(s.get("auto_checkout_hour") or 0)
+    if hour <= 0:
+        return  # disabled
+
+    # Working-day filter
+    working_days = {d.strip() for d in (s.get("working_days") or "Sun,Mon,Tue,Wed,Thu").split(",") if d.strip()}
+    day_map = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
+    now = frappe.utils.now_datetime()
+    if day_map[now.weekday()] not in working_days:
+        return
+
+    # Fire only within 5 min after the configured hour
+    target = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+    delta = (now - target).total_seconds()
+    if delta < 0 or delta > 300:
+        return
+
+    today_str = now.strftime("%Y-%m-%d")
+    last = frappe.db.get_global("ess_last_auto_checkout_date")
+    if last == today_str:
+        return
+    frappe.db.set_global("ess_last_auto_checkout_date", today_str)
+    frappe.db.commit()
+
+    today = frappe.utils.today()
+    rows = frappe.db.sql(
+        """
+        SELECT DISTINCT e.name AS employee
+        FROM `tabEmployee` e
+        WHERE e.status = 'Active'
+          AND EXISTS (
+              SELECT 1 FROM `tabEmployee Checkin` c
+              WHERE c.employee = e.name
+                AND DATE(c.time) = %s
+                AND c.log_type = 'IN'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM `tabEmployee Checkin` c
+              WHERE c.employee = e.name
+                AND DATE(c.time) = %s
+                AND c.log_type = 'OUT'
+                AND c.time > (
+                    SELECT MAX(c2.time) FROM `tabEmployee Checkin` c2
+                    WHERE c2.employee = e.name
+                      AND DATE(c2.time) = %s
+                      AND c2.log_type = 'IN'
+                )
+          )
+        """,
+        (today, today, today),
+        as_dict=True,
+    )
+
+    created = 0
+    for r in rows:
+        try:
+            doc = frappe.get_doc({
+                "doctype": "Employee Checkin",
+                "employee": r["employee"],
+                "log_type": "OUT",
+                "time": frappe.utils.now_datetime(),
+                "custom_outside_zone": 0,
+            })
+            doc.insert(ignore_permissions=True)
+            created += 1
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "auto_checkout_pending_employees")
+    frappe.db.commit()
+    return {"force_checked_out": created}
 
 
 def process_scheduled_broadcasts():
