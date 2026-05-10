@@ -1209,42 +1209,125 @@ def get_mobile_config():
         # Doctype not migrated yet — return safe defaults so the app behaves normally.
         return _default_mobile_config()
 
+    def _i(k, default=0):
+        v = s.get(k)
+        try:
+            return int(v) if v not in (None, "") else default
+        except (TypeError, ValueError):
+            return default
+
+    def _f(k, default=0.0):
+        v = s.get(k)
+        try:
+            return float(v) if v not in (None, "") else default
+        except (TypeError, ValueError):
+            return default
+
     return {
+        "app": {
+            "min_app_version": s.get("min_app_version") or "1.0.0",
+            "force_update_message_en": s.get("force_update_message_en") or "Please update ALKHORA ESS to the latest version to continue.",
+            "force_update_message_ar": s.get("force_update_message_ar") or "يرجى تحديث تطبيق ألخورة لأحدث إصدار للمتابعة.",
+            "maintenance_mode": _i("maintenance_mode"),
+            "maintenance_message_en": s.get("maintenance_message_en") or "",
+            "maintenance_message_ar": s.get("maintenance_message_ar") or "",
+            "announcement_banner_en": s.get("announcement_banner_en") or "",
+            "announcement_banner_ar": s.get("announcement_banner_ar") or "",
+            "welcome_message_en": s.get("welcome_message_en") or "",
+            "welcome_message_ar": s.get("welcome_message_ar") or "",
+        },
+
+        # Backwards-compatible top-level mirrors (older app versions read here)
         "min_app_version": s.get("min_app_version") or "1.0.0",
-        "force_update_message_en": s.get("force_update_message_en") or "Please update ALKHORA ESS to the latest version to continue.",
-        "force_update_message_ar": s.get("force_update_message_ar") or "يرجى تحديث تطبيق ألخورة لأحدث إصدار للمتابعة.",
-
-        "maintenance_mode": int(s.get("maintenance_mode") or 0),
-        "maintenance_message_en": s.get("maintenance_message_en") or "We're performing scheduled maintenance.",
-        "maintenance_message_ar": s.get("maintenance_message_ar") or "نجري حالياً صيانة مجدولة.",
-
+        "force_update_message_en": s.get("force_update_message_en") or "",
+        "force_update_message_ar": s.get("force_update_message_ar") or "",
+        "maintenance_mode": _i("maintenance_mode"),
+        "maintenance_message_en": s.get("maintenance_message_en") or "",
+        "maintenance_message_ar": s.get("maintenance_message_ar") or "",
         "announcement_banner_en": s.get("announcement_banner_en") or "",
         "announcement_banner_ar": s.get("announcement_banner_ar") or "",
 
         "modules": {
-            "bank_balances": int(s.get("enable_bank_balances") or 0),
-            "send_notification": int(s.get("enable_send_notification") or 0),
-            "expenses": int(s.get("enable_expenses") or 0),
-            "holidays": int(s.get("enable_holidays") or 0),
-            "announcements": int(s.get("enable_announcements") or 0),
-            "notifications": int(s.get("enable_notifications") or 0),
-            "approvals": int(s.get("enable_approvals") or 0),
-            "geofence_reminders": int(s.get("enable_geofence_reminders") or 0),
+            "bank_balances": _i("enable_bank_balances", 1),
+            "send_notification": _i("enable_send_notification", 1),
+            "expenses": _i("enable_expenses", 1),
+            "holidays": _i("enable_holidays", 1),
+            "announcements": _i("enable_announcements", 1),
+            "notifications": _i("enable_notifications", 1),
+            "approvals": _i("enable_approvals", 1),
+            "geofence_reminders": _i("enable_geofence_reminders", 1),
+            "attendance_history_view": _i("enable_attendance_history_view", 1),
+        },
+
+        "security": {
+            "allow_biometric_login": _i("allow_biometric_login", 1),
+            "allow_remember_me": _i("allow_remember_me", 1),
+            "session_timeout_minutes": _i("session_timeout_minutes", 0),
+            "min_password_length": _i("min_password_length", 8),
+            "block_jailbroken_devices": _i("block_jailbroken_devices", 0),
+            "screenshot_blur": _i("screenshot_blur", 1),
         },
 
         "rules": {
-            "checkin_window_start_hour": int(s.get("checkin_window_start_hour") or 9),
-            "checkin_window_end_hour": int(s.get("checkin_window_end_hour") or 10),
-            "late_checkin_threshold_minutes": int(s.get("late_checkin_threshold_minutes") or 15),
+            "checkin_window_start_hour": _i("checkin_window_start_hour", 9),
+            "checkin_window_end_hour": _i("checkin_window_end_hour", 10),
+            "late_checkin_threshold_minutes": _i("late_checkin_threshold_minutes", 15),
             "default_leave_type_for_late_checkin": s.get("default_leave_type_for_late_checkin") or "",
-            "outside_zone_allowed": int(s.get("outside_zone_allowed") or 1),
-            "default_geofence_radius_m": int(s.get("default_geofence_radius_m") or 100),
+            "auto_checkout_hour": _i("auto_checkout_hour", 0),
+            "working_days": s.get("working_days") or "Sun,Mon,Tue,Wed,Thu",
+            "min_break_minutes_between_in_out": _i("min_break_minutes_between_in_out", 1),
+            "outside_zone_allowed": _i("outside_zone_allowed", 1),
+            "require_geofence": _i("require_geofence", 0),
+            "default_geofence_radius_m": _i("default_geofence_radius_m", 100),
+        },
+
+        "leave": {
+            "allowed_leave_types": s.get("allowed_leave_types") or "",
+            "min_notice_days_for_annual_leave": _i("min_notice_days_for_annual_leave", 0),
+            "max_consecutive_leave_days": _i("max_consecutive_leave_days", 0),
+            "allow_self_cancel_leave": _i("allow_self_cancel_leave", 1),
+            "allow_attach_medical_certificate": _i("allow_attach_medical_certificate", 1),
+        },
+
+        "expenses": {
+            "max_expense_amount_per_claim": _f("max_expense_amount_per_claim", 0),
+            "max_attachments_per_expense": _i("max_attachments_per_expense", 5),
+            "max_attachment_size_mb": _i("max_attachment_size_mb", 10),
+            "require_receipt_for_amounts_above": _f("require_receipt_for_amounts_above", 0),
+            "default_currency": s.get("default_currency") or "IQD",
+        },
+
+        "notifications": {
+            "quiet_hours_start": s.get("notif_quiet_hours_start") or "",
+            "quiet_hours_end": s.get("notif_quiet_hours_end") or "",
+            "sound_override": s.get("notif_sound_override") or "",
+            "daily_checkin_reminder_time": s.get("daily_checkin_reminder_time") or "",
+            "enable_payslip_notification": _i("enable_payslip_notification", 1),
+            "enable_announcement_push": _i("enable_announcement_push", 1),
         },
 
         "branding": {
             "primary_color_hex": s.get("primary_color_hex") or "#1565C0",
             "support_email": s.get("support_email") or "hr@alkhora.com",
+            "support_phone_number": s.get("support_phone_number") or "",
             "support_whatsapp_number": s.get("support_whatsapp_number") or "",
+            "feedback_url": s.get("feedback_url") or "",
+            "home_quick_links": s.get("home_quick_links") or "",
+        },
+
+        "layout": {
+            "default_tab": s.get("default_tab") or "home",
+            "bottom_nav_layout": s.get("bottom_nav_layout") or "home,attendance,more",
+            "default_language": s.get("default_language") or "",
+            "allowed_languages": s.get("allowed_languages") or "en,ar",
+            "date_format_override": s.get("date_format_override") or "",
+            "clock_format_24h": _i("clock_format_24h", 0),
+        },
+
+        "telemetry": {
+            "enable_crash_reporting": _i("enable_crash_reporting", 1),
+            "enable_analytics": _i("enable_analytics", 0),
+            "verbose_logging_for_user_ids": s.get("verbose_logging_for_user_ids") or "",
         },
     }
 
@@ -1259,23 +1342,83 @@ def _default_mobile_config():
         "maintenance_message_ar": "",
         "announcement_banner_en": "",
         "announcement_banner_ar": "",
+        "app": {
+            "min_app_version": "1.0.0",
+            "force_update_message_en": "",
+            "force_update_message_ar": "",
+            "maintenance_mode": 0,
+            "maintenance_message_en": "",
+            "maintenance_message_ar": "",
+            "announcement_banner_en": "",
+            "announcement_banner_ar": "",
+            "welcome_message_en": "",
+            "welcome_message_ar": "",
+        },
         "modules": {
             "bank_balances": 1, "send_notification": 1, "expenses": 1,
             "holidays": 1, "announcements": 1, "notifications": 1,
             "approvals": 1, "geofence_reminders": 1,
+            "attendance_history_view": 1,
+        },
+        "security": {
+            "allow_biometric_login": 1, "allow_remember_me": 1,
+            "session_timeout_minutes": 0, "min_password_length": 8,
+            "block_jailbroken_devices": 0, "screenshot_blur": 1,
         },
         "rules": {
             "checkin_window_start_hour": 9,
             "checkin_window_end_hour": 10,
             "late_checkin_threshold_minutes": 15,
             "default_leave_type_for_late_checkin": "",
+            "auto_checkout_hour": 0,
+            "working_days": "Sun,Mon,Tue,Wed,Thu",
+            "min_break_minutes_between_in_out": 1,
             "outside_zone_allowed": 1,
+            "require_geofence": 0,
             "default_geofence_radius_m": 100,
+        },
+        "leave": {
+            "allowed_leave_types": "",
+            "min_notice_days_for_annual_leave": 0,
+            "max_consecutive_leave_days": 0,
+            "allow_self_cancel_leave": 1,
+            "allow_attach_medical_certificate": 1,
+        },
+        "expenses": {
+            "max_expense_amount_per_claim": 0.0,
+            "max_attachments_per_expense": 5,
+            "max_attachment_size_mb": 10,
+            "require_receipt_for_amounts_above": 0.0,
+            "default_currency": "IQD",
+        },
+        "notifications": {
+            "quiet_hours_start": "",
+            "quiet_hours_end": "",
+            "sound_override": "",
+            "daily_checkin_reminder_time": "",
+            "enable_payslip_notification": 1,
+            "enable_announcement_push": 1,
         },
         "branding": {
             "primary_color_hex": "#1565C0",
             "support_email": "hr@alkhora.com",
+            "support_phone_number": "",
             "support_whatsapp_number": "",
+            "feedback_url": "",
+            "home_quick_links": "",
+        },
+        "layout": {
+            "default_tab": "home",
+            "bottom_nav_layout": "home,attendance,more",
+            "default_language": "",
+            "allowed_languages": "en,ar",
+            "date_format_override": "",
+            "clock_format_24h": 0,
+        },
+        "telemetry": {
+            "enable_crash_reporting": 1,
+            "enable_analytics": 0,
+            "verbose_logging_for_user_ids": "",
         },
     }
 
