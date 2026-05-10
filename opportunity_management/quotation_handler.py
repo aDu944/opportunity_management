@@ -1,6 +1,6 @@
 import frappe
 from frappe import _
-from frappe.utils import nowdate, getdate
+from frappe.utils import nowdate, getdate, flt
 
 
 def on_quotation_save(doc, method):
@@ -147,3 +147,45 @@ def update_assignment_log(opportunity_name, quotation_name):
 def check_and_close_todos():
     """Deprecated: ToDo-based cleanup is no longer used."""
     return
+
+
+def recalc_opportunity_amount(doc, method=None):
+    """Recompute Opportunity.opportunity_amount as the sum of its non-cancelled
+    Quotations' grand totals, converted to the opportunity's currency.
+
+    Runs server-side on Quotation lifecycle events — no user save required.
+    Currency conversion: each quotation's grand_total is multiplied by its
+    conversion_rate to land in company (base) currency, then divided by the
+    opportunity's own conversion_rate to land in opportunity currency.
+    """
+    import frappe
+    opp_name = doc.get("opportunity") if hasattr(doc, "get") else None
+    if not opp_name:
+        return
+    if not frappe.db.exists("Opportunity", opp_name):
+        return
+
+    opp = frappe.db.get_value(
+        "Opportunity", opp_name,
+        ["currency", "conversion_rate"],
+        as_dict=True,
+    )
+    if not opp:
+        return
+
+    quotations = frappe.get_all(
+        "Quotation",
+        filters={"opportunity": opp_name, "docstatus": ["!=", 2]},
+        fields=["grand_total", "conversion_rate"],
+    )
+
+    base_total = sum(flt(q.grand_total) * (flt(q.conversion_rate) or 1.0) for q in quotations)
+    opp_rate = flt(opp.conversion_rate) or 1.0
+    opp_total = base_total / opp_rate if opp_rate else 0.0
+
+    frappe.db.set_value(
+        "Opportunity",
+        opp_name,
+        {"opportunity_amount": opp_total, "base_opportunity_amount": base_total},
+        update_modified=False,
+    )

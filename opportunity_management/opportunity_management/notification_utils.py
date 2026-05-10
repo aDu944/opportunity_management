@@ -561,3 +561,381 @@ def _truncate_for_field(value, field):
     if field.fieldtype == "Select":
         return _truncate_value(text, 140)
     return text
+
+@frappe.whitelist()
+def notify_new_message(
+    opportunity_name,
+    tender_no,
+    tender_title,
+    tender_url,
+    closing_date_text,
+    erpnext_url,
+    buyer_name,
+    messages_json,
+):
+    """Send the 'new message on tender' email to the opportunity's responsible
+    parties + their department managers. `messages_json` is a JSON string of a
+    list of dicts: [{msg_id, subject, from_org, from_who, sent, body_preview}, ...].
+    Called from Tender Hub when its Ariba/Maximo runner detects new messages.
+    """
+    import json
+    from frappe.utils import escape_html
+
+    if isinstance(messages_json, str):
+        try:
+            messages = json.loads(messages_json)
+        except Exception:
+            messages = []
+    else:
+        messages = messages_json or []
+
+    if not messages:
+        return {"ok": False, "reason": "no messages"}
+
+    # Base set: responsible parties + dept managers (per existing helper).
+    recipients = list(get_opportunity_notification_recipients(opportunity_name) or [])
+    # Plus: every enabled User with the O&G Manager role (Tender Hub policy:
+    # all O&G managers should be aware of every message on a tender, regardless
+    # of doc.owner — particularly important for opps created via the API user).
+    try:
+        og_managers = frappe.db.sql_list('''
+            SELECT DISTINCT u.name FROM `tabUser` u
+            INNER JOIN `tabHas Role` hr ON hr.parent = u.name AND hr.parenttype = 'User'
+            WHERE u.enabled = 1 AND hr.role = 'O&G Manager'
+              AND u.name NOT IN ('Guest', 'Administrator')
+        ''')
+        for m in (og_managers or []):
+            if m and m not in recipients:
+                recipients.append(m)
+    except Exception as e:
+        frappe.logger().warning(f'notify_new_message O&G role lookup failed: {e}')
+    recipients = [r for r in (recipients or []) if r]
+    if not recipients:
+        frappe.logger().warning(
+            f"notify_new_message {opportunity_name}: no recipients resolved"
+        )
+        return {"ok": False, "reason": "no recipients"}
+
+    # Build subject — single message uses its subject; multi-message digest
+    # falls back to a count summary.
+    if len(messages) == 1:
+        subj = f"New message on tender {tender_no} — {messages[0].get('subject') or tender_title}"
+    else:
+        subj = f"{len(messages)} new messages on tender {tender_no} — {tender_title}"
+
+    # Build the message-card HTML for each new message.
+    msg_cards = []
+    for m in messages:
+        body_prev = escape_html((m.get("body_preview") or "")[:280])
+        if not body_prev:
+            body_prev = '<span style="color:#9ca3af;">[no preview available — see full thread on Tender Hub]</span>'
+        else:
+            body_prev = body_prev + ' <span style="color:#9ca3af;">[preview, see full thread on Tender Hub]</span>'
+        msg_cards.append(f"""
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;font-size:13px;color:#374151;margin-top:14px;">
+  <tr><td style="padding:2px 12px 2px 0;color:#6b7280;width:84px;">Subject</td><td style="font-weight:600;">{escape_html(m.get('subject') or '(no subject)')}</td></tr>
+  <tr><td style="padding:2px 12px 2px 0;color:#6b7280;">From</td><td>{escape_html(m.get('from_who') or '')} {f"&middot; {escape_html(m.get('from_org'))}" if m.get('from_org') else ''}</td></tr>
+  <tr><td style="padding:2px 12px 2px 0;color:#6b7280;">Sent</td><td>{escape_html(m.get('sent') or '')}</td></tr>
+  <tr><td style="padding:2px 12px 2px 0;color:#6b7280;">ID</td><td style="font-family:ui-monospace,Menlo,monospace;font-size:12px;">{escape_html(m.get('msg_id') or '')}</td></tr>
+</table>
+<div style="margin-top:8px;padding:12px 14px;background:#f9fafb;border-left:3px solid #0070f2;border-radius:4px;font-size:13px;color:#374151;line-height:1.55;">{body_prev}</div>
+""")
+
+    erp_link = (
+        f'<tr><td style="padding:2px 12px 2px 0;color:#6b7280;">ERPNext</td>'
+        f'<td><a style="color:#0070f2;text-decoration:none;" href="{escape_html(erpnext_url)}">{escape_html(opportunity_name)}</a></td></tr>'
+    ) if erpnext_url else ""
+
+    html = f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#111827;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f3f4f6;padding:24px 0;">
+  <tr><td align="center"><table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="background:#ffffff;border-radius:10px;overflow:hidden;">
+    <tr><td style="background:#0070f2;padding:16px 24px;color:#ffffff;font-size:14px;font-weight:600;letter-spacing:0.5px;">📬 NEW MESSAGE — TENDER HUB</td></tr>
+    <tr><td style="padding:24px 24px 8px;">
+      <div style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Tender</div>
+      <div style="font-size:18px;font-weight:600;color:#111827;line-height:1.35;">{escape_html(tender_title or '')}</div>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-top:10px;font-size:13px;color:#374151;">
+        <tr><td style="padding:2px 12px 2px 0;color:#6b7280;">No.</td><td style="font-family:ui-monospace,Menlo,monospace;">{escape_html(tender_no or '')}</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#6b7280;">Buyer</td><td>{escape_html(buyer_name or '')}</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#6b7280;">Closes</td><td>{escape_html(closing_date_text or '')}</td></tr>
+        {erp_link}
+      </table>
+    </td></tr>
+    <tr><td style="padding:0 24px;"><hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0 0;"></td></tr>
+    <tr><td style="padding:16px 24px 8px;">
+      <div style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">{('Message' if len(messages) == 1 else f'{len(messages)} new messages')}</div>
+      {''.join(msg_cards)}
+    </td></tr>
+    <tr><td align="center" style="padding:20px 24px 28px;">
+      <a href="{escape_html(tender_url)}" style="display:inline-block;padding:10px 22px;background:#0070f2;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;border-radius:6px;">View thread on Tender Hub →</a>
+    </td></tr>
+    <tr><td style="padding:14px 24px 18px;background:#f9fafb;font-size:12px;color:#6b7280;line-height:1.5;border-top:1px solid #e5e7eb;">
+      You're receiving this because you're listed as <strong>Responsible Party</strong> on the linked ERPNext Opportunity, or as a <strong>Department Manager</strong> in Opportunity Management.<br>
+      <span style="color:#9ca3af;">— ALKHORA Tender Hub · sent from <a href="https://tender.alkhora.com" style="color:#6b7280;">tender.alkhora.com</a></span>
+    </td></tr>
+  </table></td></tr>
+</table>
+</body></html>"""
+
+    try:
+        frappe.sendmail(
+            recipients=recipients,
+            subject=subj,
+            message=html,
+            reference_doctype="Opportunity",
+            reference_name=opportunity_name,
+            now=False,
+        )
+        return {"ok": True, "recipients": recipients, "messages": len(messages)}
+    except Exception as e:
+        frappe.log_error(
+            f"notify_new_message {opportunity_name} failed: {e}",
+            "Tender Hub New Message Notify",
+        )
+        return {"ok": False, "error": str(e)[:300]}
+
+
+@frappe.whitelist()
+def notify_new_tenders(
+    role_name,
+    source_label,
+    brand_color,
+    header_emoji,
+    audience_explainer,
+    dashboard_url,
+    tenders_json,
+):
+    """Send a 'new tender(s) available' alert to every enabled User who has
+    the given role. Used by Tender Hub to fan out alerts to O&G Managers
+    (PetroChina/Ariba publish) or System Managers (ITP-university publish).
+
+    Args:
+      role_name: 'O&G Manager' or 'System Manager' (or any role).
+      source_label: shown in the header (e.g. 'PETROCHINA WQ1').
+      brand_color: hex string, e.g. '#b8362e'.
+      header_emoji: '🆕' or '🎓'.
+      audience_explainer: footer line — 'you have the X role in ERPNext'.
+      dashboard_url: where the bottom CTA jumps to.
+      tenders_json: JSON string, list of dicts: {number, title, buyer,
+                    parent, published, closes, type, tender_url, source_url,
+                    pdf_url}. parent/published/type/source_url/pdf_url are
+                    all optional.
+    """
+    import json
+    from frappe.utils import escape_html
+
+    if isinstance(tenders_json, str):
+        try:
+            tenders = json.loads(tenders_json)
+        except Exception:
+            tenders = []
+    else:
+        tenders = tenders_json or []
+    if not tenders:
+        return {"ok": False, "reason": "no tenders"}
+
+    # Recipient query: enabled users with this role.
+    recipients = frappe.db.sql_list("""
+        SELECT DISTINCT u.name
+        FROM `tabUser` u
+        INNER JOIN `tabHas Role` hr
+                ON hr.parent = u.name AND hr.parenttype = 'User'
+        WHERE u.enabled = 1
+          AND hr.role = %(role)s
+          AND u.name NOT IN ('Guest', 'Administrator')
+    """, {"role": role_name})
+    recipients = [r for r in (recipients or []) if r]
+    if not recipients:
+        frappe.logger().warning(
+            f"notify_new_tenders: no enabled users with role {role_name!r}"
+        )
+        return {"ok": False, "reason": f"no users with role {role_name}"}
+
+    color = brand_color or "#0070f2"
+    is_digest = len(tenders) >= 2
+
+    if is_digest:
+        subj = f"{header_emoji} {len(tenders)} new tenders from {source_label}"
+    else:
+        t = tenders[0]
+        subj = f"{header_emoji} New tender — {t.get('number') or ''} — {(t.get('title') or '')[:80]}"
+
+    def _render_single(t):
+        rows = []
+        rows.append(f'<tr><td style="padding:2px 12px 2px 0;color:#6b7280;width:84px;">No.</td><td style="font-family:ui-monospace,Menlo,monospace;">{escape_html(t.get("number") or "")}</td></tr>')
+        buyer = (t.get("buyer") or "")
+        if t.get("parent"):
+            buyer += f' · {t.get("parent")}'
+        rows.append(f'<tr><td style="padding:2px 12px 2px 0;color:#6b7280;">Buyer</td><td>{escape_html(buyer)}</td></tr>')
+        if t.get("published"):
+            rows.append(f'<tr><td style="padding:2px 12px 2px 0;color:#6b7280;">Published</td><td>{escape_html(t.get("published") or "")}</td></tr>')
+        if t.get("closes"):
+            rows.append(f'<tr><td style="padding:2px 12px 2px 0;color:#6b7280;">Closes</td><td>{escape_html(t.get("closes") or "")}</td></tr>')
+        if t.get("type"):
+            rows.append(f'<tr><td style="padding:2px 12px 2px 0;color:#6b7280;">Type</td><td>{escape_html(t.get("type") or "")}</td></tr>')
+        cta = f'<a href="{escape_html(t.get("tender_url") or dashboard_url)}" style="display:inline-block;padding:10px 22px;background:{color};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;border-radius:6px;">View on Tender Hub →</a>'
+        if t.get("source_url"):
+            cta += f'<a href="{escape_html(t.get("source_url"))}" style="display:inline-block;margin-left:8px;padding:10px 18px;border:1px solid #d1d5db;color:#374151;text-decoration:none;font-weight:500;font-size:14px;border-radius:6px;">Open in source ↗</a>'
+        if t.get("pdf_url"):
+            cta += f'<a href="{escape_html(t.get("pdf_url"))}" style="display:inline-block;margin-left:8px;padding:10px 18px;border:1px solid #d1d5db;color:#374151;text-decoration:none;font-weight:500;font-size:14px;border-radius:6px;">📄 Download PDF</a>'
+        return f"""
+<tr><td style="padding:24px 24px 8px;">
+  <div style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Tender</div>
+  <div style="font-size:18px;font-weight:600;color:#111827;line-height:1.35;">{escape_html(t.get('title') or '')}</div>
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-top:10px;font-size:13px;color:#374151;">
+    {''.join(rows)}
+  </table>
+</td></tr>
+<tr><td align="center" style="padding:20px 24px 28px;">{cta}</td></tr>"""
+
+    def _render_card(t):
+        sub = (t.get("buyer") or "")
+        if t.get("parent"):
+            sub = f'{escape_html(t.get("parent"))} &nbsp;·&nbsp; {escape_html(t.get("buyer") or "")}'
+        else:
+            sub = escape_html(sub)
+        rtl = ' dir="rtl"' if any(c in (t.get("title") or "") for c in "آأإابتثجحخدذرزسشصضطظعغفقكلمنهويةى") else ""
+        meta = f'{escape_html(t.get("number") or "")}' + (f' &nbsp;·&nbsp; closes {escape_html(t.get("closes"))}' if t.get("closes") else '')
+        actions = f'<a href="{escape_html(t.get("tender_url") or dashboard_url)}" style="display:inline-block;padding:6px 14px;background:{color};color:#ffffff;text-decoration:none;font-weight:500;font-size:12px;border-radius:5px;">View →</a>'
+        if t.get("pdf_url"):
+            actions += f'<a href="{escape_html(t.get("pdf_url"))}" style="display:inline-block;margin-left:6px;padding:6px 14px;border:1px solid #d1d5db;color:#374151;text-decoration:none;font-weight:500;font-size:12px;border-radius:5px;">📄 PDF</a>'
+        return f"""
+<tr><td style="padding:14px 24px 0;">
+  <div style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;"{rtl}>{sub}</div>
+  <div style="font-size:15px;font-weight:600;color:#111827;line-height:1.35;"{rtl}>{escape_html(t.get('title') or '')}</div>
+  <div style="margin-top:4px;font-size:12px;color:#6b7280;font-family:ui-monospace,Menlo,monospace;">{meta}</div>
+  <div style="margin-top:8px;">{actions}</div>
+</td></tr>
+<tr><td style="padding:0 24px;"><hr style="border:none;border-top:1px solid #e5e7eb;margin:14px 0;"></td></tr>"""
+
+    if is_digest:
+        body_blocks = "".join(_render_card(t) for t in tenders[:25])
+        # remove trailing hr
+        body_blocks = body_blocks.rstrip()
+        if body_blocks.endswith("<hr></td></tr>"):
+            body_blocks = body_blocks
+        bottom_cta = f'<tr><td align="center" style="padding:8px 24px 22px;"><a href="{escape_html(dashboard_url)}" style="display:inline-block;padding:10px 22px;background:{color};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;border-radius:6px;">Open dashboard →</a></td></tr>'
+        body_html = body_blocks + bottom_cta
+    else:
+        body_html = _render_single(tenders[0])
+
+    html = f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#111827;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f3f4f6;padding:24px 0;">
+  <tr><td align="center"><table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="background:#ffffff;border-radius:10px;overflow:hidden;">
+    <tr><td style="background:{color};padding:16px 24px;color:#ffffff;font-size:14px;font-weight:600;letter-spacing:0.5px;">{header_emoji} {('NEW TENDER' if not is_digest else f'{len(tenders)} NEW TENDERS')} — {escape_html(source_label).upper()}</td></tr>
+    {body_html}
+    <tr><td style="padding:14px 24px 18px;background:#f9fafb;font-size:12px;color:#6b7280;line-height:1.5;border-top:1px solid #e5e7eb;">
+      You're receiving this because {audience_explainer}<br>
+      <span style="color:#9ca3af;">— ALKHORA Tender Hub · sent from <a href="https://tender.alkhora.com" style="color:#6b7280;">tender.alkhora.com</a></span>
+    </td></tr>
+  </table></td></tr>
+</table>
+</body></html>"""
+
+    try:
+        frappe.sendmail(
+            recipients=recipients,
+            subject=subj,
+            message=html,
+            now=False,
+        )
+        return {"ok": True, "recipients": recipients, "tenders": len(tenders)}
+    except Exception as e:
+        frappe.log_error(
+            f"notify_new_tenders ({role_name}, {source_label}) failed: {e}",
+            "Tender Hub New Tender Notify",
+        )
+        return {"ok": False, "error": str(e)[:300]}
+
+
+# ---------------------------------------------------------------------------
+# Strip undeliverable recipients (e.g. *.local placeholder addresses) before
+# the SMTP server gets them — otherwise a single bad address fails the whole
+# batch with SMTPRecipientsRefused and clogs the queue.
+# ---------------------------------------------------------------------------
+import re
+
+_INVALID_TLDS = (".local", ".invalid", ".test", ".example")
+
+# Hard blocklist — bot/review accounts that should never receive notifications.
+# Add or remove addresses here as needed (lowercase). The filter runs before
+# every Email Queue insert, so changes take effect on the next email.
+_EMAIL_BLOCKLIST = {
+    "admin-erp@alkhora.com",
+    "applereview@alkhora.com",
+    "tender-bot@alkhora.com",
+    "apple@alkhora.com",
+    "googlereview@alkhora.com",
+}
+
+
+def _is_invalid_email(addr: str) -> bool:
+    if not addr:
+        return True
+    addr = addr.strip().lower()
+    if addr in _EMAIL_BLOCKLIST:
+        return True
+    if "@" not in addr:
+        return True
+    domain = addr.rsplit("@", 1)[1]
+    return any(domain.endswith(tld) for tld in _INVALID_TLDS) or domain in ("localhost", "")
+
+
+def _strip_addrs_from_to_header(message, blocked_addrs):
+    """Remove specific email addresses from the visible 'To:' header in a MIME message."""
+    import re
+    blocked_lower = {a.lower() for a in blocked_addrs}
+
+    def _replace(match):
+        addrs_part = match.group(1)
+        addrs = [a.strip() for a in addrs_part.split(",")]
+        kept = []
+        for a in addrs:
+            email_m = re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", a)
+            if email_m and email_m.group(0).lower() in blocked_lower:
+                continue
+            if a:
+                kept.append(a)
+        return "To: " + ", ".join(kept) if kept else "To: undisclosed-recipients:;"
+
+    # Match "To: ..." header (handles multi-line folding via leading whitespace)
+    return re.sub(
+        r"^To:\s*([^\r\n]+(?:\r?\n[ \t]+[^\r\n]+)*)",
+        _replace,
+        message,
+        count=1,
+        flags=re.MULTILINE,
+    )
+
+
+def filter_invalid_email_recipients(doc, method=None):
+    """Email Queue before_insert hook — remove undeliverable recipients
+    AND strip them from the visible 'To:' header so other recipients don't
+    see internal/bot addresses."""
+    import frappe
+    if not getattr(doc, "recipients", None):
+        return
+    keep = []
+    dropped = []
+    for r in doc.recipients:
+        if _is_invalid_email(r.recipient):
+            dropped.append(r.recipient)
+        else:
+            keep.append(r)
+    if not dropped:
+        return
+    doc.recipients = keep
+    if not keep:
+        doc.status = "Cancelled"
+        doc.error = (doc.error or "") + f"\nAll recipients filtered as undeliverable: {', '.join(dropped)}"
+    else:
+        # Also strip from the visible "To:" header
+        if getattr(doc, "message", None):
+            try:
+                doc.message = _strip_addrs_from_to_header(doc.message, dropped)
+            except Exception as e:
+                frappe.logger().warning(f"to-header rewrite failed for {doc.name or '(new)'}: {e}")
+        frappe.logger().info(
+            f"Email Queue {doc.name or '(new)'}: dropped {len(dropped)} undeliverable recipient(s): {dropped}"
+        )

@@ -818,3 +818,106 @@ def send_management_daily_closing_summary():
             f"Daily closing summary failed: {str(e)}",
             "Management Daily Closing Summary Error"
         )
+
+
+# ---------------------------------------------------------------------------
+# Email queue health watchdog
+# ---------------------------------------------------------------------------
+def check_email_queue_health():
+    """Alert via Telegram when the Email Queue is suspended or backed up.
+
+    Self-hosted Frappe sometimes auto-sets suspend_email_queue=1 after a
+    rate-limit storm (e.g. an SMTP throttle) and never clears it on its own.
+    This watchdog runs every 15 min and pings the team if it sees trouble.
+    Email itself can't deliver the alert (the queue is suspended!) — Telegram
+    via the existing signalbot/MTG account is used as the alternate channel.
+    """
+    import frappe, json, subprocess
+    from pathlib import Path
+    from frappe.utils import add_to_date
+
+    STATE_FILE = Path("/home/ai/.email_queue_health_state.json")
+
+    def _read_creds():
+        env = Path("/home/ai/signalbot/.env")
+        if not env.exists():
+            return None, None
+        creds = {}
+        for line in env.read_text().splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                k, _, v = line.partition("=")
+                creds[k.strip()] = v.strip().strip('"').strip("'")
+        return creds.get("TELEGRAM_BOT_TOKEN"), creds.get("TELEGRAM_CHAT_ID")
+
+    def _send(msg):
+        token, chat = _read_creds()
+        if not token or not chat:
+            return
+        try:
+            subprocess.run(
+                ["curl", "-s", "--max-time", "10", "-X", "POST",
+                 f"https://api.telegram.org/bot{token}/sendMessage",
+                 "-d", f"chat_id={chat}",
+                 "-d", f"text={msg}",
+                 "-d", "parse_mode=HTML"],
+                capture_output=True, timeout=15,
+            )
+        except Exception as e:
+            frappe.logger().warning(f"email-health telegram send failed: {e}")
+
+    # Self-heal: reconcile "Not Sent" parents whose every child shows status=Sent.
+    # That's a benign post-send callback hiccup — email actually was delivered.
+    try:
+        stale = frappe.db.sql("""
+            SELECT eq.name FROM `tabEmail Queue` eq
+            WHERE eq.status IN ('Not Sent','Sending','Error')
+              AND NOT EXISTS (
+                SELECT 1 FROM `tabEmail Queue Recipient` eqr
+                WHERE eqr.parent = eq.name AND eqr.status != 'Sent'
+              )
+              AND EXISTS (
+                SELECT 1 FROM `tabEmail Queue Recipient` eqr
+                WHERE eqr.parent = eq.name AND eqr.status = 'Sent'
+              )
+        """, as_dict=True)
+        if stale:
+            ph = ",".join(["%s"] * len(stale))
+            frappe.db.sql(f"UPDATE `tabEmail Queue` SET status='Sent' WHERE name IN ({ph})", [r.name for r in stale])
+            frappe.db.commit()
+            frappe.logger().info(f"email-watchdog: reconciled {len(stale)} stale parent status(es)")
+    except Exception as e:
+        frappe.logger().warning(f"email-watchdog reconcile failed: {e}")
+
+    # Current health
+    suspend  = str(frappe.db.get_default("suspend_email_queue") or "0")
+    cutoff   = add_to_date(None, hours=-2)
+    stuck    = frappe.db.count("Email Queue",
+                                {"status": ["in", ["Not Sent", "Error"]],
+                                 "modified": [">", cutoff]})
+    healthy  = (suspend != "1") and (stuck < 5)
+
+    # Compare to last state (transition-only alerting, no spam)
+    prev = {"healthy": True}
+    try:
+        if STATE_FILE.exists():
+            prev = json.loads(STATE_FILE.read_text())
+    except Exception:
+        pass
+
+    if healthy != prev.get("healthy", True):
+        if not healthy:
+            _send(
+                "⚠️ <b>ERPNext Email Queue alert</b>\n"
+                f"site: bms.alkhora.com\n"
+                f"suspend_email_queue: <b>{suspend}</b>\n"
+                f"stuck emails (last 2h): <b>{stuck}</b>\n\n"
+                "Fix: bench --site erp.local execute "
+                "frappe.db.set_default --kwargs '"+'{"key":"suspend_email_queue","val":"0"}'+"'"
+            )
+        else:
+            _send("✅ <b>ERPNext Email Queue recovered</b> — sending again normally.")
+
+    try:
+        STATE_FILE.write_text(json.dumps({"healthy": healthy, "suspend": suspend, "stuck": stuck}))
+    except Exception:
+        pass

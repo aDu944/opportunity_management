@@ -156,7 +156,7 @@ def on_salary_slip_submit(doc, method=None):
     employee_id = doc.employee
 
     title = "قسيمة الراتب جاهزة 💰"
-    body = f"قسيمة راتبك لشهر {doc.month_name or doc.start_date} أصبحت متاحة."
+    body = f"قسيمة راتبك لشهر {doc.get("month_name") or doc.start_date} أصبحت متاحة."
 
     send_fcm_to_employee(employee_id, title=title, body=body, data={"doctype": "Salary Slip", "name": doc.name})
 

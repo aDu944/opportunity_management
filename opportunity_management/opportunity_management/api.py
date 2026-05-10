@@ -1418,3 +1418,964 @@ def get_expense_categories():
     except Exception:
         # DocType may not exist yet — return empty so app doesn't crash
         return []
+
+
+# ---------------------------------------------------------------------------
+# Sales Order — items Excel export / import (procurement schedule)
+# ---------------------------------------------------------------------------
+import frappe
+from frappe import _
+
+_SO_ITEM_HEADERS = [
+    "row_name",        # opaque key — DO NOT EDIT
+    "idx",
+    "description",
+    "qty",
+    "delivery_date",
+    "lead_time_weeks",
+    "incoterm",
+    "origin",
+    "transit_days",
+    "po_number",
+]
+
+
+@frappe.whitelist()
+def so_items_xlsx_export(sales_order: str):
+    """Stream the Sales Order's items as an .xlsx download."""
+    so = frappe.get_doc("Sales Order", sales_order)
+    so.check_permission("read")
+
+    rows = [_SO_ITEM_HEADERS]
+    import re as _re
+    def _plain(html):
+        if not html: return ""
+        text = _re.sub(r"<[^>]+>", " ", html)
+        text = _re.sub(r"\s+", " ", text)
+        return text.strip()
+
+    for it in so.items:
+        rows.append([
+            it.name,
+            it.idx,
+            _plain(it.description) or it.item_name or it.item_code,
+            it.qty,
+            it.delivery_date,
+            it.get("custom_lead_time_weeks") or 0,
+            it.get("custom_incoterm") or "",
+            it.get("custom_origin") or "",
+            it.get("custom_transit_days") or 0,
+            it.get("custom_po_number") or "",
+        ])
+
+    from frappe.utils.xlsxutils import make_xlsx
+    xlsx_io = make_xlsx(rows, sheet_name="Items")
+
+    frappe.response["filename"] = f"{sales_order}_items.xlsx"
+    frappe.response["filecontent"] = xlsx_io.getvalue()
+    frappe.response["type"] = "binary"
+
+
+@frappe.whitelist()
+def so_items_xlsx_import(sales_order: str, file_url: str):
+    """Apply updates from an edited xlsx (matched by row_name) and recompute schedule."""
+    so = frappe.get_doc("Sales Order", sales_order)
+    so.check_permission("write")
+
+    file_doc = frappe.get_doc("File", {"file_url": file_url})
+    fpath = file_doc.get_full_path()
+
+    import openpyxl
+    wb = openpyxl.load_workbook(fpath, data_only=True)
+    ws = wb.active
+    raw_rows = list(ws.iter_rows(values_only=True))
+    if not raw_rows:
+        frappe.throw(_("Empty workbook."))
+
+    header = [str(c).strip() if c is not None else "" for c in raw_rows[0]]
+    col = {h: i for i, h in enumerate(header)}
+    if "row_name" not in col:
+        frappe.throw(_("First row must include the 'row_name' column from the exported template."))
+
+    by_name = {it.name: it for it in so.items}
+    updated = 0
+    skipped = 0
+
+    from datetime import timedelta, datetime, date as date_cls
+    from frappe.utils import getdate, cint
+
+    def _val(row, key):
+        i = col.get(key)
+        return row[i] if i is not None and i < len(row) else None
+
+    def _to_date(v):
+        if v is None or v == "":
+            return None
+        if isinstance(v, (datetime, date_cls)):
+            return v if isinstance(v, date_cls) else v.date()
+        return getdate(str(v))
+
+    for row in raw_rows[1:]:
+        if not row or all(c is None or c == "" for c in row):
+            continue
+        rn = _val(row, "row_name")
+        if not rn or rn not in by_name:
+            skipped += 1
+            continue
+        item = by_name[rn]
+
+        if "qty" in col and _val(row, "qty") is not None:
+            try: item.qty = float(_val(row, "qty"))
+            except Exception: pass
+        if "delivery_date" in col:
+            d = _to_date(_val(row, "delivery_date"))
+            if d: item.delivery_date = d
+        if "lead_time_weeks" in col:
+            item.custom_lead_time_weeks = cint(_val(row, "lead_time_weeks") or 0)
+        if "incoterm" in col:
+            v = _val(row, "incoterm")
+            item.custom_incoterm = (str(v).strip() if v else "")
+        if "origin" in col:
+            v = _val(row, "origin")
+            item.custom_origin = (str(v).strip() if v else "")
+        if "transit_days" in col:
+            item.custom_transit_days = cint(_val(row, "transit_days") or 0)
+        if "po_number" in col:
+            v = _val(row, "po_number")
+            item.custom_po_number = (str(v).strip() if v else "")
+
+        # Recompute planned order date
+        if item.delivery_date:
+            wk = cint(item.custom_lead_time_weeks)
+            tr = cint(item.custom_transit_days)
+            item.custom_planned_order_date = getdate(item.delivery_date) - timedelta(days=wk * 7 + tr)
+
+        updated += 1
+
+    so.save()
+    frappe.db.commit()
+    return {"updated": updated, "skipped": skipped, "total": len(so.items)}
+
+
+# ---------------------------------------------------------------------------
+# Sales Order — full-page procurement schedule (HTML served via API)
+# ---------------------------------------------------------------------------
+@frappe.whitelist()
+def schedule_html(sales_order: str):
+    """Render a full-page Gantt schedule for the given Sales Order.
+
+    Served as raw HTML so it bypasses the website chrome and Jinja sandbox.
+    URL: /api/method/opportunity_management.opportunity_management.api.schedule_html?sales_order=<NAME>
+    """
+    import json as _json
+    import re as _re
+    so = frappe.get_doc("Sales Order", sales_order)
+    so.check_permission("read")
+
+    safety = int(so.get("custom_safety_days") or 0)
+
+    def _plain(html):
+        if not html: return ""
+        return _re.sub(r"\s+", " ", _re.sub(r"<[^>]+>", " ", html)).strip()
+
+    items_data = []
+    for it in so.items:
+        wk = int(it.get("custom_lead_time_weeks") or 0)
+        tr = int(it.get("custom_transit_days") or 0)
+        # bar_count: how many gantt rows this item will produce
+        bar_count = (1 if wk > 0 else 0) + (1 if tr > 0 else 0) + (1 if safety > 0 else 0)
+        if bar_count == 0: bar_count = 1  # stock marker
+        items_data.append({
+            "row_name": it.name,
+            "idx": it.idx,
+            "description": _plain(it.description) or it.item_name or it.item_code,
+            "manufacturer": it.get("custom_manufacturer") or "",
+            "bar_count": bar_count,
+            "qty": float(it.qty or 0),
+            "delivery_date": str(it.delivery_date) if it.delivery_date else None,
+            "lead_time_weeks": wk,
+            "transit_days":   tr,
+            "incoterm":       it.get("custom_incoterm") or "",
+            "origin":         it.get("custom_origin") or "",
+            "planned_order_date": str(it.get("custom_planned_order_date")) if it.get("custom_planned_order_date") else None,
+            "po_number":      it.get("custom_po_number") or "",
+        })
+
+    # ---- Build display_rows: groups (shared PO) + individual items ----
+    display_rows = []
+    seen_groups = set()
+    for item in items_data:
+        po = item.get("po_number") or ""
+        if po and po not in seen_groups:
+            seen_groups.add(po)
+            group_items = [i for i in items_data if (i.get("po_number") or "") == po]
+            planned_dates = [i["planned_order_date"] for i in group_items if i.get("planned_order_date")]
+            delivery_dates = [i["delivery_date"] for i in group_items if i.get("delivery_date")]
+            mfgs = list({i["manufacturer"] for i in group_items if i.get("manufacturer")})
+            display_rows.append({
+                "type": "group",
+                "po_number": po,
+                "manufacturer": " / ".join(mfgs) if mfgs else "",
+                "indices": [i["idx"] for i in group_items],
+                "items_count": len(group_items),
+                "planned_order_date": min(planned_dates) if planned_dates else None,
+                "delivery_date": max(delivery_dates) if delivery_dates else None,
+                "row_name": "group_" + po,
+            })
+        elif not po:
+            display_rows.append({"type": "item", **item})
+
+    items_json = _json.dumps(items_data)
+    rows_json  = _json.dumps(display_rows)
+    delivery_fmt = frappe.format(so.delivery_date, {"fieldtype": "Date"}) if so.delivery_date else "—"
+    so_date = str(so.transaction_date) if so.transaction_date else ""
+    customer = frappe.utils.escape_html(so.customer or so.party_name or "")
+    so_name_esc = frappe.utils.escape_html(so.name)
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Schedule — {so_name_esc}</title>
+<link rel="icon" href="/assets/frappe/images/favicon.png">
+<link rel="stylesheet" href="/assets/frappe/node_modules/frappe-gantt/dist/frappe-gantt.css">
+<style>
+  body {{ font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #f8fafc; margin: 0; padding: 20px; color: #222; }}
+  .so-sched {{ max-width: 1400px; margin: 0 auto; }}
+  .so-sched header {{ background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:16px 22px; margin-bottom:14px; }}
+  .so-sched header h1 {{ margin:6px 0 4px; font-size:22px; color:#296ACC; }}
+  .so-sched .meta {{ color:#64748b; font-size:12px; }}
+  .back {{ color:#296ACC; text-decoration:none; font-size:13px; }}
+  .back:hover {{ text-decoration:underline; }}
+  .toolbar {{ display:flex; gap:8px; align-items:center; margin:10px 0; flex-wrap:wrap; }}
+  .toolbar button {{ background:#fff; border:1px solid #cbd5e1; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:13px; }}
+  .toolbar button:hover {{ border-color:#296ACC; color:#296ACC; }}
+  .toolbar button.active {{ background:#296ACC; color:#fff; border-color:#296ACC; }}
+  .banner {{ display:flex; gap:18px; flex-wrap:wrap; padding:12px 16px; background:#fff; border:1px solid #e2e8f0; border-radius:10px; font-size:13px; margin-bottom:12px; }}
+  .banner b {{ font-size:15px; }}
+  .gantt-wrap {{ background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px; }}
+  .gantt-row {{ display:flex; align-items:stretch; gap:0; }}
+  .gantt-left {{ flex:0 0 220px; padding-top:0; font-size:11px; }}
+  .gantt-left .row {{ display:flex; align-items:center; padding:0 10px 0 4px; border-right:1px solid #e2e8f0; box-sizing:border-box; overflow:hidden; }}
+  .gantt-left .row .num {{ font-weight:700; color:#296ACC; margin-right:6px; min-width:24px; }}
+  .gantt-left .row .mfg {{ color:#475569; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+  .gantt-chart-area {{ flex:1 1 0; min-width:0; overflow-x:scroll; overflow-y:hidden; }}
+  .gantt-chart-area::-webkit-scrollbar {{ height:12px; }}
+  .gantt-chart-area::-webkit-scrollbar-track {{ background:#f1f5f9; border-radius:6px; }}
+  .gantt-chart-area::-webkit-scrollbar-thumb {{ background:#94a3b8; border-radius:6px; }}
+  .gantt-chart-area::-webkit-scrollbar-thumb:hover {{ background:#64748b; }}
+  .gantt-wrap svg {{ display:block; width:100%; height:auto; }}
+  .legend {{ font-size:11px; color:#666; margin-top:10px; }}
+  .legend span.sw {{ display:inline-block; width:10px; height:10px; margin-right:4px; border-radius:2px; vertical-align:middle; }}
+  .urgent-table {{ background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:0; margin-top:14px; overflow:hidden; }}
+  .urgent-table h3 {{ margin:0; padding:12px 16px; font-size:14px; background:#f8fafc; border-bottom:1px solid #e2e8f0; }}
+  .urgent-table table {{ width:100%; border-collapse:collapse; font-size:12px; }}
+  .urgent-table th, .urgent-table td {{ padding:8px 12px; border-bottom:1px solid #f1f5f9; text-align:left; }}
+  .urgent-table th {{ background:#fafbfc; font-weight:600; color:#475569; font-size:11px; text-transform:uppercase; letter-spacing:0.3px; }}
+  .urgent-table tr:hover td {{ background:#f8fafc; }}
+  .urgent-table input.ed, .urgent-table select.ed {{ border:1px solid #e2e8f0; border-radius:4px; padding:3px 6px; font-size:11px; transition:background 0.3s; }}
+  .urgent-table input.ed:focus, .urgent-table select.ed:focus {{ outline:none; border-color:#296ACC; }}
+  .bar-mfg.bar-long .bar {{ fill:#dc2626 !important; }}
+  .bar-mfg.bar-long .bar-progress {{ fill:#b91c1c !important; }}
+  .bar-mfg.bar-med  .bar {{ fill:#f59e0b !important; }}
+  .bar-mfg.bar-med  .bar-progress {{ fill:#d97706 !important; }}
+  .bar-mfg.bar-short .bar {{ fill:#10b981 !important; }}
+  .bar-mfg.bar-short .bar-progress {{ fill:#059669 !important; }}
+  .bar-transit .bar {{ fill:#7c3aed !important; }}
+  .bar-transit .bar-progress {{ fill:#6d28d9 !important; }}
+  .bar-stock .bar {{ fill:#64748b !important; }}
+  .bar-stock .bar-progress {{ fill:#475569 !important; }}
+  .bar-placed .bar {{ fill:#16a34a !important; }}
+  .bar-placed .bar-progress {{ fill:#15803d !important; }}
+  .bar-safety .bar {{ fill:#cbd5e1 !important; stroke:#94a3b8; stroke-width:1; stroke-dasharray:3,2; }}
+  .bar-safety .bar-progress {{ fill:#94a3b8 !important; }}
+  /* Hide in-bar labels and frappe-gantt's narrow click popup — use our own hover tooltip */
+  #schedule-gantt .bar-label {{ display:none !important; }}
+  .popup-wrapper, .gantt-container .popup-wrapper, .gantt .popup-wrapper {{ display:none !important; }}
+  @media print {{
+    body {{ background:#fff; padding:5mm; }}
+    .toolbar, .back {{ display:none !important; }}
+    header, .gantt-wrap, .banner, .urgent-table {{ box-shadow:none; }}
+  }}
+</style>
+</head>
+<body>
+<div class="so-sched">
+  <a class="back" href="/app/sales-order/{so_name_esc}">← Back to Sales Order</a>
+  <header>
+    <h1>{so_name_esc} — Procurement Schedule</h1>
+    <div class="meta">
+      Customer: <strong>{customer}</strong> &nbsp;·&nbsp;
+      Delivery date: <strong>{delivery_fmt}</strong> &nbsp;·&nbsp;
+      Safety buffer: <input id="safety-input" type="number" min="0" value="{safety}" style="width:50px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px;">d &nbsp;·&nbsp;
+      <span id="item-count">{len(items_data)}</span> item(s)
+    </div>
+  </header>
+
+  <div id="summary-banner" class="banner"></div>
+
+  <div class="toolbar">
+    <span style="color:#475569;font-size:12px;margin-right:6px;">View:</span>
+    <button class="vm" data-mode="Day">Day</button>
+    <button class="vm active" data-mode="Week">Week</button>
+    <button class="vm" data-mode="Month">Month</button>
+    <span style="flex:1;"></span>
+    <button onclick="window.print()">🖨 Print</button>
+  </div>
+
+  <div class="gantt-wrap">
+    <div class="gantt-row">
+      <div id="gantt-left-panel" class="gantt-left"></div>
+      <div class="gantt-chart-area"><svg id="schedule-gantt" style="width:100%;"></svg></div>
+    </div>
+    <div class="legend">
+      <span class="sw" style="background:#16a34a;"></span>✅ PO Placed &nbsp;
+      <span class="sw" style="background:#10b981;"></span>&lt; 4 weeks &nbsp;
+      <span class="sw" style="background:#f59e0b;"></span>4–8 weeks &nbsp;
+      <span class="sw" style="background:#dc2626;"></span>≥ 8 weeks (long-lead) &nbsp;
+      <span class="sw" style="background:#64748b;"></span>In stock &nbsp;
+      <span class="sw" style="background:#ef4444;"></span>Today &nbsp;
+      <span style="color:#888;font-style:italic;margin-left:6px;">Hover a bar for Mfg / Transit / Safety breakdown</span>
+    </div>
+  </div>
+
+  <div class="urgent-table">
+    <h3>Items by Planned Order Date</h3>
+    <table>
+      <thead><tr>
+        <th>#</th><th>Description</th>
+        <th>Manufacturer</th>
+        <th>Wk</th>
+        <th>Transit</th>
+        <th>Incoterm</th>
+        <th>Origin</th>
+        <th>Deliver by</th>
+        <th>Order by</th>
+        <th>Urgency</th>
+        <th>PO #</th>
+      </tr></thead>
+      <tbody id="urgent-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="/assets/frappe/node_modules/frappe-gantt/dist/frappe-gantt.min.js">
+</script>
+<script>
+const SO_NAME     = "{so_name_esc}";
+const ITEMS       = {items_json};
+const ROWS        = {rows_json};
+const SAFETY_DAYS = {safety};
+const SO_DATE     = "{so_date}";
+
+function _addDays(d, n) {{
+    if (!d) return null;
+    const dt = new Date(d);
+    dt.setDate(dt.getDate() + n);
+    return dt.toISOString().slice(0,10);
+}}
+function _urgency(planned) {{
+    if (!planned) return "";
+    const today = new Date(); today.setHours(0,0,0,0);
+    const p = new Date(planned); p.setHours(0,0,0,0);
+    const days = Math.floor((p - today) / 86400000);
+    if (days < 0)   return "🔴 OVERDUE (" + (-days) + "d)";
+    if (days <= 7)  return "🟠 NOW (" + days + "d)";
+    if (days <= 14) return "🟡 SOON (" + days + "d)";
+    return "🟢 OK (" + days + "d)";
+}}
+function _esc(s) {{ const d=document.createElement("div"); d.textContent=s||""; return d.innerHTML; }}
+
+let CURRENT_VIEW = "Week";
+let GANTT = null;
+
+function build_tasks() {{
+    const tasks = [];
+    ROWS.forEach(function(r) {{
+        if (!r.delivery_date || !r.planned_order_date) return;
+        if (r.type === "group") {{
+            tasks.push({{
+                id: r.row_name,
+                name: "PO " + r.po_number + " · " + r.manufacturer + " — " + r.items_count + " items (#" + r.indices.join(", #") + ")",
+                start: r.planned_order_date,
+                end: r.delivery_date,
+                progress: 100,
+                custom_class: "bar-placed",
+                _po: r.po_number,
+                _indices: r.indices,
+                _count: r.items_count,
+                _placed: true,
+            }});
+        }} else {{
+            const wk = r.lead_time_weeks || 0;
+            const tr = r.transit_days || 0;
+            const order   = r.planned_order_date;
+            const ready   = _addDays(order, wk * 7);
+            const arrival = _addDays(r.delivery_date, -SAFETY_DAYS);
+            const total_days = wk*7 + tr + SAFETY_DAYS;
+            let cls;
+            if (total_days === 0) cls = "bar-stock";
+            else cls = total_days >= 56 ? "bar-mfg bar-long" : (total_days >= 28 ? "bar-mfg bar-med" : "bar-mfg bar-short");
+            const breakdown = [];
+            if (wk > 0)          breakdown.push("Mfg " + wk + "w");
+            if (tr > 0)          breakdown.push("Transit " + tr + "d");
+            if (SAFETY_DAYS > 0) breakdown.push("Safety " + SAFETY_DAYS + "d");
+            if (!breakdown.length) breakdown.push("In stock");
+            const item_label = "#" + r.idx;
+            const tag = [r.incoterm, r.origin].filter(Boolean).join(" ");
+            const mfg = r.manufacturer ? " · " + r.manufacturer : "";
+            tasks.push({{
+                id: r.row_name,
+                name: item_label + mfg + (tag ? " ("+tag+")" : "") + " — " + breakdown.join(" + "),
+                start: total_days === 0 ? _addDays(r.delivery_date, -1) : order,
+                end:   r.delivery_date,
+                progress: 0,
+                custom_class: cls,
+                _ready: ready,
+                _arrival: arrival,
+                _wk: wk, _tr: tr, _safety: SAFETY_DAYS,
+            }});
+        }}
+    }});
+    return tasks;
+}}
+
+function render_summary() {{
+    let n_over=0, n_now=0, n_soon=0, n_ok=0;
+    ITEMS.forEach(r => {{
+        const u = _urgency(r.planned_order_date);
+        if (u.indexOf("OVERDUE") >= 0) n_over++;
+        else if (u.indexOf("NOW") >= 0) n_now++;
+        else if (u.indexOf("SOON") >= 0) n_soon++;
+        else if (r.planned_order_date) n_ok++;
+    }});
+    document.getElementById("summary-banner").innerHTML =
+        '<div><b style="color:#dc2626;">' + n_over + '</b> overdue</div>' +
+        '<div><b style="color:#ea580c;">' + n_now + '</b> within 7d</div>' +
+        '<div><b style="color:#ca8a04;">' + n_soon + '</b> within 14d</div>' +
+        '<div><b style="color:#16a34a;">' + n_ok + '</b> on track</div>';
+}}
+
+function render_table() {{
+    const tb = document.getElementById("urgent-tbody");
+    if (!tb) return;
+    const sorted = ITEMS.slice().filter(r => r.planned_order_date)
+        .sort((a,b) => new Date(a.planned_order_date) - new Date(b.planned_order_date));
+    const incoterms = ["","EXW","FCA","FAS","FOB","CFR","CIF","CPT","CIP","DAP","DPU","DDP"];
+    tb.innerHTML = sorted.map(r => {{
+        const u = _urgency(r.planned_order_date);
+        return '<tr data-row="' + r.row_name + '">' +
+            '<td>' + r.idx + '</td>' +
+            '<td style="max-width:280px;">' + _esc(r.description ? r.description.substring(0,160) : "") + '</td>' +
+            '<td><input class="ed" data-field="manufacturer" value="' + _esc(r.manufacturer || "") + '" style="width:110px;"></td>' +
+            '<td><input class="ed" data-field="lead_time_weeks" type="number" min="0" value="' + (r.lead_time_weeks || 0) + '" style="width:50px;"></td>' +
+            '<td><input class="ed" data-field="transit_days" type="number" min="0" value="' + (r.transit_days || 0) + '" style="width:55px;"></td>' +
+            '<td><select class="ed" data-field="incoterm" style="width:80px;">' +
+                incoterms.map(i => '<option value="' + i + '"' + (r.incoterm===i?" selected":"") + '>' + (i||"—") + '</option>').join("") +
+                '</select></td>' +
+            '<td><input class="ed" data-field="origin" value="' + _esc(r.origin || "") + '" style="width:110px;"></td>' +
+            '<td><input class="ed" data-field="delivery_date" type="date" value="' + (r.delivery_date || "") + '" style="width:130px;"></td>' +
+            '<td><strong class="po-date">' + (r.planned_order_date || "") + '</strong></td>' +
+            '<td><span class="urg">' + u + '</span></td>' +
+            '<td><input class="ed" data-field="po_number" placeholder="—" value="' + _esc(r.po_number || "") + '" style="width:110px;"></td>' +
+        '</tr>';
+    }}).join("");
+    bind_inline_editors();
+}}
+
+function bind_inline_editors() {{
+    document.querySelectorAll(".ed").forEach(function(el) {{
+        const handler = function() {{
+            const row = el.closest("tr");
+            const row_name = row.getAttribute("data-row");
+            const field = el.getAttribute("data-field");
+            const val = el.value;
+            el.style.background = "#fef9c3";
+            const params = new URLSearchParams({{ sales_order: SO_NAME, row_name: row_name, field: field, value: val }});
+            const url = "/api/method/opportunity_management.opportunity_management.api.update_so_item?" + params.toString();
+
+            function attempt(retries) {{
+                return fetch(url, {{ credentials: "same-origin" }})
+                    .then(function(r) {{
+                        if (!r.ok) {{
+                            // Retry once on doc-lock / 5xx (Frappe TimestampMismatchError surfaces as 417/500)
+                            if (retries > 0 && (r.status === 417 || r.status >= 500)) {{
+                                return new Promise(function(res) {{ setTimeout(function() {{ res(attempt(retries - 1)); }}, 250); }});
+                            }}
+                            throw new Error("HTTP " + r.status);
+                        }}
+                        return r.json();
+                    }});
+            }}
+
+            // Serialize saves through window._so_save_chain so concurrent edits don't fight each other
+            window._so_save_chain = (window._so_save_chain || Promise.resolve()).then(function() {{
+                return attempt(1).then(function(j) {{
+                    if (!j || !j.message) throw new Error("empty response");
+                    el.style.background = "#dcfce7";
+                    setTimeout(function() {{ el.style.background = ""; }}, 1000);
+                    const item = ITEMS.find(function(i) {{ return i.row_name === row_name; }});
+                    if (item) {{
+                        const fmap = {{ lead_time_weeks: "lead_time_weeks", transit_days: "transit_days", incoterm: "incoterm", origin: "origin", manufacturer: "manufacturer", po_number: "po_number", delivery_date: "delivery_date" }};
+                        const target = fmap[field];
+                        if (target) item[target] = (el.tagName === "INPUT" && el.type === "number") ? parseInt(val||0,10) : val;
+                        item.planned_order_date = j.message.planned_order_date;
+                        item.urgency = j.message.urgency;
+                        const po_cell = row.querySelector(".po-date");
+                        if (po_cell) po_cell.textContent = j.message.planned_order_date || "";
+                        const u_cell = row.querySelector(".urg");
+                        if (u_cell) u_cell.textContent = j.message.urgency || "";
+                    }}
+                    rebuild_rows_and_redraw();
+                }}).catch(function(err) {{
+                    console.error("save failed for", row_name, field, "=", val, ":", err);
+                    el.style.background = "#fee2e2";
+                    el.title = "Save failed: " + (err.message || "unknown error") + ". Edit again to retry.";
+                }});
+            }});
+        }};
+        el.addEventListener("change", handler);
+        if (el.tagName === "INPUT" && el.type !== "date" && el.type !== "number") {{
+            el.addEventListener("blur", handler);
+        }}
+    }});
+
+    const safetyEl = document.getElementById("safety-input");
+    if (safetyEl && !safetyEl._wired) {{
+        safetyEl._wired = true;
+        safetyEl.addEventListener("change", function() {{
+            safetyEl.style.background = "#fef9c3";
+            const sp = new URLSearchParams({{ sales_order: SO_NAME, value: safetyEl.value }});
+            fetch("/api/method/opportunity_management.opportunity_management.api.update_so_safety?" + sp.toString(), {{ credentials: "same-origin" }})
+                .then(function(r) {{ return r.json(); }})
+                .then(function() {{
+                    safetyEl.style.background = "#dcfce7";
+                    setTimeout(function() {{ safetyEl.style.background = ""; }}, 1000);
+                    location.reload();
+                }})
+                .catch(function() {{ safetyEl.style.background = "#fee2e2"; }});
+        }});
+    }}
+}}
+
+function rebuild_rows_and_redraw() {{
+    // Rebuild ROWS from ITEMS (re-grouping by PO)
+    const seen = new Set();
+    const next_rows = [];
+    ITEMS.forEach(function(it) {{
+        const po = it.po_number || "";
+        if (po && !seen.has(po)) {{
+            seen.add(po);
+            const grp = ITEMS.filter(i => (i.po_number || "") === po);
+            const planned_dates = grp.map(g => g.planned_order_date).filter(Boolean);
+            const delivery_dates = grp.map(g => g.delivery_date).filter(Boolean);
+            const mfgs = [...new Set(grp.map(g => g.manufacturer).filter(Boolean))];
+            next_rows.push({{
+                type: "group",
+                po_number: po,
+                manufacturer: mfgs.join(" / "),
+                indices: grp.map(g => g.idx),
+                items_count: grp.length,
+                planned_order_date: planned_dates.length ? planned_dates.sort()[0] : null,
+                delivery_date:      delivery_dates.length ? delivery_dates.sort().slice(-1)[0] : null,
+                row_name: "group_" + po,
+            }});
+        }} else if (!po) {{
+            next_rows.push({{ type: "item", ...it }});
+        }}
+    }});
+    ROWS.length = 0;
+    next_rows.forEach(r => ROWS.push(r));
+    AUTO_PICKED = false;  // re-pick view
+    render_summary();
+    render_gantt();
+}}
+
+function add_today_line(gantt) {{
+    try {{
+        if (!gantt) return;
+        const svg = gantt.$svg || document.querySelector("#schedule-gantt");
+        if (!svg) return;
+        const start = gantt.gantt_start || (gantt.dates && gantt.dates[0]);
+        if (!start) return;
+        const today = new Date(); today.setHours(0,0,0,0);
+        const start0 = new Date(start); start0.setHours(0,0,0,0);
+        const days = (today - start0) / 86400000;
+        const opts = gantt.options || {{}};
+        const cw = opts.column_width || 38;
+        const view = opts.view_mode || "Week";
+        let px_per_day = cw;
+        if (view === "Half Day") px_per_day = cw * 2;
+        else if (view === "Quarter Day") px_per_day = cw * 4;
+        else if (view === "Week") px_per_day = cw / 7;
+        else if (view === "Month") px_per_day = cw / 30;
+        else if (view === "Year") px_per_day = cw / 365;
+        const x = days * px_per_day;
+        if (!isFinite(x) || x < 0) return;
+        const header_h = opts.header_height || 50;
+        let total_h = 600;
+        try {{ total_h = svg.getBBox().height || 600; }} catch(e) {{}}
+        const ns = "http://www.w3.org/2000/svg";
+        svg.querySelectorAll(".so-today-marker").forEach(n => n.remove());
+        const line = document.createElementNS(ns, "line");
+        line.setAttribute("class","so-today-marker");
+        line.setAttribute("x1",x); line.setAttribute("x2",x);
+        line.setAttribute("y1", header_h - 12); line.setAttribute("y2", total_h);
+        line.setAttribute("stroke","#ef4444"); line.setAttribute("stroke-width","1.5");
+        line.setAttribute("stroke-dasharray","5,4"); line.setAttribute("opacity","0.85");
+        svg.appendChild(line);
+        const t = document.createElementNS(ns,"text");
+        t.setAttribute("class","so-today-marker");
+        t.setAttribute("x", x + 4); t.setAttribute("y", header_h - 16);
+        t.setAttribute("fill","#ef4444"); t.setAttribute("font-size","11"); t.setAttribute("font-weight","600");
+        t.textContent = "Today"; svg.appendChild(t);
+    }} catch(e) {{ console.warn("today-line:", e); }}
+}}
+
+function _span_days(tasks) {{
+    let mn = null, mx = null;
+    tasks.forEach(function(t) {{
+        const s = new Date(t.start), e = new Date(t.end);
+        if (!mn || s < mn) mn = s;
+        if (!mx || e > mx) mx = e;
+    }});
+    return mn && mx ? Math.ceil((mx - mn) / 86400000) + 7 : 30;
+}}
+
+function _auto_pick_view(span) {{
+    if (span <= 21) return "Day";
+    if (span <= 90) return "Week";
+    return "Month";
+}}
+
+function _fit_column_width(span_days, view, container_px) {{
+    // Fixed-size columns per view. Chart renders at natural width; the .gantt-chart-area
+    // wrapper has overflow-x:auto so longer timelines scroll horizontally.
+    if (view === "Day")  return 50;
+    if (view === "Week") return 120;
+    return 380;  // Month
+}}
+
+let AUTO_PICKED = false;
+function render_gantt() {{
+    const tasks = build_tasks();
+    const host = document.getElementById("schedule-gantt");
+    if (!tasks.length) {{
+        host.outerHTML = "<div style='padding:30px;text-align:center;color:#888;'>No items have a Planned Order Date set.</div>";
+        return;
+    }}
+    const span = _span_days(tasks);
+    if (!AUTO_PICKED) {{
+        CURRENT_VIEW = _auto_pick_view(span);
+        AUTO_PICKED = true;
+
+document.querySelectorAll(".vm").forEach(function(b) {{
+            b.classList.toggle("active", b.dataset.mode === CURRENT_VIEW);
+        }});
+    }}
+    const wrap = document.querySelector(".gantt-wrap");
+    const wrap_w = (wrap && wrap.clientWidth) ? wrap.clientWidth : 1200;
+    const col_w = _fit_column_width(span, CURRENT_VIEW, wrap_w);
+
+    GANTT = new Gantt("#schedule-gantt", tasks, {{
+        view_mode: CURRENT_VIEW,
+        language: "en",
+        bar_height: 16,
+        padding: 6,
+        column_width: col_w,
+        custom_popup_html: function(t) {{
+            let phases = "";
+            if (t._wk !== undefined) {{
+                phases = "<div style='font-size:10px;color:#666;margin-top:6px;border-top:1px solid #e2e8f0;padding-top:6px;'>";
+                if (t._wk > 0)    phases += "Mfg: <b>" + t._wk + "w</b> &nbsp;→ ready " + t._ready + "<br>";
+                if (t._tr > 0)    phases += "Transit: <b>" + t._tr + "d</b> &nbsp;→ arrives " + t._arrival + "<br>";
+                if (t._safety > 0) phases += "Safety: <b>" + t._safety + "d</b> &nbsp;→ deliver " + t.end;
+                phases += "</div>";
+            }}
+            return "<div style='padding:8px 12px;'><div style='font-weight:600;'>" + _esc(t.name) +
+                   "</div><div style='font-size:11px;color:#666;margin-top:4px;'>Order by: <b>" + t.start +
+                   "</b><br>Deliver by: <b>" + t.end + "</b></div>" + phases + "</div>";
+        }},
+    }});
+    setTimeout(function() {{
+        add_today_line(GANTT);
+        const svg = GANTT && GANTT.$svg ? GANTT.$svg : document.querySelector("#schedule-gantt");
+        if (!svg || !GANTT) return;
+        try {{
+            // Find tightest data range across all tasks
+            let mn = null, mx = null;
+            (GANTT.tasks || []).forEach(function(t) {{
+                if (!mn || t._start < mn) mn = t._start;
+                if (!mx || t._end   > mx) mx = t._end;
+            }});
+            if (!mn || !mx) return;
+
+            const opts = GANTT.options || {{}};
+            const cw = opts.column_width || 38;
+            const view = opts.view_mode || "Week";
+            let px_per_day = cw;
+            if (view === "Half Day") px_per_day = cw * 2;
+            else if (view === "Quarter Day") px_per_day = cw * 4;
+            else if (view === "Week")  px_per_day = cw / 7;
+            else if (view === "Month") px_per_day = cw / 30;
+            else if (view === "Year")  px_per_day = cw / 365;
+
+            const start = GANTT.gantt_start;
+            // Pixel positions inside frappe-gantt's full canvas
+            const x_min_data = ((mn - start) / 86400000) * px_per_day;
+            const x_max_data = ((mx - start) / 86400000) * px_per_day;
+            // Add a little left/right padding for breathing room
+            const left_pad  = Math.min(60, x_min_data);
+            const right_pad = 30;
+            const view_x      = Math.max(0, x_min_data - left_pad);
+            const view_width  = (x_max_data - x_min_data) + left_pad + right_pad;
+
+            const bb = svg.getBBox();
+            const natural_h = Math.ceil(bb.height);
+            const data_w    = Math.ceil(view_width);
+            // ViewBox clips year-padding columns by starting at view_x and showing only
+            // the data range. SVG dimensions match viewBox 1:1 (no scaling) so bars,
+            // text, and the left panel all stay at natural pixel heights.
+            svg.setAttribute("viewBox", view_x + " 0 " + data_w + " " + natural_h);
+            svg.setAttribute("preserveAspectRatio", "xMinYMin meet");
+            svg.style.width  = data_w + "px";
+            svg.style.height = natural_h + "px";
+            svg.removeAttribute("width");
+            svg.removeAttribute("height");
+
+            const HEADER_VB = 50;
+            const total_bars = (GANTT.tasks || []).length || 1;
+            const real_row = (natural_h - HEADER_VB) / total_bars;
+            render_left_panel(real_row, HEADER_VB);
+            attach_hover_tooltips(GANTT);
+        }} catch(e) {{ console.warn("svg fit:", e); }}
+    }}, 80);
+}}
+
+// Re-render on window resize for proper fit
+window.addEventListener("resize", function() {{
+    clearTimeout(window._resize_t);
+    window._resize_t = setTimeout(render_gantt, 200);
+}});
+
+
+document.querySelectorAll(".vm").forEach(function(b) {{
+    b.addEventListener("click", function() {{
+        CURRENT_VIEW = b.dataset.mode;
+        document.querySelectorAll(".vm").forEach(function(x) {{ x.classList.remove("active"); }});
+        b.classList.add("active");
+        render_gantt();
+    }});
+}});
+
+render_summary();
+render_table();
+render_gantt();
+
+
+function attach_hover_tooltips(gantt) {{
+    if (!gantt) return;
+    const svg = gantt.$svg || document.querySelector("#schedule-gantt");
+    if (!svg) return;
+
+    let tooltip = null;
+    function _hide() {{
+        if (tooltip) {{ tooltip.remove(); tooltip = null; }}
+    }}
+    function _findTaskFor(el) {{
+        let n = el;
+        while (n && n !== svg) {{
+            const id = n.getAttribute && (n.getAttribute("data-id") || n.id);
+            if (id) {{
+                const t = (gantt.tasks || []).find(function(t) {{ return t.id === id; }});
+                if (t) return t;
+            }}
+            n = n.parentNode;
+        }}
+        const wrap = el.closest && (el.closest(".bar-wrapper") || el.closest("[data-id]"));
+        if (wrap) {{
+            const id = wrap.getAttribute("data-id") || wrap.id;
+            return (gantt.tasks || []).find(function(t) {{ return t.id === id; }});
+        }}
+        return null;
+    }}
+    function _build(task) {{
+        if (task._placed) {{
+            return "<div style='font-weight:600;color:#15803d;'>✅ PO Placed: " + _esc(task._po) + "</div>" +
+                   "<div style='font-size:11px;color:#666;margin-top:4px;'>" + _esc(task.name) + "</div>" +
+                   "<div style='font-size:11px;color:#666;margin-top:4px;border-top:1px solid #e2e8f0;padding-top:6px;'>" +
+                     "Earliest order: <b>" + task.start + "</b><br>" +
+                     "Latest delivery: <b>" + task.end + "</b><br>" +
+                     "Items in PO: <b>" + task._count + "</b>" +
+                   "</div>";
+        }}
+        let phases = "";
+        if (task._wk !== undefined) {{
+            phases = "<div style='font-size:10px;color:#666;margin-top:6px;border-top:1px solid #e2e8f0;padding-top:6px;'>";
+            if (task._wk > 0)     phases += "Mfg: <b>" + task._wk + "w</b> &nbsp;→ ready " + task._ready + "<br>";
+            if (task._tr > 0)     phases += "Transit: <b>" + task._tr + "d</b> &nbsp;→ arrives " + task._arrival + "<br>";
+            if (task._safety > 0) phases += "Safety: <b>" + task._safety + "d</b> &nbsp;→ deliver " + task.end;
+            phases += "</div>";
+        }}
+        return "<div style='font-weight:600;'>" + _esc(task.name) +
+               "</div><div style='font-size:11px;color:#666;margin-top:4px;'>Order by: <b>" + task.start +
+               "</b><br>Deliver by: <b>" + task.end + "</b></div>" + phases;
+    }}
+    function _show(task, anchor_rect) {{
+        _hide();
+        tooltip = document.createElement("div");
+        tooltip.style.cssText =
+            "position:absolute;background:white;border:1px solid #cbd5e1;padding:8px 12px;" +
+            "border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,0.12);font-size:12px;" +
+            "z-index:10000;pointer-events:none;max-width:340px;line-height:1.45;color:#222;";
+        tooltip.innerHTML = _build(task);
+        document.body.appendChild(tooltip);
+        const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+        const vw = window.innerWidth,   vh = window.innerHeight;
+        let left = anchor_rect.left + window.scrollX;
+        let top  = anchor_rect.bottom + window.scrollY + 8;
+        if (left + tw + 10 > vw + window.scrollX) left = vw + window.scrollX - tw - 10;
+        if (top + th > window.scrollY + vh)       top  = anchor_rect.top + window.scrollY - th - 8;
+        tooltip.style.left = Math.max(8, left) + "px";
+        tooltip.style.top  = top + "px";
+    }}
+
+    svg.addEventListener("mouseover", function(e) {{
+        const task = _findTaskFor(e.target);
+        if (!task) return;
+        const wrap = (e.target.closest && (e.target.closest(".bar-wrapper, [data-id]"))) || e.target;
+        _show(task, wrap.getBoundingClientRect());
+    }});
+    svg.addEventListener("mouseout", function(e) {{
+        const next = e.relatedTarget;
+        if (next && svg.contains(next) && _findTaskFor(next)) return;
+        _hide();
+    }});
+    svg.addEventListener("click", function(e) {{
+        const task = _findTaskFor(e.target);
+        if (!task) {{ _hide(); return; }}
+        const wrap = (e.target.closest && (e.target.closest(".bar-wrapper, [data-id]"))) || e.target;
+        _show(task, wrap.getBoundingClientRect());
+    }});
+    window.addEventListener("scroll", _hide, true);
+}}
+
+
+function render_left_panel(row_h, header_h) {{
+    const panel = document.getElementById("gantt-left-panel");
+    if (!panel) return;
+    if (!row_h) {{ row_h = 22; header_h = 50; }}
+    panel.style.paddingTop = (header_h || 0) + "px";
+    let html = "";
+    ROWS.forEach(function(r) {{
+        const h = row_h;
+        if (r.type === "group") {{
+            const mfg = (r.manufacturer || "").replace(/[<>]/g, "");
+            html += '<div class="row" style="height:' + h + 'px;background:#f0fdf4;">' +
+                      '<span class="num" style="color:#15803d;">PO</span>' +
+                      '<span class="mfg" title="PO ' + r.po_number + ' (#' + r.indices.join(", #") + ')" style="font-size:10px;">' +
+                        '<b>' + r.po_number + '</b> · ' + (mfg || "—") + ' (' + r.items_count + ')' +
+                      '</span>' +
+                    '</div>';
+        }} else {{
+            const _label = (r.manufacturer && r.manufacturer.trim()) ? r.manufacturer : (r.origin || "");
+            const mfg = _label.replace(/[<>]/g, "");
+            html += '<div class="row" style="height:' + h + 'px;">' +
+                      '<span class="num">#' + r.idx + '</span>' +
+                      '<span class="mfg" title="' + mfg + '">' + (mfg || '<span style="color:#94a3b8;">—</span>') + '</span>' +
+                    '</div>';
+        }}
+    }});
+    panel.innerHTML = html;
+}}
+
+</script>
+</body>
+</html>"""
+
+    from werkzeug.wrappers import Response as _Resp
+    return _Resp(html, mimetype="text/html; charset=utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Sales Order — inline edit endpoints (used by the schedule HTML page)
+# ---------------------------------------------------------------------------
+_SO_ITEM_FIELD_MAP = {
+    "lead_time_weeks": "custom_lead_time_weeks",
+    "transit_days":    "custom_transit_days",
+    "incoterm":        "custom_incoterm",
+    "origin":          "custom_origin",
+    "manufacturer":    "custom_manufacturer",
+    "po_number":       "custom_po_number",
+    "delivery_date":   "delivery_date",
+}
+
+
+@frappe.whitelist()
+def update_so_item(sales_order, row_name, field, value):
+    """Set a single field on a Sales Order Item, recompute planned_order_date, save."""
+    target = _SO_ITEM_FIELD_MAP.get(field)
+    if not target:
+        frappe.throw(f"Field {field} is not editable.")
+    so = frappe.get_doc("Sales Order", sales_order)
+    so.check_permission("write")
+    row = next((it for it in so.items if it.name == row_name), None)
+    if not row:
+        frappe.throw("Row not found in this Sales Order.")
+
+    from frappe.utils import cint
+    if field in ("lead_time_weeks", "transit_days"):
+        row.set(target, cint(value or 0))
+    elif field == "delivery_date":
+        from frappe.utils import getdate
+        row.set(target, getdate(value) if value else None)
+    else:
+        row.set(target, str(value).strip() if value else "")
+
+    # Recompute planned_order_date + urgency
+    if row.delivery_date:
+        from datetime import timedelta, date
+        from frappe.utils import getdate, cint
+        wk = cint(row.custom_lead_time_weeks)
+        tr = cint(row.custom_transit_days)
+        sd = cint(so.get("custom_safety_days") or 0)
+        row.custom_planned_order_date = getdate(row.delivery_date) - timedelta(days=wk * 7 + tr + sd)
+
+        # urgency
+        days = (row.custom_planned_order_date - date.today()).days
+        if days < 0:    row.custom_order_urgency = f"🔴 OVERDUE ({-days}d)"
+        elif days <= 7: row.custom_order_urgency = f"🟠 NOW ({days}d)"
+        elif days <= 14: row.custom_order_urgency = f"🟡 SOON ({days}d)"
+        else:           row.custom_order_urgency = f"🟢 OK ({days}d)"
+
+    so.save()
+    frappe.db.commit()
+    return {
+        "ok": True,
+        "planned_order_date": str(row.custom_planned_order_date) if row.custom_planned_order_date else None,
+        "urgency":            row.custom_order_urgency,
+    }
+
+
+@frappe.whitelist()
+def update_so_safety(sales_order, value):
+    """Set Sales Order safety_days; recompute planned_order_date for every item."""
+    from frappe.utils import cint, getdate
+    from datetime import timedelta, date
+    so = frappe.get_doc("Sales Order", sales_order)
+    so.check_permission("write")
+    so.custom_safety_days = cint(value or 0)
+    sd = so.custom_safety_days
+    for row in so.items:
+        if row.delivery_date:
+            wk = cint(row.custom_lead_time_weeks)
+            tr = cint(row.custom_transit_days)
+            row.custom_planned_order_date = getdate(row.delivery_date) - timedelta(days=wk * 7 + tr + sd)
+            days = (row.custom_planned_order_date - date.today()).days
+            if days < 0:    row.custom_order_urgency = f"🔴 OVERDUE ({-days}d)"
+            elif days <= 7: row.custom_order_urgency = f"🟠 NOW ({days}d)"
+            elif days <= 14: row.custom_order_urgency = f"🟡 SOON ({days}d)"
+            else:           row.custom_order_urgency = f"🟢 OK ({days}d)"
+    so.save()
+    frappe.db.commit()
+    return {"ok": True, "safety_days": sd}
