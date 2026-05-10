@@ -1191,6 +1191,95 @@ def _is_system_manager() -> bool:
     return "System Manager" in set(frappe.get_roles(frappe.session.user))
 
 
+@frappe.whitelist(allow_guest=True)
+def get_mobile_config():
+    """
+    Return the runtime configuration for the mobile app.
+
+    Allows administrators to control feature visibility, force-update
+    minimum version, maintenance mode, banners, business rules, and
+    branding without shipping a new build.
+
+    Marked allow_guest so the app can fetch this BEFORE login (to know
+    whether to show the maintenance / update screen).
+    """
+    try:
+        s = frappe.get_single("ESS Mobile Settings")
+    except Exception:
+        # Doctype not migrated yet — return safe defaults so the app behaves normally.
+        return _default_mobile_config()
+
+    return {
+        "min_app_version": s.get("min_app_version") or "1.0.0",
+        "force_update_message_en": s.get("force_update_message_en") or "Please update ALKHORA ESS to the latest version to continue.",
+        "force_update_message_ar": s.get("force_update_message_ar") or "يرجى تحديث تطبيق ألخورة لأحدث إصدار للمتابعة.",
+
+        "maintenance_mode": int(s.get("maintenance_mode") or 0),
+        "maintenance_message_en": s.get("maintenance_message_en") or "We're performing scheduled maintenance.",
+        "maintenance_message_ar": s.get("maintenance_message_ar") or "نجري حالياً صيانة مجدولة.",
+
+        "announcement_banner_en": s.get("announcement_banner_en") or "",
+        "announcement_banner_ar": s.get("announcement_banner_ar") or "",
+
+        "modules": {
+            "bank_balances": int(s.get("enable_bank_balances") or 0),
+            "send_notification": int(s.get("enable_send_notification") or 0),
+            "expenses": int(s.get("enable_expenses") or 0),
+            "holidays": int(s.get("enable_holidays") or 0),
+            "announcements": int(s.get("enable_announcements") or 0),
+            "notifications": int(s.get("enable_notifications") or 0),
+            "approvals": int(s.get("enable_approvals") or 0),
+            "geofence_reminders": int(s.get("enable_geofence_reminders") or 0),
+        },
+
+        "rules": {
+            "checkin_window_start_hour": int(s.get("checkin_window_start_hour") or 9),
+            "checkin_window_end_hour": int(s.get("checkin_window_end_hour") or 10),
+            "late_checkin_threshold_minutes": int(s.get("late_checkin_threshold_minutes") or 15),
+            "default_leave_type_for_late_checkin": s.get("default_leave_type_for_late_checkin") or "",
+            "outside_zone_allowed": int(s.get("outside_zone_allowed") or 1),
+            "default_geofence_radius_m": int(s.get("default_geofence_radius_m") or 100),
+        },
+
+        "branding": {
+            "primary_color_hex": s.get("primary_color_hex") or "#1565C0",
+            "support_email": s.get("support_email") or "hr@alkhora.com",
+            "support_whatsapp_number": s.get("support_whatsapp_number") or "",
+        },
+    }
+
+
+def _default_mobile_config():
+    return {
+        "min_app_version": "1.0.0",
+        "force_update_message_en": "",
+        "force_update_message_ar": "",
+        "maintenance_mode": 0,
+        "maintenance_message_en": "",
+        "maintenance_message_ar": "",
+        "announcement_banner_en": "",
+        "announcement_banner_ar": "",
+        "modules": {
+            "bank_balances": 1, "send_notification": 1, "expenses": 1,
+            "holidays": 1, "announcements": 1, "notifications": 1,
+            "approvals": 1, "geofence_reminders": 1,
+        },
+        "rules": {
+            "checkin_window_start_hour": 9,
+            "checkin_window_end_hour": 10,
+            "late_checkin_threshold_minutes": 15,
+            "default_leave_type_for_late_checkin": "",
+            "outside_zone_allowed": 1,
+            "default_geofence_radius_m": 100,
+        },
+        "branding": {
+            "primary_color_hex": "#1565C0",
+            "support_email": "hr@alkhora.com",
+            "support_whatsapp_number": "",
+        },
+    }
+
+
 @frappe.whitelist()
 def get_my_roles():
     """
