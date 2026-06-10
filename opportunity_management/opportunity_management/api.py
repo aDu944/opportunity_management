@@ -1235,7 +1235,7 @@ def get_mobile_config():
         "app": {
             "min_app_version": s.get("min_app_version") or "1.0.0",
             "force_update_message_en": s.get("force_update_message_en") or "Please update ALKHORA ESS to the latest version to continue.",
-            "force_update_message_ar": s.get("force_update_message_ar") or "يرجى تحديث تطبيق ألخورة لأحدث إصدار للمتابعة.",
+            "force_update_message_ar": s.get("force_update_message_ar") or "يرجى تحديث تطبيق الخورة لأحدث إصدار للمتابعة.",
             "maintenance_mode": _i("maintenance_mode"),
             "maintenance_message_en": s.get("maintenance_message_en") or "",
             "maintenance_message_ar": s.get("maintenance_message_ar") or "",
