@@ -1138,6 +1138,63 @@ def notify_outside_zone_checkin(employee, location_name=None, checkin_time=None)
 
 
 @frappe.whitelist()
+def get_account_ledger(account, limit=100):
+    """
+    Return the last [limit] posted GL Entry rows for the given account, with
+    a running balance.
+
+    Restricted to System Manager / Accounts Manager — same gate as the
+    Bank Balances tile.
+    """
+    try:
+        limit = int(limit or 100)
+    except (TypeError, ValueError):
+        limit = 100
+
+    roles = set(frappe.get_roles(frappe.session.user))
+    if not ({"System Manager", "Accounts Manager"} & roles):
+        return {"error": "permission_denied",
+                "message": "Not permitted.",
+                "entries": []}
+
+    rows = frappe.db.sql(
+        """
+        SELECT
+            name, posting_date, voucher_type, voucher_no,
+            against, debit, credit, against_voucher_type,
+            against_voucher, account_currency
+        FROM `tabGL Entry`
+        WHERE account = %(account)s AND is_cancelled = 0
+        ORDER BY posting_date DESC, creation DESC
+        LIMIT %(limit)s
+        """,
+        {"account": account, "limit": limit},
+        as_dict=True,
+    )
+
+    # Compute the running balance *forward* (oldest → newest) then reverse.
+    rows.reverse()
+    running = 0.0
+    for r in rows:
+        debit = float(r.get("debit") or 0)
+        credit = float(r.get("credit") or 0)
+        running += debit - credit
+        r["balance"] = running
+        # Frappe Date / Datetime → ISO string for JSON
+        pd = r.get("posting_date")
+        r["posting_date"] = pd.isoformat() if hasattr(pd, "isoformat") else (pd or "")
+    rows.reverse()
+
+    return {
+        "account": account,
+        "account_currency": frappe.db.get_value(
+            "Account", account, "account_currency") or "IQD",
+        "entries": rows,
+        "count": len(rows),
+    }
+
+
+@frappe.whitelist()
 def get_bank_balances(company=None):
     """
     Return all GL accounts of type 'Bank' for the given company along with
