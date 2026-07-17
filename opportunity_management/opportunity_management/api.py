@@ -8,7 +8,7 @@ Provides data for:
 
 import frappe
 from frappe import _
-from frappe.utils import nowdate, getdate, date_diff, flt
+from frappe.utils import nowdate, getdate, date_diff, flt, cint
 from datetime import datetime
 from opportunity_management.opportunity_management import notification_utils
 
@@ -103,6 +103,10 @@ def get_my_opportunities(user=None, include_completed=False):
 
     Returns a list of opportunities with their assignments and closing dates.
     """
+    # HTTP query params arrive as strings — "0" is truthy in Python, so coerce
+    # to int before any truthiness check. Without this, /Open/ tab always
+    # shows completed opportunities because "0" evaluates as True.
+    include_completed = bool(cint(include_completed))
     if not user:
         user = frappe.session.user
 
@@ -125,7 +129,13 @@ def get_personal_opportunities(user, include_completed=False):
     """
     Get personal opportunity tasks for a user.
     """
-    status_filter = None if include_completed else ["not in", ["Closed", "Lost", "Converted"]]
+    # HTTP query params come through as strings; coerce so "0" is False.
+    include_completed = bool(cint(include_completed))
+    # "Quotation" status = a Quotation has been raised → work is done from the
+    # opportunity holder's perspective; treated as completed alongside the
+    # explicit terminal statuses.
+    completed_statuses = ["Closed", "Lost", "Converted", "Quotation"]
+    status_filter = None if include_completed else ["not in", completed_statuses]
     opp_filters = {"status": status_filter} if status_filter else {}
     opps = frappe.get_all(
         "Opportunity",
@@ -155,7 +165,7 @@ def get_personal_opportunities(user, include_completed=False):
         })
 
         if include_completed:
-            if opp.status not in ["Closed", "Lost", "Converted"] and not has_quotation:
+            if opp.status not in completed_statuses and not has_quotation:
                 continue
         else:
             if has_quotation:
@@ -232,6 +242,7 @@ def get_team_opportunities_for_user(user, include_completed=False):
     """
     Get team opportunities for a manager user.
     """
+    include_completed = bool(cint(include_completed))
     # Get user's department
     employee_dept = frappe.db.get_value(
         "Employee",
@@ -247,7 +258,9 @@ def get_team_opportunities_for_user(user, include_completed=False):
     opp_map = {}
     today = getdate(nowdate())
 
-    status_filter = ["in", ["Closed", "Lost", "Converted"]] if include_completed else ["not in", ["Closed", "Lost", "Converted"]]
+    # "Quotation" status counts as completed alongside Closed / Lost / Converted.
+    completed_statuses = ["Closed", "Lost", "Converted", "Quotation"]
+    status_filter = ["in", completed_statuses] if include_completed else ["not in", completed_statuses]
     opps = frappe.get_all(
         "Opportunity",
         filters={"status": status_filter},
@@ -707,6 +720,8 @@ def get_team_opportunities(team=None, include_completed=False):
     Returns:
         List of opportunities with assignee details
     """
+    # HTTP query params come through as strings; coerce so "0" is False.
+    include_completed = bool(cint(include_completed))
     # If no team specified, get current user's department
     if not team:
         current_user = frappe.session.user
@@ -722,7 +737,9 @@ def get_team_opportunities(team=None, include_completed=False):
     opp_map = {}
     today = getdate(nowdate())
 
-    status_filter = None if include_completed else ["not in", ["Closed", "Lost", "Converted"]]
+    # "Quotation" status counts as completed alongside Closed / Lost / Converted.
+    completed_statuses = ["Closed", "Lost", "Converted", "Quotation"]
+    status_filter = None if include_completed else ["not in", completed_statuses]
     opp_filters = {"status": status_filter} if status_filter else {}
     opps = frappe.get_all(
         "Opportunity",
@@ -797,7 +814,7 @@ def get_team_opportunities(team=None, include_completed=False):
         has_draft_quotation = row.name in draft_quotation_opps
 
         if include_completed:
-            if row.status not in ["Closed", "Lost", "Converted"] and not has_quotation:
+            if row.status not in completed_statuses and not has_quotation:
                 continue
         else:
             if has_quotation:
