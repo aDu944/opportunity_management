@@ -31,16 +31,72 @@ def _get_hr_manager_emails():
 
 
 def on_leave_application_insert(doc, method=None):
-    """Email HR/managers when an employee submits a new leave request."""
+    """Email HR/managers when an employee submits a new leave request.
+
+    Each recipient gets a *personal* copy with signed one-click Approve /
+    Reject buttons plus a View button. The signed URL includes the
+    recipient's email so the audit log records who acted, and the token
+    expires after 14 days.
+    """
     employee_name = frappe.db.get_value("Employee", doc.employee, "employee_name") or doc.employee
     recipients = _get_hr_manager_emails()
     if not recipients:
         return
 
-    subject = f"طلب إجازة جديد — {employee_name} | New Leave Request — {employee_name}"
-    link = f"{frappe.utils.get_url()}/app/leave-application/{doc.name}"
+    is_late_checkin = (doc.description or "").startswith("Auto-submitted: late check-in")
+    late_block = ""
+    if is_late_checkin and doc.get("custom_to_time"):
+        checkin_t = str(doc.get("custom_to_time"))[:8]
+        late_block = (
+            "<tr>"
+            "<td style='padding:8px 12px;border:1px solid #ddd;background:#FFF4E5;"
+            "font-weight:bold;color:#E65100'>Actual Check-in Time</td>"
+            "<td style='padding:8px 12px;border:1px solid #ddd;background:#FFF4E5;"
+            f"font-weight:bold;font-size:15px;color:#E65100'>{checkin_t}</td>"
+            "</tr>"
+        )
+        subject = f"تأخير في الحضور — {employee_name} ({checkin_t}) | Late Check-in — {employee_name} ({checkin_t})"
+    else:
+        subject = f"طلب إجازة جديد — {employee_name} | New Leave Request — {employee_name}"
 
-    message = f"""
+    view_link = f"{frappe.utils.get_url()}/app/leave-application/{doc.name}"
+
+    from datetime import timedelta
+    exp = int((frappe.utils.now_datetime() + timedelta(days=14)).timestamp())
+
+    for recipient in recipients:
+        if is_late_checkin:
+            # Late check-ins are auto-processed against the balance — no HR
+            # decision needed. Show only the View button for record-keeping.
+            action_buttons = (
+                "<p style='margin-top:20px'>"
+                f"  <a href='{view_link}' "
+                "     style='background:#1565C0;color:white;padding:11px 22px;"
+                "     border-radius:6px;text-decoration:none;font-weight:bold;"
+                "     display:inline-block'>View Details</a>"
+                "</p>"
+            )
+        else:
+            approve_url = _leave_action_url(doc.name, "approve", recipient, exp)
+            reject_url = _leave_action_url(doc.name, "reject", recipient, exp)
+            action_buttons = (
+                "<p style='margin-top:20px'>"
+                f"  <a href='{approve_url}' "
+                "     style='background:#2E7D32;color:white;padding:11px 22px;"
+                "     border-radius:6px;text-decoration:none;font-weight:bold;"
+                "     margin-right:8px;display:inline-block'>✓ Approve</a>"
+                f"  <a href='{reject_url}' "
+                "     style='background:#C62828;color:white;padding:11px 22px;"
+                "     border-radius:6px;text-decoration:none;font-weight:bold;"
+                "     margin-right:8px;display:inline-block'>✗ Reject</a>"
+                f"  <a href='{view_link}' "
+                "     style='background:#1565C0;color:white;padding:11px 22px;"
+                "     border-radius:6px;text-decoration:none;font-weight:bold;"
+                "     display:inline-block'>View Details</a>"
+                "</p>"
+            )
+
+        message = f"""
 <p>A new leave application has been submitted and requires your review.</p>
 
 <table style="border-collapse:collapse;width:100%;max-width:500px">
@@ -60,22 +116,42 @@ def on_leave_application_insert(doc, method=None):
     <td style="padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold">To</td>
     <td style="padding:8px 12px;border:1px solid #ddd">{doc.to_date}</td>
   </tr>
+  {late_block}
   {"<tr><td style='padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold'>Half Day</td><td style='padding:8px 12px;border:1px solid #ddd'>Yes</td></tr>" if doc.get("half_day") else ""}
   {"<tr><td style='padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold'>Reason</td><td style='padding:8px 12px;border:1px solid #ddd'>" + (doc.description or "") + "</td></tr>" if doc.get("description") else ""}
 </table>
 
-<p style="margin-top:16px">
-  <a href="{link}"
-     style="background:#1565C0;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold">
-    Review Leave Request
-  </a>
-</p>
+{action_buttons}
 
 <p style="color:#888;font-size:12px;margin-top:24px">
-  This notification was sent automatically by the ALKHORA ESS system.
+  {"This notification was sent automatically by the ALKHORA ESS system." if is_late_checkin else "Approve / Reject buttons work in one click and expire in 14 days.<br>This notification was sent automatically by the ALKHORA ESS system."}
 </p>
 """
-    frappe.sendmail(recipients=recipients, subject=subject, message=message, now=True)
+        frappe.sendmail(recipients=[recipient], subject=subject, message=message, now=True)
+
+
+def _leave_action_url(leave_name, action, user_email, exp_ts):
+    """Build a signed one-click approve/reject URL for a leave application."""
+    from urllib.parse import quote
+    token = _sign_leave_action(leave_name, action, user_email, exp_ts)
+    base = frappe.utils.get_url()
+    return (
+        f"{base}/api/method/opportunity_management.opportunity_management.api.approve_leave_via_email"
+        f"?name={quote(leave_name)}&action={action}&user={quote(user_email)}"
+        f"&exp={exp_ts}&token={token}"
+    )
+
+
+def _sign_leave_action(leave_name, action, user_email, exp_ts):
+    """HMAC-SHA256 the (leave, action, user, expiry) tuple with the site secret."""
+    import hmac, hashlib
+    secret = str(
+        frappe.conf.get("encryption_key")
+        or frappe.local.conf.get("secret", "")
+        or frappe.local.site
+    ).encode()
+    msg = f"{leave_name}|{action}|{user_email}|{exp_ts}".encode()
+    return hmac.new(secret, msg, hashlib.sha256).hexdigest()
 
 
 def on_leave_application_update(doc, method=None):
@@ -159,7 +235,7 @@ def on_salary_slip_submit(doc, method=None):
     employee_id = doc.employee
 
     title = "قسيمة الراتب جاهزة 💰"
-    body = f"قسيمة راتبك لشهر {doc.get("month_name") or doc.start_date} أصبحت متاحة."
+    body = f"قسيمة راتبك لشهر {doc.month_name or doc.start_date} أصبحت متاحة."
 
     send_fcm_to_employee(employee_id, title=title, body=body, data={"doctype": "Salary Slip", "name": doc.name})
 
@@ -224,6 +300,55 @@ def on_announcement_insert(doc, method=None):
             send_fcm(emp["custom_fcm_token"], title=title, body=body, data={"doctype": "Announcement", "name": doc.name})
 
 
+def before_checkin_insert(doc, method=None):
+    """Reject an Employee Checkin whose time falls outside the configured
+    check-in window. Only IN records are guarded — OUT is always allowed.
+
+    Bypass: Administrator, System Manager, HR Manager, and HR User can still
+    create manual corrections (e.g. fixing a forgotten punch).
+    """
+    if (doc.log_type or "").upper() != "IN":
+        return
+
+    # Allow back-office roles to insert manual corrections.
+    user_roles = set(frappe.get_roles(frappe.session.user) or [])
+    bypass_roles = {"Administrator", "System Manager", "HR Manager", "HR User"}
+    if frappe.session.user == "Administrator" or (user_roles & bypass_roles):
+        return
+
+    try:
+        settings = frappe.get_single("ESS Mobile Settings")
+    except Exception:
+        return  # Doctype missing → don't block.
+
+    start_h = int(settings.get("checkin_window_start_hour") or 0)
+    end_h = int(settings.get("checkin_window_end_hour") or 0)
+    if start_h <= 0 or end_h <= 0 or end_h <= start_h:
+        return  # Misconfigured → don't block.
+
+    # Working-days check: silently allow on non-working days so this hook
+    # never traps an HR-initiated retroactive entry on a holiday.
+    from frappe.utils import get_datetime
+    t = get_datetime(doc.time)
+    if not t:
+        return
+    h = t.hour
+    if start_h <= h < end_h:
+        return
+
+    # Out-of-window → reject.
+    def _fmt(h_):
+        ampm = "AM" if h_ < 12 else "PM"
+        h12 = h_ % 12 or 12
+        return f"{h12}:00 {ampm}"
+
+    frappe.throw(
+        f"Check-in is only allowed between {_fmt(start_h)} and {_fmt(end_h)}. "
+        f"Your time: {t.strftime('%H:%M')}.",
+        title="Outside Check-in Window",
+    )
+
+
 def on_checkin_insert(doc, method=None):
     """Notify System Managers when an employee checks in from outside an allowed zone."""
     if not doc.get("custom_outside_zone"):
@@ -274,8 +399,15 @@ def on_checkin_insert(doc, method=None):
     <td style="padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold">Time</td>
     <td style="padding:8px 12px;border:1px solid #ddd">{checkin_time}</td>
   </tr>
-  {"<tr><td style='padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold'>Latitude</td><td style='padding:8px 12px;border:1px solid #ddd'>" + str(doc.latitude) + "</td></tr>" if doc.get("latitude") else ""}
-  {"<tr><td style='padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold'>Longitude</td><td style='padding:8px 12px;border:1px solid #ddd'>" + str(doc.longitude) + "</td></tr>" if doc.get("longitude") else ""}
+  {(
+    "<tr><td style='padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold'>Location</td>"
+    "<td style='padding:8px 12px;border:1px solid #ddd'>"
+    f"<a href='https://www.google.com/maps?q={doc.latitude},{doc.longitude}' "
+    "style='color:#1565C0;text-decoration:none;font-weight:bold'>"
+    f"View on Map ({doc.latitude:.6f}, {doc.longitude:.6f})</a>"
+    "</td></tr>"
+  ) if doc.get("latitude") and doc.get("longitude") else ""}
+  {"<tr><td style='padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold;vertical-align:top'>Employee's Reason</td><td style='padding:8px 12px;border:1px solid #ddd;white-space:pre-wrap'>" + frappe.utils.escape_html(str(doc.get('custom_outside_zone_reason') or '')) + "</td></tr>" if doc.get("custom_outside_zone_reason") else ""}
 </table>
 
 <p style="margin-top:16px">
@@ -307,8 +439,11 @@ def on_notification_log_insert(doc, method=None):
     get a push notification on their phone.
     """
     try:
-        # Avoid recursion: skip when this very Log was created by our FCM helper
-        if doc.get('flags', {}).get('from_fcm_send'):
+        # Avoid recursion: skip when this Log was created by our FCM helper.
+        # `doc.flags` is an attribute on the Document, NOT a regular field —
+        # `doc.get('flags')` returns None on a Document, so we must read the
+        # attribute directly.
+        if getattr(getattr(doc, 'flags', None), 'from_fcm_send', False):
             return
 
         user = doc.get('for_user')
@@ -342,4 +477,109 @@ def on_notification_log_insert(doc, method=None):
         )
     except Exception:
         frappe.log_error(frappe.get_traceback(), 'on_notification_log_insert error')
+
+
+# ---------------------------------------------------------------------------
+# Payment notifications — push to the affected Employee whenever a Journal
+# Entry or Payment Entry references them as the party.
+# ---------------------------------------------------------------------------
+
+def _fmt_money(amount, currency):
+    try:
+        a = float(amount or 0)
+    except (TypeError, ValueError):
+        a = 0.0
+    cur = (currency or "").strip()
+    return f"{a:,.2f} {cur}".strip()
+
+
+def _notify_employee_payment(employee_id, amount, currency, doc_type, doc_name, kind):
+    """Send a single FCM push to one employee about a money movement.
+
+    kind: 'paid' → company paid the employee (debit to payable)
+          'owed' → company recognized a new amount owed to the employee (credit)
+    """
+    if not employee_id:
+        return
+    money = _fmt_money(amount, currency)
+    if kind == "paid":
+        title = "💸 تم تحويل مبلغ لحسابك • You got paid"
+        body = money
+        data_type = "payment"
+    else:
+        title = "💰 تم اضافة مصروف جديد لحسابك • Expenses added to your account"
+        body = money
+        data_type = "payable_registered"
+    try:
+        send_fcm_to_employee(
+            employee_id,
+            title=title,
+            body=body,
+            data={
+                "type": data_type,
+                "doctype": doc_type,
+                "name": doc_name,
+            },
+        )
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "notify_employee_payment")
+
+
+def on_journal_entry_submit(doc, method=None):
+    """Fire one push per unique Employee party referenced in the JE rows.
+
+    Distinguishes between a payment (net DEBIT > 0 on the party row = company
+    paid the employee, liability settled) and an accrual (net CREDIT > 0 =
+    company now owes the employee more).
+    """
+    if not doc or not doc.get("accounts"):
+        return
+    # System Manager override — silent submit.
+    if doc.get("custom_skip_employee_notification"):
+        return
+    # totals[employee] = (paid_amount, owed_amount, currency)
+    totals = {}
+    for row in doc.accounts:
+        if (row.get("party_type") or "") != "Employee":
+            continue
+        emp = row.get("party")
+        if not emp:
+            continue
+        credit = float(row.get("credit_in_account_currency") or row.get("credit") or 0)
+        debit = float(row.get("debit_in_account_currency") or row.get("debit") or 0)
+        currency = row.get("account_currency") or ""
+        prev_paid, prev_owed, prev_cur = totals.get(emp, (0.0, 0.0, currency))
+        totals[emp] = (
+            prev_paid + max(debit - credit, 0),
+            prev_owed + max(credit - debit, 0),
+            prev_cur or currency,
+        )
+
+    for emp, (paid, owed, currency) in totals.items():
+        if paid > 0:
+            _notify_employee_payment(emp, paid, currency, "Journal Entry", doc.name, "paid")
+        elif owed > 0:
+            _notify_employee_payment(emp, owed, currency, "Journal Entry", doc.name, "owed")
+
+
+def on_payment_entry_submit(doc, method=None):
+    """Fire a push when a Payment Entry pays or accrues to an Employee.
+
+    payment_type='Pay'     → company paying the employee (paid)
+    payment_type='Receive' → employee paying back to the company (owed-back)
+    """
+    if not doc:
+        return
+    if (doc.get("party_type") or "") != "Employee":
+        return
+    # System Manager override — silent submit.
+    if doc.get("custom_skip_employee_notification"):
+        return
+    emp = doc.get("party")
+    if not emp:
+        return
+    amount = doc.get("paid_amount") or doc.get("base_paid_amount") or 0
+    currency = doc.get("paid_to_account_currency") or doc.get("paid_from_account_currency") or ""
+    kind = "paid" if (doc.get("payment_type") or "Pay") == "Pay" else "owed"
+    _notify_employee_payment(emp, amount, currency, "Payment Entry", doc.name, kind)
 

@@ -704,6 +704,7 @@ def notify_new_tenders(
     audience_explainer,
     dashboard_url,
     tenders_json,
+    item_noun="tender",
 ):
     """Send a 'new tender(s) available' alert to every enabled User who has
     the given role. Used by Tender Hub to fan out alerts to O&G Managers
@@ -753,12 +754,14 @@ def notify_new_tenders(
 
     color = brand_color or "#0070f2"
     is_digest = len(tenders) >= 2
+    noun = (item_noun or "tender").strip() or "tender"
+    noun_plur = noun + "s"
 
     if is_digest:
-        subj = f"{header_emoji} {len(tenders)} new tenders from {source_label}"
+        subj = f"{header_emoji} {len(tenders)} new {noun_plur} from {source_label}"
     else:
         t = tenders[0]
-        subj = f"{header_emoji} New tender — {t.get('number') or ''} — {(t.get('title') or '')[:80]}"
+        subj = f"{header_emoji} New {noun} — {t.get('number') or ''} — {(t.get('title') or '')[:80]}"
 
     def _render_single(t):
         rows = []
@@ -780,7 +783,7 @@ def notify_new_tenders(
             cta += f'<a href="{escape_html(t.get("pdf_url"))}" style="display:inline-block;margin-left:8px;padding:10px 18px;border:1px solid #d1d5db;color:#374151;text-decoration:none;font-weight:500;font-size:14px;border-radius:6px;">📄 Download PDF</a>'
         return f"""
 <tr><td style="padding:24px 24px 8px;">
-  <div style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Tender</div>
+  <div style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">{noun.title()}</div>
   <div style="font-size:18px;font-weight:600;color:#111827;line-height:1.35;">{escape_html(t.get('title') or '')}</div>
   <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-top:10px;font-size:13px;color:#374151;">
     {''.join(rows)}
@@ -823,7 +826,7 @@ def notify_new_tenders(
 <html><body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#111827;">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f3f4f6;padding:24px 0;">
   <tr><td align="center"><table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="background:#ffffff;border-radius:10px;overflow:hidden;">
-    <tr><td style="background:{color};padding:16px 24px;color:#ffffff;font-size:14px;font-weight:600;letter-spacing:0.5px;">{header_emoji} {('NEW TENDER' if not is_digest else f'{len(tenders)} NEW TENDERS')} — {escape_html(source_label).upper()}</td></tr>
+    <tr><td style="background:{color};padding:16px 24px;color:#ffffff;font-size:14px;font-weight:600;letter-spacing:0.5px;">{header_emoji} {(('NEW ' + noun.upper()) if not is_digest else f'{len(tenders)} NEW ' + noun_plur.upper())} — {escape_html(source_label).upper()}</td></tr>
     {body_html}
     <tr><td style="padding:14px 24px 18px;background:#f9fafb;font-size:12px;color:#6b7280;line-height:1.5;border-top:1px solid #e5e7eb;">
       You're receiving this because {audience_explainer}<br>
@@ -870,16 +873,39 @@ _EMAIL_BLOCKLIST = {
 }
 
 
+_NO_NOTIFICATION_ROLES = {"ESS Reviewer", "Bot Account"}
+
+
+@frappe.whitelist(allow_guest=True)
+def _user_has_no_notify_role(email: str) -> bool:
+    """True if this user holds any role flagged as 'no notifications' (ESS Reviewer, Bot Account)."""
+    if not email or "@" not in email:
+        return False
+    if not frappe.db.exists("User", email):
+        return False
+    try:
+        roles = {r.role for r in frappe.get_all(
+            "Has Role", filters={"parent": email}, fields=["role"]
+        )}
+        return bool(roles & _NO_NOTIFICATION_ROLES)
+    except Exception:
+        return False
+
+
 def _is_invalid_email(addr: str) -> bool:
-    if not addr:
-        return True
-    addr = addr.strip().lower()
-    if addr in _EMAIL_BLOCKLIST:
-        return True
-    if "@" not in addr:
-        return True
-    domain = addr.rsplit("@", 1)[1]
-    return any(domain.endswith(tld) for tld in _INVALID_TLDS) or domain in ("localhost", "")
+	if not addr or "@" not in addr:
+		return True
+	addr = addr.strip().lower()
+	if addr in _EMAIL_BLOCKLIST:
+		return True
+	# Role-based exclusion: review accounts (Apple/Google) and bot accounts never get emails.
+	if _user_has_no_notify_role(addr):
+		return True
+	domain = addr.split("@", 1)[1]
+	# Drop accounts that can't actually receive mail
+	return any(domain.endswith(tld) for tld in _INVALID_TLDS) or domain in ("localhost", "")
+
+
 
 
 def _strip_addrs_from_to_header(message, blocked_addrs):

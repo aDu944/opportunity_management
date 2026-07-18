@@ -17,7 +17,6 @@ doc_events = {
         "on_update": "opportunity_management.opportunity_management.notification_utils.send_closing_date_extended_notification",
     },
     "Email Queue": {
-        "before_insert": "opportunity_management.opportunity_management.notification_utils.filter_invalid_email_recipients",
         "after_insert": "opportunity_management.opportunity_management.notification_utils.log_opportunity_notification_from_email_queue",
         "on_update": "opportunity_management.opportunity_management.notification_utils.update_opportunity_notification_log_status",
     },
@@ -32,6 +31,7 @@ doc_events = {
         "on_trash": "opportunity_management.quotation_handler.recalc_opportunity_amount",
     },
     "Employee Checkin": {
+        "before_insert": "opportunity_management.opportunity_management.ess_hooks.before_checkin_insert",
         "after_insert": "opportunity_management.opportunity_management.ess_hooks.on_checkin_insert",
     },
     "Leave Application": {
@@ -50,6 +50,12 @@ doc_events = {
     "Notification Log": {
         "after_insert": "opportunity_management.opportunity_management.ess_hooks.on_notification_log_insert",
     },
+    "Journal Entry": {
+        "on_submit": "opportunity_management.opportunity_management.ess_hooks.on_journal_entry_submit",
+    },
+    "Payment Entry": {
+        "on_submit": "opportunity_management.opportunity_management.ess_hooks.on_payment_entry_submit",
+    },
 }
 
 # ============================================================================
@@ -59,9 +65,6 @@ doc_events = {
 scheduler_events = {
     # Run daily at 8:00 AM
     "cron": {
-        "*/15 * * * *": [
-            "opportunity_management.opportunity_management.tasks.check_email_queue_health"
-        ],
         "0 8 * * *": [
             "opportunity_management.opportunity_management.tasks.send_opportunity_reminders"
         ],
@@ -144,14 +147,11 @@ fixtures = [
 # ============================================================================
 # App Includes
 # ============================================================================
-# Include FullCalendar library
-app_include_css = [
-    "/assets/opportunity_management/fullcalendar/main.min.css"
-]
-
-app_include_js = [
-    "/assets/opportunity_management/fullcalendar/main.min.js"
-]
+# Override the default HRMS list-view indicator for Employee Checkin so HR
+# sees Late / On Time / Outside Zone / Check Out instead of just Off-Shift.
+doctype_list_js = {
+    "Employee Checkin": "public/js/employee_checkin_list.js",
+}
 
 # ============================================================================
 # Installation/Setup Hooks

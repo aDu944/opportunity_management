@@ -107,12 +107,6 @@ def create_workspace():
             },
             {
                 "type": "Page",
-                "label": "Opportunity Calendar",
-                "link_to": "opportunity-calendar",
-                "color": "Orange"
-            },
-            {
-                "type": "Page",
                 "label": "KPI Dashboard",
                 "link_to": "opportunity-kpi",
                 "color": "Purple"

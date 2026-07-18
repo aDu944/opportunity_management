@@ -68,6 +68,9 @@ def _create_notification_log(user: str, title: str, body: str) -> None:
             "type": "Alert",
             "read": 0,
         })
+        # Mark so on_notification_log_insert doesn't push a second FCM
+        # for a row we just created as a side-effect of sending one.
+        doc.flags.from_fcm_send = True
         doc.insert(ignore_permissions=True)
         frappe.db.commit()
     except Exception as e:
