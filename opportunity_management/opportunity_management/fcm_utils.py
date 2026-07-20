@@ -136,10 +136,24 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
         messaging.send(_build_message(token, title, body, data), app=app)
         return True
     except Exception as e:
-        # Detect the specific "stale OAuth token" family and retry once
-        # with a fresh app before logging.
+        # Detect the "stale OAuth credential" family and retry once with a
+        # fresh app. Firebase Admin raises several distinct exception classes
+        # here — check by name, by .code, and by message text (each has an
+        # error mode the others miss). google-auth's underlying message is
+        # "Request is missing required authentication credential", which
+        # contains neither "401" nor "Unauthorized" — hence the substring
+        # check on the actual wording.
         etype = type(e).__name__
-        is_auth = etype == "ThirdPartyAuthError" or "401" in str(e) or "Unauthorized" in str(e)
+        msg = str(e)
+        code = str(getattr(e, "code", "") or "").upper()
+        is_auth = (
+            etype in ("ThirdPartyAuthError", "UnauthenticatedError")
+            or code in ("UNAUTHENTICATED", "AUTHENTICATION_FAILED")
+            or "401" in msg
+            or "Unauthorized" in msg
+            or "authentication credential" in msg
+            or "OAuth 2" in msg
+        )
         if is_auth:
             _reset_app()
             fresh = _get_app()
