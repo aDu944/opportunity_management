@@ -1001,6 +1001,53 @@ def get_my_fcm_token():
 
 
 @frappe.whitelist()
+def get_my_punch_locations():
+    """Return the allowed check-in geolocations for the logged-in user.
+
+    Uses `frappe.session.user` to resolve the Employee, then reads the
+    Employee.custom_allowed_punch_location child table and hydrates each
+    row with its Punch Geolocation coords/radius/names.
+
+    Rationale: hitting /api/resource/Employee/<id> as a regular Employee
+    strips the `custom_allowed_punch_location` child rows (v15+ REST
+    filters children by child-DocType read perm), and hitting
+    /api/resource/Employee Punch Location?filters=[["parent","=",X]] throws
+    frappe.PermissionError via check_parent_permission. This endpoint
+    sidesteps both by scoping to the caller and joining directly.
+    """
+    user = frappe.session.user
+    employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
+    if not employee:
+        return {"locations": []}
+
+    child_rows = frappe.get_all(
+        "Employee Punch Location",
+        filters={"parent": employee, "parenttype": "Employee"},
+        fields=["punch_geolocation"],
+        limit_page_length=200,
+        ignore_permissions=True,
+    )
+    geo_ids = [r["punch_geolocation"] for r in child_rows if r.get("punch_geolocation")]
+    if not geo_ids:
+        return {"locations": []}
+
+    geo_docs = frappe.get_all(
+        "Punch Geolocation",
+        filters={"name": ["in", geo_ids]},
+        fields=[
+            "name",
+            "location_name",
+            "custom_location_name_ar",
+            "latitude",
+            "longitude",
+            "radius",
+        ],
+        ignore_permissions=True,
+    )
+    return {"locations": geo_docs}
+
+
+@frappe.whitelist()
 def get_employee_directory(search=None, branch=None, department=None, limit=200):
     """Return a lightweight, searchable list of active employees for the
     mobile Employee Directory feature.
