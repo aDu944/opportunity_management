@@ -87,7 +87,12 @@ def _send_fcm(token: str, title: str, body: str):
         import firebase_admin
         from firebase_admin import credentials, messaging
     except ImportError:
-        frappe.log_error("firebase-admin not installed. Run: bench pip install firebase-admin", "FCM Error")
+        # Frappe.log_error signature is (title, message) — keyword args to
+        # avoid silent title/message swap that trips the 140-char title cap.
+        frappe.log_error(
+            title="FCM Error",
+            message="firebase-admin not installed. Run: bench pip install firebase-admin",
+        )
         return
 
     # Initialize Firebase Admin once per process
@@ -98,8 +103,8 @@ def _send_fcm(token: str, title: str, body: str):
         )
         if not os.path.exists(service_account_path):
             frappe.log_error(
-                "Firebase service account key not found at: " + service_account_path,
-                "FCM Error",
+                title="FCM Error",
+                message="Firebase service account key not found at: " + service_account_path,
             )
             return
         cred = credentials.Certificate(service_account_path)
@@ -118,4 +123,4 @@ def _send_fcm(token: str, title: str, body: str):
     try:
         messaging.send(message)
     except Exception as e:
-        frappe.log_error(str(e), "FCM Send Error")
+        frappe.log_error(title="FCM Send Error", message=str(e))

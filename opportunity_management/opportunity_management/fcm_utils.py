@@ -37,9 +37,9 @@ def _get_app():
         raw = frappe.conf.get("firebase_service_account")
         if not raw:
             frappe.log_error(
-                "firebase_service_account key not found in site config.\n"
+                title="FCM Setup Error",
+                message="firebase_service_account key not found in site config.\n"
                 "Add it via Frappe Cloud dashboard → Sites → Config.",
-                "FCM Setup Error",
             )
             return None
 
@@ -53,7 +53,7 @@ def _get_app():
 
         return _app
     except Exception as e:
-        frappe.log_error(str(e), "FCM Init Error")
+        frappe.log_error(title="FCM Init Error", message=str(e))
         return None
 
 
@@ -74,7 +74,7 @@ def _create_notification_log(user: str, title: str, body: str) -> None:
         doc.insert(ignore_permissions=True)
         frappe.db.commit()
     except Exception as e:
-        frappe.log_error(str(e), "FCM Notification Log Error")
+        frappe.log_error(title="FCM Notification Log Error", message=str(e))
 
 
 def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
@@ -105,7 +105,12 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
         messaging.send(msg, app=app)
         return True
     except Exception as e:
-        frappe.log_error(str(e), "FCM Send Error")
+        # frappe.log_error's title field is 140 chars max — always pass a
+        # short constant title and put the exception detail in the message
+        # body. Explicit keyword args so version differences in signature
+        # order can never swap them (previously the FCM auth error text
+        # ended up in the title field and blew the length limit).
+        frappe.log_error(message=str(e), title="FCM Send Error")
         return False
 
 
