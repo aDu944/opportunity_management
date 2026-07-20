@@ -22,7 +22,27 @@ Usage:
 import json
 import frappe
 
+# Named Firebase Admin app so we never collide with the default app any
+# other code path in the codebase may or may not have initialized. Keyed
+# off `_APP_NAME`; two different modules that both want their own creds
+# should pick different names. `_app` is a module-level cache holding the
+# handle after the first init.
+_APP_NAME = "alkhora-ess-fcm"
 _app = None
+
+
+def _reset_app():
+    """Drop the cached handle and delete the named app so the next call
+    reinitializes with fresh credentials. Useful for self-healing after a
+    401/ThirdPartyAuthError caused by stale/rotated tokens."""
+    global _app
+    _app = None
+    try:
+        import firebase_admin
+        existing = firebase_admin.get_app(_APP_NAME)
+        firebase_admin.delete_app(existing)
+    except (ValueError, Exception):
+        pass
 
 
 def _get_app():
@@ -46,10 +66,13 @@ def _get_app():
         account_info = json.loads(raw) if isinstance(raw, str) else raw
         cred = credentials.Certificate(account_info)
 
+        # Use a NAMED app so this never overlaps with any other Firebase
+        # Admin initialization (e.g. api.py's file-based init that may
+        # or may not have populated the default app).
         try:
-            _app = firebase_admin.get_app()
+            _app = firebase_admin.get_app(_APP_NAME)
         except ValueError:
-            _app = firebase_admin.initialize_app(cred)
+            _app = firebase_admin.initialize_app(cred, name=_APP_NAME)
 
         return _app
     except Exception as e:
@@ -77,39 +100,60 @@ def _create_notification_log(user: str, title: str, body: str) -> None:
         frappe.log_error(title="FCM Notification Log Error", message=str(e))
 
 
+def _build_message(token: str, title: str, body: str, data: dict = None):
+    from firebase_admin import messaging
+    return messaging.Message(
+        notification=messaging.Notification(title=title, body=body),
+        data={str(k): str(v) for k, v in (data or {}).items()},
+        token=token,
+        android=messaging.AndroidConfig(
+            priority="high",
+            notification=messaging.AndroidNotification(
+                channel_id="alkhora_ess_main",
+                sound="bell",
+            ),
+        ),
+        apns=messaging.APNSConfig(
+            payload=messaging.APNSPayload(
+                aps=messaging.Aps(sound="bell.caf", badge=1)
+            )
+        ),
+    )
+
+
 def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
-    """Send an FCM notification to a single device token. Returns True on success."""
+    """Send an FCM notification to a single device token. Returns True on success.
+
+    Self-heals from stale-credential 401s: on ThirdPartyAuthError we drop
+    the cached Firebase Admin app, reinitialize from site config, and try
+    once more before giving up.
+    """
     app = _get_app()
     if not app:
         return False
     try:
         from firebase_admin import messaging
-
-        msg = messaging.Message(
-            notification=messaging.Notification(title=title, body=body),
-            data={str(k): str(v) for k, v in (data or {}).items()},
-            token=token,
-            android=messaging.AndroidConfig(
-                priority="high",
-                notification=messaging.AndroidNotification(
-                    channel_id="alkhora_ess_main",
-                    sound="bell",
-                ),
-            ),
-            apns=messaging.APNSConfig(
-                payload=messaging.APNSPayload(
-                    aps=messaging.Aps(sound="bell.caf", badge=1)
-                )
-            ),
-        )
-        messaging.send(msg, app=app)
+        messaging.send(_build_message(token, title, body, data), app=app)
         return True
     except Exception as e:
+        # Detect the specific "stale OAuth token" family and retry once
+        # with a fresh app before logging.
+        etype = type(e).__name__
+        is_auth = etype == "ThirdPartyAuthError" or "401" in str(e) or "Unauthorized" in str(e)
+        if is_auth:
+            _reset_app()
+            fresh = _get_app()
+            if fresh:
+                try:
+                    from firebase_admin import messaging
+                    messaging.send(_build_message(token, title, body, data), app=fresh)
+                    return True
+                except Exception as e2:
+                    e = e2  # fall through and log the retry error
         # frappe.log_error's title field is 140 chars max — always pass a
         # short constant title and put the exception detail in the message
         # body. Explicit keyword args so version differences in signature
-        # order can never swap them (previously the FCM auth error text
-        # ended up in the title field and blew the length limit).
+        # order can never swap them.
         frappe.log_error(message=str(e), title="FCM Send Error")
         return False
 
