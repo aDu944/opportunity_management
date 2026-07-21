@@ -170,6 +170,26 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
     app = _build_naked_app()
     if not app:
         return False
+
+    # Force an explicit OAuth token refresh BEFORE the send. If this raises,
+    # the underlying google-auth JWT exchange is broken and no send would
+    # ever work. If it succeeds, credentials are fine and any subsequent 401
+    # points at a request-layer issue (headers dropped, wrong endpoint, etc.).
+    # Either way we get a clear diagnostic in the log.
+    refresh_ok = False
+    refresh_note = ""
+    try:
+        from google.auth.transport.requests import Request as GRequest
+        cred_obj = app.credential.get_credential()
+        cred_obj.refresh(GRequest())
+        refresh_ok = bool(cred_obj.valid and cred_obj.token)
+        refresh_note = (
+            f"valid={cred_obj.valid} "
+            f"token_prefix={(cred_obj.token or '')[:24]}"
+        )
+    except Exception as rex:
+        refresh_note = f"refresh_error_type={type(rex).__name__} refresh_error={str(rex)[:200]}"
+
     try:
         messaging.send(_build_message(token, title, body, data), app=app)
         return True
@@ -185,6 +205,7 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
             tb = ""
         detail = (
             f"pid={os.getpid()} app_name={app.name}\n"
+            f"refresh_ok={refresh_ok} {refresh_note}\n"
             f"exc_type={type(e).__name__}\n"
             f"exc_str={str(e)[:400]}\n"
             f"traceback:\n{tb}"
