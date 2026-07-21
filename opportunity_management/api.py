@@ -79,48 +79,16 @@ def geofence_checkin_reminder(location_name):
 
 
 def _send_fcm(token: str, title: str, body: str):
-    """Send a single FCM notification via Firebase Admin SDK."""
-    import json
-    import os
+    """Send a single FCM notification.
 
-    try:
-        import firebase_admin
-        from firebase_admin import credentials, messaging
-    except ImportError:
-        # Frappe.log_error signature is (title, message) — keyword args to
-        # avoid silent title/message swap that trips the 140-char title cap.
-        frappe.log_error(
-            title="FCM Error",
-            message="firebase-admin not installed. Run: bench pip install firebase-admin",
-        )
-        return
-
-    # Initialize Firebase Admin once per process
-    if not firebase_admin._apps:
-        service_account_path = os.path.join(
-            frappe.get_app_path("opportunity_management"),
-            "firebase_service_account.json",
-        )
-        if not os.path.exists(service_account_path):
-            frappe.log_error(
-                title="FCM Error",
-                message="Firebase service account key not found at: " + service_account_path,
-            )
-            return
-        cred = credentials.Certificate(service_account_path)
-        firebase_admin.initialize_app(cred)
-
-    message = messaging.Message(
-        notification=messaging.Notification(title=title, body=body),
-        android=messaging.AndroidConfig(priority="high"),
-        apns=messaging.APNSConfig(
-            payload=messaging.APNSPayload(
-                aps=messaging.Aps(sound="default", badge=1)
-            )
-        ),
-        token=token,
-    )
-    try:
-        messaging.send(message)
-    except Exception as e:
-        frappe.log_error(title="FCM Send Error", message=str(e))
+    Thin wrapper that delegates to `fcm_utils.send_fcm` so the whole app
+    goes through ONE credential path (site config) and ONE working init
+    pattern (ephemeral naked FirebaseApp per send). The prior body of
+    this function inspected `firebase_admin._apps` to decide whether to
+    init from a file — that check was tripped by fcm_utils's named apps
+    living in the same registry, causing this path to skip init and then
+    hit `messaging.send(message)` without an `app=` argument, which fell
+    into a broken default-app lookup that surfaced as a 401. The file it
+    tried to load didn't exist on the server anyway."""
+    from opportunity_management.opportunity_management.fcm_utils import send_fcm
+    send_fcm(token=token, title=title, body=body)

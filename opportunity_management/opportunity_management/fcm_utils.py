@@ -166,6 +166,7 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
     import firebase_admin
     from firebase_admin import messaging
 
+    import os
     app = _build_naked_app()
     if not app:
         return False
@@ -173,9 +174,22 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
         messaging.send(_build_message(token, title, body, data), app=app)
         return True
     except Exception as e:
-        # Explicit keyword args so title/message never swap positions,
-        # and title stays under the 140-char DocField cap.
-        frappe.log_error(message=str(e), title="FCM Send Error")
+        # Full traceback + pid so we can tell WHICH worker + WHICH call
+        # site is failing. Naked-init works from bench execute but fails
+        # in some worker contexts — need the stack to diagnose. Explicit
+        # keyword args so title/message never swap positions and title
+        # stays under the 140-char DocField cap.
+        try:
+            tb = frappe.get_traceback()
+        except Exception:
+            tb = ""
+        detail = (
+            f"pid={os.getpid()} app_name={app.name}\n"
+            f"exc_type={type(e).__name__}\n"
+            f"exc_str={str(e)[:400]}\n"
+            f"traceback:\n{tb}"
+        )
+        frappe.log_error(message=detail, title="FCM Send Error")
         return False
     finally:
         try:
