@@ -51,7 +51,7 @@ def close_opportunity(opportunity_name, quotation_name):
 
         # Update status to Closed or Converted based on your workflow
         # Check if 'Converted' status exists, otherwise use 'Closed'
-        if "Converted" in [d.get("option") for d in frappe.get_meta("Opportunity").get_field("status").options.split("\n") if d]:
+        if "Converted" in [o.strip() for o in (frappe.get_meta("Opportunity").get_field("status").options or "").splitlines() if o.strip()]:
             opportunity.status = "Converted"
         else:
             opportunity.status = "Closed"
