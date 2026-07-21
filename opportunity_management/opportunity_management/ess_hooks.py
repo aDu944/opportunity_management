@@ -423,12 +423,30 @@ def on_checkin_insert(doc, method=None):
     )
 
 
+## Doctypes whose FCM notifications we build ourselves in business_hooks or
+## ess_hooks (with the pretty bilingual template). ERPNext's built-in
+## Notification rules may also drop rows into Notification Log for these
+## same doctypes; if we bridge THOSE too we'd send a second, ugly push
+## with the raw email subject + HTML-stripped body. Skip them here.
+_TEMPLATE_DOCTYPES = {
+    "Quotation", "Sales Order", "Sales Invoice", "Delivery Note",
+    "Material Request", "Payment Entry", "Journal Entry",
+    "Leave Application", "Expense Claim", "Salary Slip",
+    "ToDo",
+}
+
+
 def on_notification_log_insert(doc, method=None):
     """Send a push notification to the user's device when a Notification Log entry is created.
 
     ERPNext writes to Notification Log directly when a Notification rule fires
     (e.g. 'Journal Entry Submitted'). This hook bridges that to FCM so users
     get a push notification on their phone.
+
+    Notification Log entries whose `document_type` is one we already dispatch
+    via business_hooks/ess_hooks are SKIPPED — the pretty template push
+    already went out and a second "email-style" push here would just be
+    noise.
     """
     try:
         # Avoid recursion: skip when this Log was created by our FCM helper.
@@ -436,6 +454,11 @@ def on_notification_log_insert(doc, method=None):
         # `doc.get('flags')` returns None on a Document, so we must read the
         # attribute directly.
         if getattr(getattr(doc, 'flags', None), 'from_fcm_send', False):
+            return
+
+        # Don't double-send: business_hooks already emitted the pretty push
+        # for these doctypes.
+        if (doc.get('document_type') or '') in _TEMPLATE_DOCTYPES:
             return
 
         user = doc.get('for_user')
