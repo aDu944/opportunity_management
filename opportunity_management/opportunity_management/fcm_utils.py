@@ -125,55 +125,63 @@ def _build_message(token: str, title: str, body: str, data: dict = None):
     )
 
 
+def _build_naked_app():
+    """Load creds from site config and build a fresh, uniquely-named
+    FirebaseApp with zero module-cache reliance. This is the ONLY init
+    path proven to work reliably in production — the module-level `_app`
+    cache and self-heal loop was producing "fresh" apps that still 401'd
+    under some worker conditions we couldn't reproduce with bench execute.
+    Isolated ephemeral apps sidestep every one of those failure modes."""
+    import firebase_admin
+    from firebase_admin import credentials
+
+    raw = frappe.conf.get("firebase_service_account")
+    if not raw:
+        frappe.log_error(
+            title="FCM Setup Error",
+            message="firebase_service_account key not found in site config.",
+        )
+        return None
+    account_info = json.loads(raw) if isinstance(raw, str) else raw
+    cred = credentials.Certificate(account_info)
+
+    global _app_generation
+    _app_generation += 1
+    # Include pid to guarantee no worker-vs-worker name overlap even under
+    # forked concurrency.
+    import os
+    name = f"{_APP_BASE}-p{os.getpid()}-g{_app_generation}"
+    return firebase_admin.initialize_app(cred, name=name)
+
+
 def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
     """Send an FCM notification to a single device token. Returns True on success.
 
-    Self-heals from stale-credential 401s: on ThirdPartyAuthError we drop
-    the cached Firebase Admin app, reinitialize from site config, and try
-    once more before giving up.
+    Uses a fresh naked Firebase Admin app per call and deletes it after.
+    Slightly more expensive than caching (one auth handshake per push) but
+    empirically the only pattern that survives production worker conditions
+    without leaking 401s — cached-app + self-heal was still 401-ing after
+    reset in ways we could not reproduce out of a worker context.
     """
-    app = _get_app()
+    import firebase_admin
+    from firebase_admin import messaging
+
+    app = _build_naked_app()
     if not app:
         return False
     try:
-        from firebase_admin import messaging
         messaging.send(_build_message(token, title, body, data), app=app)
         return True
     except Exception as e:
-        # Detect the "stale OAuth credential" family and retry once with a
-        # fresh app. Firebase Admin raises several distinct exception classes
-        # here — check by name, by .code, and by message text (each has an
-        # error mode the others miss). google-auth's underlying message is
-        # "Request is missing required authentication credential", which
-        # contains neither "401" nor "Unauthorized" — hence the substring
-        # check on the actual wording.
-        etype = type(e).__name__
-        msg = str(e)
-        code = str(getattr(e, "code", "") or "").upper()
-        is_auth = (
-            etype in ("ThirdPartyAuthError", "UnauthenticatedError")
-            or code in ("UNAUTHENTICATED", "AUTHENTICATION_FAILED")
-            or "401" in msg
-            or "Unauthorized" in msg
-            or "authentication credential" in msg
-            or "OAuth 2" in msg
-        )
-        if is_auth:
-            _reset_app()
-            fresh = _get_app()
-            if fresh:
-                try:
-                    from firebase_admin import messaging
-                    messaging.send(_build_message(token, title, body, data), app=fresh)
-                    return True
-                except Exception as e2:
-                    e = e2  # fall through and log the retry error
-        # frappe.log_error's title field is 140 chars max — always pass a
-        # short constant title and put the exception detail in the message
-        # body. Explicit keyword args so version differences in signature
-        # order can never swap them.
+        # Explicit keyword args so title/message never swap positions,
+        # and title stays under the 140-char DocField cap.
         frappe.log_error(message=str(e), title="FCM Send Error")
         return False
+    finally:
+        try:
+            firebase_admin.delete_app(app)
+        except Exception:
+            pass
 
 
 def send_fcm_to_employee(employee_id: str, title: str, body: str, data: dict = None) -> bool:
