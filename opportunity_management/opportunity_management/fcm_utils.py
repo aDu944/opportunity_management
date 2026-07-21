@@ -157,66 +157,84 @@ def _build_naked_app():
 def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
     """Send an FCM notification to a single device token. Returns True on success.
 
-    Uses a fresh naked Firebase Admin app per call and deletes it after.
-    Slightly more expensive than caching (one auth handshake per push) but
-    empirically the only pattern that survives production worker conditions
-    without leaking 401s — cached-app + self-heal was still 401-ing after
-    reset in ways we could not reproduce out of a worker context.
+    Uses google-auth directly to obtain an OAuth token for the explicit
+    `firebase.messaging` scope, then POSTs to the FCM v1 endpoint. The
+    firebase_admin.messaging.send path fetched a token successfully but the
+    token wasn't accepted by FCM in production workers — the wider default
+    scope set firebase_admin requests may miss the specific scope FCM v1
+    requires under some runtime combinations. Direct call sidesteps that.
     """
-    import firebase_admin
-    from firebase_admin import messaging
-
-    import os
-    app = _build_naked_app()
-    if not app:
+    raw = frappe.conf.get("firebase_service_account")
+    if not raw:
+        frappe.log_error(
+            title="FCM Setup Error",
+            message="firebase_service_account key not found in site config.",
+        )
+        return False
+    account_info = json.loads(raw) if isinstance(raw, str) else raw
+    project_id = account_info.get("project_id")
+    if not project_id:
+        frappe.log_error(
+            title="FCM Setup Error",
+            message="project_id missing from firebase_service_account",
+        )
         return False
 
-    # Force an explicit OAuth token refresh BEFORE the send. If this raises,
-    # the underlying google-auth JWT exchange is broken and no send would
-    # ever work. If it succeeds, credentials are fine and any subsequent 401
-    # points at a request-layer issue (headers dropped, wrong endpoint, etc.).
-    # Either way we get a clear diagnostic in the log.
-    refresh_ok = False
-    refresh_note = ""
-    try:
-        from google.auth.transport.requests import Request as GRequest
-        cred_obj = app.credential.get_credential()
-        cred_obj.refresh(GRequest())
-        refresh_ok = bool(cred_obj.valid and cred_obj.token)
-        refresh_note = (
-            f"valid={cred_obj.valid} "
-            f"token_prefix={(cred_obj.token or '')[:24]}"
-        )
-    except Exception as rex:
-        refresh_note = f"refresh_error_type={type(rex).__name__} refresh_error={str(rex)[:200]}"
+    payload = {
+        "message": {
+            "token": token,
+            "notification": {"title": title, "body": body},
+            "data": {str(k): str(v) for k, v in (data or {}).items()},
+            "android": {
+                "priority": "high",
+                "notification": {
+                    "channel_id": "alkhora_ess_main",
+                    "sound": "bell",
+                },
+            },
+            "apns": {
+                "payload": {
+                    "aps": {"sound": "bell.caf", "badge": 1},
+                },
+            },
+        }
+    }
 
     try:
-        messaging.send(_build_message(token, title, body, data), app=app)
-        return True
+        from google.oauth2 import service_account
+        from google.auth.transport.requests import AuthorizedSession
+
+        # Explicit scope — this is the exact scope FCM v1 checks against.
+        # firebase_admin's default scope bundle apparently doesn't always
+        # yield a token FCM v1 accepts in every runtime.
+        credentials = service_account.Credentials.from_service_account_info(
+            account_info,
+            scopes=["https://www.googleapis.com/auth/firebase.messaging"],
+        )
+        session = AuthorizedSession(credentials)
+        url = f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send"
+        resp = session.post(url, json=payload, timeout=15)
+        if resp.status_code == 200:
+            return True
+        # Frappe's log_error title is capped at 140 chars — keep title constant.
+        frappe.log_error(
+            title="FCM Send Error",
+            message=(
+                f"status={resp.status_code}\n"
+                f"body={resp.text[:600]}"
+            ),
+        )
+        return False
     except Exception as e:
-        # Full traceback + pid so we can tell WHICH worker + WHICH call
-        # site is failing. Naked-init works from bench execute but fails
-        # in some worker contexts — need the stack to diagnose. Explicit
-        # keyword args so title/message never swap positions and title
-        # stays under the 140-char DocField cap.
         try:
             tb = frappe.get_traceback()
         except Exception:
             tb = ""
-        detail = (
-            f"pid={os.getpid()} app_name={app.name}\n"
-            f"refresh_ok={refresh_ok} {refresh_note}\n"
-            f"exc_type={type(e).__name__}\n"
-            f"exc_str={str(e)[:400]}\n"
-            f"traceback:\n{tb}"
+        frappe.log_error(
+            title="FCM Send Error",
+            message=f"exc_type={type(e).__name__}\nexc_str={str(e)[:400]}\ntraceback:\n{tb}",
         )
-        frappe.log_error(message=detail, title="FCM Send Error")
         return False
-    finally:
-        try:
-            firebase_admin.delete_app(app)
-        except Exception:
-            pass
 
 
 def send_fcm_to_employee(employee_id: str, title: str, body: str, data: dict = None) -> bool:
