@@ -22,38 +22,47 @@ Usage:
 import json
 import frappe
 
-# Named Firebase Admin app so we never collide with the default app any
-# other code path in the codebase may or may not have initialized. Keyed
-# off `_APP_NAME`; two different modules that both want their own creds
-# should pick different names. `_app` is a module-level cache holding the
-# handle after the first init.
-_APP_NAME = "alkhora-ess-fcm"
+# Firebase Admin app handle — a UNIQUE name per (re)init so a self-heal
+# never collides with a zombie left over from the previous init. The prior
+# fixed-name approach ("alkhora-ess-fcm") got stuck when `delete_app`
+# failed silently: `_app` was set to None but the FirebaseApp stayed
+# registered under the name, and the next `get_app(name)` handed the same
+# stale/401'd app right back to the caller. Naked-fresh init works fine,
+# so we just always take that path.
+_APP_BASE = "alkhora-ess-fcm"
 _app = None
+_app_generation = 0
 
 
 def _reset_app():
-    """Drop the cached handle and delete the named app so the next call
-    reinitializes with fresh credentials. Useful for self-healing after a
-    401/ThirdPartyAuthError caused by stale/rotated tokens."""
+    """Drop the cached handle so the next `_get_app()` builds a fresh
+    FirebaseApp under a brand-new name. Best-effort delete_app on the
+    old handle; failures are ignored — we don't rely on delete succeeding
+    because leaked FirebaseApp objects are small and orphaning them is
+    strictly safer than reusing a zombie."""
     global _app
+    old = _app
     _app = None
-    try:
-        import firebase_admin
-        existing = firebase_admin.get_app(_APP_NAME)
-        firebase_admin.delete_app(existing)
-    except (ValueError, Exception):
-        pass
+    if old is not None:
+        try:
+            import firebase_admin
+            firebase_admin.delete_app(old)
+        except Exception:
+            pass
 
 
 def _get_app():
-    global _app
+    """Return a working FirebaseApp. Creates a fresh, uniquely-named one
+    every time the module cache is empty (i.e. on first call, or after a
+    `_reset_app()`). No `get_app(NAME)` lookup — that path is the exact
+    trap that let stale apps survive self-heal."""
+    global _app, _app_generation
     if _app is not None:
         return _app
     try:
         import firebase_admin
         from firebase_admin import credentials
 
-        # Read service account from site config (works on Frappe Cloud)
         raw = frappe.conf.get("firebase_service_account")
         if not raw:
             frappe.log_error(
@@ -66,14 +75,9 @@ def _get_app():
         account_info = json.loads(raw) if isinstance(raw, str) else raw
         cred = credentials.Certificate(account_info)
 
-        # Use a NAMED app so this never overlaps with any other Firebase
-        # Admin initialization (e.g. api.py's file-based init that may
-        # or may not have populated the default app).
-        try:
-            _app = firebase_admin.get_app(_APP_NAME)
-        except ValueError:
-            _app = firebase_admin.initialize_app(cred, name=_APP_NAME)
-
+        _app_generation += 1
+        name = f"{_APP_BASE}-{_app_generation}"
+        _app = firebase_admin.initialize_app(cred, name=name)
         return _app
     except Exception as e:
         frappe.log_error(title="FCM Init Error", message=str(e))
