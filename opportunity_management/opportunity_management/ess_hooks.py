@@ -164,20 +164,19 @@ def on_leave_application_update(doc, method=None):
     employee_name = frappe.db.get_value("Employee", employee_id, "employee_name") or employee_id
     employee_user = frappe.db.get_value("Employee", employee_id, "user_id")
 
+    from opportunity_management.opportunity_management import notification_templates as T
+
     if status == "Approved":
-        fcm_title = "إجازتك تمت الموافقة عليها ✓"
-        fcm_body = f"تمت الموافقة على طلب إجازتك من {doc.from_date} إلى {doc.to_date}."
+        fcm_title, fcm_body, fcm_data = T.leave_approved(doc)
         email_subject = f"Leave Approved — {employee_name}"
         status_html = "<span style='color:#2e7d32;font-weight:bold'>Approved ✓</span>"
     else:
-        fcm_title = "طلب الإجازة مرفوض"
-        fcm_body = f"تم رفض طلب إجازتك من {doc.from_date} إلى {doc.to_date}."
+        fcm_title, fcm_body, fcm_data = T.leave_rejected(doc)
         email_subject = f"Leave Rejected — {employee_name}"
         status_html = "<span style='color:#c62828;font-weight:bold'>Rejected ✗</span>"
 
-    # FCM push notification
-    send_fcm_to_employee(employee_id, title=fcm_title, body=fcm_body,
-                         data={"doctype": "Leave Application", "name": doc.name, "screen": "leave"})
+    # FCM push notification (consistent template, includes "by {creator}").
+    send_fcm_to_employee(employee_id, title=fcm_title, body=fcm_body, data=fcm_data)
 
     # Email to employee
     if not employee_user:
@@ -232,12 +231,10 @@ def on_salary_slip_submit(doc, method=None):
     if not _ess_setting_enabled("enable_payslip_notification", default=True):
         return
 
+    from opportunity_management.opportunity_management import notification_templates as T
     employee_id = doc.employee
-
-    title = "قسيمة الراتب جاهزة 💰"
-    body = f"قسيمة راتبك لشهر {doc.month_name or doc.start_date} أصبحت متاحة."
-
-    send_fcm_to_employee(employee_id, title=title, body=body, data={"doctype": "Salary Slip", "name": doc.name})
+    title, body, data = T.salary_slip_ready(doc)
+    send_fcm_to_employee(employee_id, title=title, body=body, data=data)
 
 
 def _ess_setting_enabled(key: str, default: bool = True) -> bool:
@@ -260,16 +257,11 @@ def on_expense_claim_update(doc, method=None):
     if status not in ("Approved", "Rejected"):
         return
 
+    from opportunity_management.opportunity_management import notification_templates as T
     employee_id = doc.employee
-
-    if status == "Approved":
-        title = "تمت الموافقة على المصروف ✓"
-        body = f"تمت الموافقة على مطالبة المصروف بمبلغ {doc.total_claimed_amount} {doc.currency or ''}."
-    else:
-        title = "مطالبة المصروف مرفوضة"
-        body = f"تم رفض مطالبة المصروف بمبلغ {doc.total_claimed_amount} {doc.currency or ''}."
-
-    send_fcm_to_employee(employee_id, title=title, body=body, data={"doctype": "Expense Claim", "name": doc.name})
+    builder = T.expense_approved if status == "Approved" else T.expense_rejected
+    title, body, data = builder(doc)
+    send_fcm_to_employee(employee_id, title=title, body=body, data=data)
 
 
 # ---------------------------------------------------------------------------

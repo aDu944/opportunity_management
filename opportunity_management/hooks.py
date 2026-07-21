@@ -24,24 +24,50 @@ doc_events = {
         "after_insert": [
             "opportunity_management.quotation_handler.on_quotation_save",
             "opportunity_management.quotation_handler.recalc_opportunity_amount",
+            "opportunity_management.opportunity_management.business_hooks.on_quotation_after_insert",
         ],
-        "on_update_after_submit": "opportunity_management.quotation_handler.recalc_opportunity_amount",
-        "on_submit": "opportunity_management.quotation_handler.recalc_opportunity_amount",
+        "on_update_after_submit": [
+            "opportunity_management.quotation_handler.recalc_opportunity_amount",
+            "opportunity_management.opportunity_management.business_hooks.on_quotation_update_after_submit",
+        ],
+        "on_submit": [
+            "opportunity_management.quotation_handler.recalc_opportunity_amount",
+            "opportunity_management.opportunity_management.business_hooks.on_quotation_submit",
+        ],
         "on_cancel": "opportunity_management.quotation_handler.recalc_opportunity_amount",
         "on_trash": "opportunity_management.quotation_handler.recalc_opportunity_amount",
+    },
+    "Sales Order": {
+        "on_submit": "opportunity_management.opportunity_management.business_hooks.on_sales_order_submit",
+    },
+    "Sales Invoice": {
+        "on_submit": "opportunity_management.opportunity_management.business_hooks.on_sales_invoice_submit",
+    },
+    "Delivery Note": {
+        "on_submit": "opportunity_management.opportunity_management.business_hooks.on_delivery_note_submit",
+    },
+    "Material Request": {
+        "on_submit": "opportunity_management.opportunity_management.business_hooks.on_material_request_submit",
+    },
+    "ToDo": {
+        "after_insert": "opportunity_management.opportunity_management.business_hooks.on_todo_after_insert",
     },
     "Employee Checkin": {
         "before_insert": "opportunity_management.opportunity_management.ess_hooks.before_checkin_insert",
         "after_insert": "opportunity_management.opportunity_management.ess_hooks.on_checkin_insert",
     },
     "Leave Application": {
-        "after_insert": "opportunity_management.opportunity_management.ess_hooks.on_leave_application_insert",
+        "after_insert": [
+            "opportunity_management.opportunity_management.ess_hooks.on_leave_application_insert",
+            "opportunity_management.opportunity_management.business_hooks.on_leave_application_insert_notify_approver",
+        ],
         "on_update": "opportunity_management.opportunity_management.ess_hooks.on_leave_application_update",
     },
     "Salary Slip": {
         "on_submit": "opportunity_management.opportunity_management.ess_hooks.on_salary_slip_submit",
     },
     "Expense Claim": {
+        "after_insert": "opportunity_management.opportunity_management.business_hooks.on_expense_claim_after_insert",
         "on_update": "opportunity_management.opportunity_management.ess_hooks.on_expense_claim_update",
     },
     "Announcement": {
@@ -51,10 +77,16 @@ doc_events = {
         "after_insert": "opportunity_management.opportunity_management.ess_hooks.on_notification_log_insert",
     },
     "Journal Entry": {
-        "on_submit": "opportunity_management.opportunity_management.ess_hooks.on_journal_entry_submit",
+        "on_submit": [
+            "opportunity_management.opportunity_management.ess_hooks.on_journal_entry_submit",
+            "opportunity_management.opportunity_management.business_hooks.on_journal_entry_submit_broadcast",
+        ],
     },
     "Payment Entry": {
-        "on_submit": "opportunity_management.opportunity_management.ess_hooks.on_payment_entry_submit",
+        "on_submit": [
+            "opportunity_management.opportunity_management.ess_hooks.on_payment_entry_submit",
+            "opportunity_management.opportunity_management.business_hooks.on_payment_entry_submit_broadcast",
+        ],
     },
 }
 
