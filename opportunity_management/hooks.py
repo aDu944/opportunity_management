@@ -77,13 +77,22 @@ scheduler_events = {
             "opportunity_management.opportunity_management.tasks.send_manager_weekly_digest"
         ],
         # Every 5 minutes — process scheduled FCM broadcasts, send the
-        # configured daily check-in reminder, and force auto-checkout any
-        # employees still checked in past the configured hour (all 3 are
-        # no-ops unless their respective settings are configured).
+        # configured daily check-in reminder, force auto-checkout any
+        # employees still checked in past the configured hour, and fire the
+        # attendance-window reminders (each of which self-gates on
+        # time-of-day + a per-day global flag so this cron can safely list
+        # them all — they no-op outside their window).
         "*/5 * * * *": [
             "opportunity_management.opportunity_management.api.process_scheduled_broadcasts",
             "opportunity_management.opportunity_management.api.send_daily_checkin_reminders",
             "opportunity_management.opportunity_management.api.auto_checkout_pending_employees",
+            # 15 min / 5 min before check-in window closes.
+            "opportunity_management.opportunity_management.attendance_reminders.send_checkin_closing_15min_warning",
+            "opportunity_management.opportunity_management.attendance_reminders.send_checkin_closing_5min_warning",
+            # Hourly 4/5/6/7 PM — remind checked-in-but-not-out employees.
+            "opportunity_management.opportunity_management.attendance_reminders.send_checkout_reminder_hourly",
+            # 5 min before auto-checkout — final warning before we clock people out.
+            "opportunity_management.opportunity_management.attendance_reminders.send_pre_auto_checkout_warning",
         ],
     }
 }
