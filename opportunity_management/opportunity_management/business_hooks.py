@@ -6,7 +6,9 @@ Each hook:
   1. Builds the notification via `notification_templates`.
   2. Resolves recipients — the doc's owner (creator), the doc's assigned
      approver where applicable, and users holding a named role.
-  3. Dispatches via `fcm_utils.send_fcm_to_user`.
+  3. Dispatches via `notification_dispatcher.enqueue_fcm_to_user` — the
+     actual send runs on the short RQ queue so the originating request
+     (doc submit) doesn't block on the OAuth handshake × recipients.
 
 All send calls are wrapped so a single bad token can't break the parent
 transaction (`try/except` around each user).
@@ -14,8 +16,10 @@ transaction (`try/except` around each user).
 
 import frappe
 
-from opportunity_management.opportunity_management.fcm_utils import send_fcm_to_user
 from opportunity_management.opportunity_management import notification_templates as T
+from opportunity_management.opportunity_management.notification_dispatcher import (
+    enqueue_fcm_to_user,
+)
 
 
 # ── Dispatch primitives ───────────────────────────────────────────────────────
@@ -29,13 +33,9 @@ def _send_to_users(users, title, body, data, dedupe_seen=None):
         if not email or email in seen:
             continue
         seen.add(email)
-        try:
-            send_fcm_to_user(email, title=title, body=body, data=data)
-        except Exception:
-            frappe.log_error(
-                title="FCM Dispatch Error",
-                message=f"user={email}\n{frappe.get_traceback()}",
-            )
+        # Enqueue keeps the originating request (doc submit, hook fire)
+        # from blocking on the OAuth handshake × recipients count.
+        enqueue_fcm_to_user(email, title=title, body=body, data=data)
 
 
 def _users_with_role(role: str):

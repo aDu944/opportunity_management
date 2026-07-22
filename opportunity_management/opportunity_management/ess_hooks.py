@@ -5,7 +5,10 @@ Handles email alerts and FCM push notifications triggered by HR document events.
 
 import frappe
 from frappe.utils import format_datetime
-from opportunity_management.opportunity_management.fcm_utils import send_fcm_to_employee, send_fcm_to_user
+from opportunity_management.opportunity_management.notification_dispatcher import (
+    enqueue_fcm,
+    enqueue_fcm_to_employee,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +179,7 @@ def on_leave_application_update(doc, method=None):
         status_html = "<span style='color:#c62828;font-weight:bold'>Rejected ✗</span>"
 
     # FCM push notification (consistent template, includes "by {creator}").
-    send_fcm_to_employee(employee_id, title=fcm_title, body=fcm_body, data=fcm_data)
+    enqueue_fcm_to_employee(employee_id, title=fcm_title, body=fcm_body, data=fcm_data)
 
     # Email to employee
     if not employee_user:
@@ -234,7 +237,7 @@ def on_salary_slip_submit(doc, method=None):
     from opportunity_management.opportunity_management import notification_templates as T
     employee_id = doc.employee
     title, body, data = T.salary_slip_ready(doc)
-    send_fcm_to_employee(employee_id, title=title, body=body, data=data)
+    enqueue_fcm_to_employee(employee_id, title=title, body=body, data=data)
 
 
 def _ess_setting_enabled(key: str, default: bool = True) -> bool:
@@ -261,7 +264,7 @@ def on_expense_claim_update(doc, method=None):
     employee_id = doc.employee
     builder = T.expense_approved if status == "Approved" else T.expense_rejected
     title, body, data = builder(doc)
-    send_fcm_to_employee(employee_id, title=title, body=body, data=data)
+    enqueue_fcm_to_employee(employee_id, title=title, body=body, data=data)
 
 
 # ---------------------------------------------------------------------------
@@ -288,8 +291,7 @@ def on_announcement_insert(doc, method=None):
     )
     for emp in employees:
         if emp.get("custom_fcm_token"):
-            from opportunity_management.opportunity_management.fcm_utils import send_fcm
-            send_fcm(emp["custom_fcm_token"], title=title, body=body, data={"doctype": "Announcement", "name": doc.name})
+            enqueue_fcm(emp["custom_fcm_token"], title=title, body=body, data={"doctype": "Announcement", "name": doc.name})
 
 
 def before_checkin_insert(doc, method=None):
@@ -478,8 +480,7 @@ def on_notification_log_insert(doc, method=None):
         if len(body) > 200:
             body = body[:197] + '…'
 
-        from opportunity_management.opportunity_management.fcm_utils import send_fcm
-        send_fcm(
+        enqueue_fcm(
             token,
             title=title,
             body=body,
@@ -525,19 +526,16 @@ def _notify_employee_payment(employee_id, amount, currency, doc_type, doc_name, 
         title = "💰 تم اضافة مصروف جديد لحسابك • Expenses added to your account"
         body = money
         data_type = "payable_registered"
-    try:
-        send_fcm_to_employee(
-            employee_id,
-            title=title,
-            body=body,
-            data={
-                "type": data_type,
-                "doctype": doc_type,
-                "name": doc_name,
-            },
-        )
-    except Exception:
-        frappe.log_error(frappe.get_traceback(), "notify_employee_payment")
+    enqueue_fcm_to_employee(
+        employee_id,
+        title=title,
+        body=body,
+        data={
+            "type": data_type,
+            "doctype": doc_type,
+            "name": doc_name,
+        },
+    )
 
 
 def on_journal_entry_submit(doc, method=None):
