@@ -154,7 +154,6 @@ fixtures = [
         "filters": [
             ["dt", "in", ["Opportunity"]],
             ["fieldname", "in", [
-                "custom_resp_eng",
                 "custom_reminder_7_sent",
                 "custom_reminder_3_sent",
                 "custom_reminder_1_sent",
