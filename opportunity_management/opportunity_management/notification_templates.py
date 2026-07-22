@@ -145,11 +145,11 @@ def journal_entry_submitted(doc):
     ref = (doc.get("cheque_no") or "").strip()
     ref_bit = f" — {ref}" if ref else ""
     return (
-        "📒 قيد يومي مُقدّم • JE Submitted",
+        "📒 قيد يومي معتمد • JE Submitted",
         (
             f"القيد {doc.name}{ref_bit} — {total}\n"
             f"Journal Entry {doc.name}{ref_bit} — {total} submitted"
-        ) + _action_by_line(doc, "قدّمه", "Submitted"),
+        ) + _action_by_line(doc, "اعتمده", "Submitted"),
         {"doctype": "Journal Entry", "name": doc.name},
     )
 
@@ -200,7 +200,7 @@ def leave_approved(doc):
     days = doc.get("total_leave_days") or ""
     days_bit = f" — {days} يوم / days" if days else ""
     return (
-        "✅ تمت الموافقة على إجازتك",
+        "✅ تم القبول على إجازتك",
         (
             f"من {doc.from_date} إلى {doc.to_date}{days_bit}\n"
             f"{doc.from_date} → {doc.to_date}{days_bit}"
@@ -236,7 +236,7 @@ def expense_claim_created(doc):
 def expense_approved(doc):
     amt = _money(doc.get("total_claimed_amount"), doc.get("currency"))
     return (
-        "✅ تمت الموافقة على مصروفك",
+        "✅ تم القبول على مصروفك",
         f"{amt}" + _by_line(doc),
         {"doctype": "Expense Claim", "name": doc.name, "screen": "expenses"},
     )
@@ -331,11 +331,11 @@ def journal_entry_approved(doc):
     ref = (doc.get("cheque_no") or "").strip()
     ref_bit = f" — {ref}" if ref else ""
     return (
-        "✅ قيد يومي معتمد • JE Approved",
+        "✅ قيد يومي مقبول • JE Approved",
         (
-            f"القيد {doc.name}{ref_bit} — {total} تمت الموافقة\n"
+            f"القيد {doc.name}{ref_bit} — {total} تم القبول\n"
             f"Journal Entry {doc.name}{ref_bit} — {total} approved"
-        ) + _action_by_line(doc, "اعتمده", "Approved"),
+        ) + _action_by_line(doc, "قبله", "Approved"),
         {"doctype": "Journal Entry", "name": doc.name},
     )
 
