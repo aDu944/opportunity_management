@@ -1017,41 +1017,8 @@ def get_my_punch_locations():
     """
     user = frappe.session.user
     employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
-    frappe.log_error(
-        title="punch_locations trace",
-        message=f"user={user!r} employee={employee!r}",
-    )
     if not employee:
         return {"locations": []}
-
-
-@frappe.whitelist(allow_guest=True)
-def mobile_heartbeat():
-    """No-auth diagnostic endpoint. Uses ignore_permissions to write a
-    Notification Log entry we can query even for Guest requests.
-    frappe.log_error was silently failing to commit for Guest sessions."""
-    user = frappe.session.user
-    try:
-        ip = frappe.local.request_ip if hasattr(frappe.local, "request") else "N/A"
-    except Exception:
-        ip = "err"
-    # Write a stamped doc into a doctype that guest CAN insert with
-    # ignore_permissions. Notification Log will do since we've already
-    # seen it works for Guest inserts via other paths in this app.
-    try:
-        d = frappe.get_doc({
-            "doctype": "Notification Log",
-            "subject": "mobile_heartbeat",
-            "email_content": f"user={user} ip={ip}",
-            "for_user": "Administrator",
-            "type": "Alert",
-            "read": 0,
-        })
-        d.insert(ignore_permissions=True)
-        frappe.db.commit()
-        return {"ok": True, "user": user, "logged": d.name}
-    except Exception as e:
-        return {"ok": True, "user": user, "log_error": str(e)[:200]}
 
     child_rows = frappe.get_all(
         "Employee Punch Location",
