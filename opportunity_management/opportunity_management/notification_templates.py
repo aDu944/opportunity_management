@@ -291,8 +291,7 @@ def purchase_order_submitted(doc):
     return (
         "📦 طلب شراء جديد • New Purchase Order",
         (
-            f"طلب الشراء {doc.name} — {supplier} — {total}
-"
+            f"طلب الشراء {doc.name} — {supplier} — {total}\n"
             f"Purchase Order {doc.name} — {supplier} — {total}"
         ) + _by_line(doc),
         {"doctype": "Purchase Order", "name": doc.name},
@@ -306,8 +305,7 @@ def project_created(doc):
     en = f"Project {doc.name} — {proj_name}" + (f" — {customer}" if customer else "")
     return (
         "🚀 مشروع جديد • New Project",
-        f"{ar}
-{en}" + _by_line(doc),
+        f"{ar}\n{en}" + _by_line(doc),
         {"doctype": "Project", "name": doc.name},
     )
 
@@ -319,8 +317,7 @@ def journal_entry_approved(doc):
     return (
         "✅ قيد يومي معتمد • JE Approved",
         (
-            f"تمت الموافقة على القيد {doc.name}{ref_bit} — {total}
-"
+            f"تمت الموافقة على القيد {doc.name}{ref_bit} — {total}\n"
             f"Journal Entry {doc.name}{ref_bit} — {total} approved"
         ) + _by_line(doc),
         {"doctype": "Journal Entry", "name": doc.name},
@@ -334,8 +331,7 @@ def journal_entry_rejected(doc):
     return (
         "❌ قيد يومي مرفوض • JE Rejected",
         (
-            f"تم رفض القيد {doc.name}{ref_bit} — {total}
-"
+            f"تم رفض القيد {doc.name}{ref_bit} — {total}\n"
             f"Journal Entry {doc.name}{ref_bit} — {total} rejected"
         ) + _by_line(doc),
         {"doctype": "Journal Entry", "name": doc.name},
