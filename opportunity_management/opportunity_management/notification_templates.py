@@ -36,6 +36,22 @@ def _by_line(doc) -> str:
     return f"\n— بواسطة {creator} • by {creator}" if creator else ""
 
 
+def _action_by_line(doc, ar_verb: str, en_verb: str, use_modified: bool = True) -> str:
+    """Return the trailer line naming who took the action (submitted/approved/rejected).
+
+    Uses doc.modified_by by default — for transition events (approve/reject/submit)
+    the last modifier IS the actor. Set use_modified=False to name the original owner."""
+    user_id = None
+    if use_modified:
+        user_id = getattr(doc, "modified_by", None) or (doc.get("modified_by") if hasattr(doc, "get") else None)
+    if not user_id:
+        user_id = getattr(doc, "owner", None) or (doc.get("owner") if hasattr(doc, "get") else None)
+    if not user_id:
+        return ""
+    full = frappe.db.get_value("User", user_id, "full_name") or user_id
+    return f"\n— {ar_verb} {full} • {en_verb} by {full}"
+
+
 def _money(amount, currency) -> str:
     try:
         amt = float(amount or 0)
@@ -129,11 +145,11 @@ def journal_entry_submitted(doc):
     ref = (doc.get("cheque_no") or "").strip()
     ref_bit = f" — {ref}" if ref else ""
     return (
-        "📒 قيد يومي • Journal Entry Submitted",
+        "📒 قيد يومي مُقدّم • JE Submitted",
         (
-            f"قيد {doc.name}{ref_bit} — {total}\n"
-            f"Journal Entry {doc.name}{ref_bit} — {total}"
-        ) + _by_line(doc),
+            f"القيد {doc.name}{ref_bit} — {total}\n"
+            f"Journal Entry {doc.name}{ref_bit} — {total} submitted"
+        ) + _action_by_line(doc, "قدّمه", "Submitted"),
         {"doctype": "Journal Entry", "name": doc.name},
     )
 
@@ -317,9 +333,9 @@ def journal_entry_approved(doc):
     return (
         "✅ قيد يومي معتمد • JE Approved",
         (
-            f"تمت الموافقة على القيد {doc.name}{ref_bit} — {total}\n"
+            f"القيد {doc.name}{ref_bit} — {total} تمت الموافقة\n"
             f"Journal Entry {doc.name}{ref_bit} — {total} approved"
-        ) + _by_line(doc),
+        ) + _action_by_line(doc, "اعتمده", "Approved"),
         {"doctype": "Journal Entry", "name": doc.name},
     )
 
@@ -331,8 +347,8 @@ def journal_entry_rejected(doc):
     return (
         "❌ قيد يومي مرفوض • JE Rejected",
         (
-            f"تم رفض القيد {doc.name}{ref_bit} — {total}\n"
+            f"القيد {doc.name}{ref_bit} — {total} تم رفضه\n"
             f"Journal Entry {doc.name}{ref_bit} — {total} rejected"
-        ) + _by_line(doc),
+        ) + _action_by_line(doc, "رفضه", "Rejected"),
         {"doctype": "Journal Entry", "name": doc.name},
     )
