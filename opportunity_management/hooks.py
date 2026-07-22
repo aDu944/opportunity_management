@@ -37,6 +37,12 @@ doc_events = {
         "on_cancel": "opportunity_management.quotation_handler.recalc_opportunity_amount",
         "on_trash": "opportunity_management.quotation_handler.recalc_opportunity_amount",
     },
+    "Purchase Order": {
+        "on_submit": "opportunity_management.opportunity_management.business_hooks.on_purchase_order_submit",
+    },
+    "Project": {
+        "after_insert": "opportunity_management.opportunity_management.business_hooks.on_project_after_insert",
+    },
     "Sales Order": {
         "on_submit": "opportunity_management.opportunity_management.business_hooks.on_sales_order_submit",
     },
@@ -77,10 +83,8 @@ doc_events = {
         "after_insert": "opportunity_management.opportunity_management.ess_hooks.on_notification_log_insert",
     },
     "Journal Entry": {
-        "on_submit": [
-            "opportunity_management.opportunity_management.ess_hooks.on_journal_entry_submit",
-            "opportunity_management.opportunity_management.business_hooks.on_journal_entry_submit_broadcast",
-        ],
+        "on_update": "opportunity_management.opportunity_management.business_hooks.on_journal_entry_workflow_change",
+        "on_submit": "opportunity_management.opportunity_management.ess_hooks.on_journal_entry_submit",
     },
     "Payment Entry": {
         "on_submit": [

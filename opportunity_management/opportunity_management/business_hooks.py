@@ -261,3 +261,38 @@ def on_delivery_note_submit(doc, method=None):
     if doc.owner:
         recipients.append(doc.owner)
     _dispatch(recipients, T.delivery_note_submitted, doc)
+
+
+def on_purchase_order_submit(doc, method=None):
+    """Notify System Manager + creator of every submitted Purchase Order."""
+    recipients = list(_users_with_role("System Manager"))
+    if doc.owner:
+        recipients.append(doc.owner)
+    _dispatch(recipients, T.purchase_order_submitted, doc)
+
+
+def on_project_after_insert(doc, method=None):
+    """Notify System Manager + Projects Manager + creator of every new Project."""
+    recipients = list(_users_with_role("System Manager"))
+    recipients.extend(_users_with_role("Projects Manager"))
+    if doc.owner:
+        recipients.append(doc.owner)
+    _dispatch(recipients, T.project_created, doc)
+
+
+def on_journal_entry_workflow_change(doc, method=None):
+    """Fire on JE workflow state change to Approved/Rejected. Dispatches
+    the appropriate FCM template to Accounts Manager + doc.owner."""
+    try:
+        if not doc.has_value_changed("workflow_state"):
+            return
+    except AttributeError:
+        return
+    state = (getattr(doc, "workflow_state", None) or "").strip()
+    recipients = list(_users_with_role("Accounts Manager"))
+    if doc.owner:
+        recipients.append(doc.owner)
+    if state == "Approved":
+        _dispatch(recipients, T.journal_entry_approved, doc)
+    elif state == "Rejected":
+        _dispatch(recipients, T.journal_entry_rejected, doc)

@@ -283,3 +283,60 @@ def delivery_note_submitted(doc):
         ) + _by_line(doc),
         {"doctype": "Delivery Note", "name": doc.name},
     )
+
+
+def purchase_order_submitted(doc):
+    total = _money(doc.get("grand_total"), doc.get("currency"))
+    supplier = _supplier_of(doc)
+    return (
+        "📦 طلب شراء جديد • New Purchase Order",
+        (
+            f"طلب الشراء {doc.name} — {supplier} — {total}
+"
+            f"Purchase Order {doc.name} — {supplier} — {total}"
+        ) + _by_line(doc),
+        {"doctype": "Purchase Order", "name": doc.name},
+    )
+
+
+def project_created(doc):
+    proj_name = (doc.get("project_name") or doc.name).strip()
+    customer = _customer_of(doc)
+    ar = f"مشروع {doc.name} — {proj_name}" + (f" — {customer}" if customer else "")
+    en = f"Project {doc.name} — {proj_name}" + (f" — {customer}" if customer else "")
+    return (
+        "🚀 مشروع جديد • New Project",
+        f"{ar}
+{en}" + _by_line(doc),
+        {"doctype": "Project", "name": doc.name},
+    )
+
+
+def journal_entry_approved(doc):
+    total = _money(doc.get("total_debit"), "")
+    ref = (doc.get("cheque_no") or "").strip()
+    ref_bit = f" — {ref}" if ref else ""
+    return (
+        "✅ قيد يومي معتمد • JE Approved",
+        (
+            f"تمت الموافقة على القيد {doc.name}{ref_bit} — {total}
+"
+            f"Journal Entry {doc.name}{ref_bit} — {total} approved"
+        ) + _by_line(doc),
+        {"doctype": "Journal Entry", "name": doc.name},
+    )
+
+
+def journal_entry_rejected(doc):
+    total = _money(doc.get("total_debit"), "")
+    ref = (doc.get("cheque_no") or "").strip()
+    ref_bit = f" — {ref}" if ref else ""
+    return (
+        "❌ قيد يومي مرفوض • JE Rejected",
+        (
+            f"تم رفض القيد {doc.name}{ref_bit} — {total}
+"
+            f"Journal Entry {doc.name}{ref_bit} — {total} rejected"
+        ) + _by_line(doc),
+        {"doctype": "Journal Entry", "name": doc.name},
+    )
