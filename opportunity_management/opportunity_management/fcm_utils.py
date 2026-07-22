@@ -154,6 +154,36 @@ def _build_naked_app():
     return firebase_admin.initialize_app(cred, name=name)
 
 
+def _unread_badge_for_token(token: str) -> int:
+    """Best-effort: return the number of unread Notification Logs for the
+    user this token belongs to. Used as the iOS badge value so the badge
+    always matches what the user sees in the in-app notifications list.
+
+    Returns 1 as a safe fallback if the lookup fails — never returns 0 for
+    a fresh push because that would tell iOS to clear the badge."""
+    try:
+        user = frappe.db.sql(
+            """
+            SELECT user_id FROM `tabEmployee`
+            WHERE custom_fcm_token = %s
+            LIMIT 1
+            """,
+            (token,),
+        )
+        if not user or not user[0][0]:
+            return 1
+        email = user[0][0]
+        count = frappe.db.count(
+            "Notification Log",
+            {"for_user": email, "read": 0},
+        )
+        # We're about to add one more Notification Log (via _create_notification_log)
+        # so include it in the badge preemptively.
+        return int(count) + 1
+    except Exception:
+        return 1
+
+
 def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
     """Send an FCM notification to a single device token. Returns True on success.
 
@@ -180,6 +210,7 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
         )
         return False
 
+    badge = _unread_badge_for_token(token)
     payload = {
         "message": {
             "token": token,
@@ -190,11 +221,18 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
                 "notification": {
                     "channel_id": "alkhora_ess_main",
                     "sound": "bell",
+                    # Match iOS: keep the visible count aligned with the
+                    # user's unread in-app notifications.
+                    "notification_count": badge,
                 },
             },
             "apns": {
                 "payload": {
-                    "aps": {"sound": "bell.caf", "badge": 1},
+                    # `badge` here SETS iOS badge to that exact number — no
+                    # accumulation. Using the user's unread notification
+                    # count makes the badge a meaningful indicator instead
+                    # of a stale value from a random earlier push.
+                    "aps": {"sound": "bell.caf", "badge": badge},
                 },
             },
         }
