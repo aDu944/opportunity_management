@@ -1017,6 +1017,12 @@ def get_my_punch_locations():
     """
     user = frappe.session.user
     employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
+    # TEMP diagnostic: track every call so we can prove what the mobile app
+    # is actually reaching. Remove once we've confirmed the pipe is healthy.
+    frappe.log_error(
+        title="punch_locations trace",
+        message=f"user={user!r} employee={employee!r}",
+    )
     if not employee:
         return {"locations": []}
 
