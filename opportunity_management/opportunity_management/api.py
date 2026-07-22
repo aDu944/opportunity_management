@@ -1017,14 +1017,26 @@ def get_my_punch_locations():
     """
     user = frappe.session.user
     employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
-    # TEMP diagnostic: track every call so we can prove what the mobile app
-    # is actually reaching. Remove once we've confirmed the pipe is healthy.
     frappe.log_error(
         title="punch_locations trace",
         message=f"user={user!r} employee={employee!r}",
     )
     if not employee:
         return {"locations": []}
+
+
+@frappe.whitelist(allow_guest=True)
+def mobile_heartbeat():
+    """No-auth diagnostic endpoint. Logs every call with the current
+    session.user (Guest if unauth'd) so we can tell whether the mobile
+    app is even reaching the server — separate from whether it's
+    successfully authenticated. Remove after diagnosis."""
+    user = frappe.session.user
+    frappe.log_error(
+        title="mobile_heartbeat",
+        message=f"user={user!r} ip={frappe.local.request_ip if frappe.local.request else 'N/A'!r}",
+    )
+    return {"ok": True, "user": user}
 
     child_rows = frappe.get_all(
         "Employee Punch Location",
