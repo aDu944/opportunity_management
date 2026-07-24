@@ -6,6 +6,32 @@ import frappe
 from frappe.utils import now_datetime
 
 
+# Employees intentionally excluded from operational attendance reports.
+# Ownership / management users whose comings-and-goings shouldn't show up
+# in the dashboard's "checkins today" count or the recent check-ins feed.
+#
+#   HR-EMP-00001  Ahmed Salam        (احمد سلام)
+#   HR-EMP-00002  Ali Salam          (علي سلام)
+#   HR-EMP-00008  Thamer Mohammed    (ثامر محمد عبد البطاوي)
+#   HR-EMP-00011  Aya Oday           (اية عدي محمدحسن زوين)
+#
+# When this list needs to grow, add the Employee ID here and it applies
+# to every consumer of `_excluded_employee_ids()`. If it grows past a
+# handful, move to a Custom Field `custom_exclude_from_reports` on
+# Employee and read the list from the DB instead.
+_EXCLUDED_EMPLOYEE_IDS = (
+    "HR-EMP-00001",
+    "HR-EMP-00002",
+    "HR-EMP-00008",
+    "HR-EMP-00011",
+)
+
+
+def _excluded_employee_ids():
+    """Tuple of Employee IDs to omit from operational attendance reports."""
+    return _EXCLUDED_EMPLOYEE_IDS
+
+
 @frappe.whitelist()
 def get_dashboard_stats():
     """Return summary stats for the ESS dashboard."""
@@ -14,7 +40,18 @@ def get_dashboard_stats():
     without_token = total_employees - with_token
 
     today = frappe.utils.today()
-    checkins_today = frappe.db.count("Employee Checkin", {"time": ["like", f"{today}%"]})
+    # Excluded employees do not contribute to the checkin count either —
+    # keeps the number consistent with the recent-checkins feed below.
+    excluded = _excluded_employee_ids()
+    checkins_today = frappe.db.sql(
+        """
+        SELECT COUNT(*)
+        FROM `tabEmployee Checkin`
+        WHERE DATE(time) = %(today)s
+          AND employee NOT IN %(excluded)s
+        """,
+        {"today": today, "excluded": excluded},
+    )[0][0]
 
     pending_leaves = frappe.db.count("Leave Application", {"status": "Open"})
     pending_expenses = frappe.db.count("Expense Claim", {"approval_status": "Draft"})
@@ -74,7 +111,8 @@ def broadcast_notification(title, body):
 
 @frappe.whitelist()
 def get_recent_checkins(limit=50):
-    """Return recent employee check-ins."""
+    """Return recent employee check-ins. Excludes ownership / management
+    users (see `_EXCLUDED_EMPLOYEE_IDS`) from the feed."""
     # custom_outside_zone is optional — only include if the column exists
     has_outside_zone = frappe.db.has_column("Employee Checkin", "custom_outside_zone")
     outside_col = "ec.custom_outside_zone," if has_outside_zone else "0 AS custom_outside_zone,"
@@ -91,9 +129,13 @@ def get_recent_checkins(limit=50):
             ec.longitude
         FROM `tabEmployee Checkin` ec
         LEFT JOIN `tabEmployee` e ON e.name = ec.employee
+        WHERE ec.employee NOT IN %(excluded)s
         ORDER BY ec.time DESC
         LIMIT %(limit)s
-    """, {"limit": int(limit)}, as_dict=True)
+    """, {
+        "limit": int(limit),
+        "excluded": _excluded_employee_ids(),
+    }, as_dict=True)
     return checkins
 
 
