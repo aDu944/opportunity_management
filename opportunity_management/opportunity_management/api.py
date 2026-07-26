@@ -1209,6 +1209,64 @@ def approve_leave_via_email(name=None, action=None, user=None, exp=None, token=N
 
 
 @frappe.whitelist()
+def act_on_leave(name, action):
+    """Mobile approvals — approve or reject a Leave Application.
+
+    The generic /api/resource/Leave Application PUT with
+    {status: Approved, docstatus: 1} triggers HRMS validation that runs
+    before the submit lifecycle and rejects the request with a 417. We
+    use the same approach as `approve_leave_via_email`: `set_value` to
+    update status + attribution, bypass the doc lifecycle, then manually
+    fire the notifier hook so the employee still gets the FCM push.
+
+    Auth: caller must either be the leave_approver on the document, hold
+    HR Manager / HR User / System Manager, OR be a direct manager (Sales
+    Manager / Ops Manager / etc.) with 'Leave Approver' role. Keeps the
+    mobile flow safe without exposing full leave-application write access.
+    """
+    action = (action or "").lower()
+    if action not in ("approve", "reject"):
+        frappe.throw("action must be 'approve' or 'reject'")
+    if not frappe.db.exists("Leave Application", name):
+        frappe.throw(f"Leave Application {name} does not exist")
+
+    caller = frappe.session.user
+    roles = set(frappe.get_roles(caller) or [])
+    doc_approver = frappe.db.get_value("Leave Application", name, "leave_approver")
+    is_privileged = bool(roles & {"HR Manager", "HR User", "System Manager"})
+    if not is_privileged and doc_approver != caller and "Leave Approver" not in roles:
+        frappe.throw("You are not authorized to act on this leave request.")
+
+    current_status = frappe.db.get_value("Leave Application", name, "status")
+    new_status = "Approved" if action == "approve" else "Rejected"
+    if current_status == new_status:
+        return {"ok": True, "already": True, "status": new_status}
+
+    docstatus = frappe.db.get_value("Leave Application", name, "docstatus")
+    if docstatus == 2:
+        frappe.throw("This leave was cancelled and cannot be modified.")
+
+    frappe.db.set_value("Leave Application", name, {
+        "status": new_status,
+        "leave_approver": caller,
+    })
+    frappe.db.commit()
+
+    # set_value bypasses doc events → fire the notifier manually so the
+    # employee gets the FCM push + confirmation email.
+    try:
+        from opportunity_management.opportunity_management.ess_hooks import (
+            on_leave_application_update,
+        )
+        updated = frappe.get_doc("Leave Application", name)
+        on_leave_application_update(updated)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "act_on_leave — notify failed")
+
+    return {"ok": True, "status": new_status}
+
+
+@frappe.whitelist()
 def register_fcm_token(token, app_version=None, platform=None):
     """Store the FCM token on the Employee record for the logged-in user.
     Also records the reported app version + platform so HR can target
