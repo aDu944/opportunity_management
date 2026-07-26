@@ -1025,6 +1025,11 @@ def get_my_punch_locations():
     """
     user = frappe.session.user
     employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
+    # TEMP trace — remove once we've confirmed the mobile hits this on cold-start.
+    frappe.log_error(
+        title="punch_locations trace",
+        message=f"user={user!r} employee={employee!r}",
+    )
     if not employee:
         return {"locations": []}
 
