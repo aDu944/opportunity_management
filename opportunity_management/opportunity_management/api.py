@@ -86,9 +86,14 @@ def _get_assignment_map(opportunity_names):
 def _is_user_assigned(user, doc):
     if not doc:
         return False
-    if doc.owner == user:
-        return True
-    return user in _get_assigned_user_ids(doc)
+    assigned = _get_assigned_user_ids(doc)
+    # Same rule as get_personal_opportunities: strict responsible-party
+    # match when there IS a responsible party; fall back to creator only
+    # when the responsible-party list is empty so unassigned opportunities
+    # don't drop off everyone's list.
+    if assigned:
+        return user in assigned
+    return doc.owner == user
 
 
 @frappe.whitelist()
@@ -113,16 +118,12 @@ def get_my_opportunities(user=None, include_completed=False):
     # Debug: Log current user
     frappe.logger().info(f"get_my_opportunities called for user: {user}")
 
-    # Check if user has Sales Manager role
-    user_roles = frappe.get_roles(user)
-    is_sales_manager = "Sales Manager" in user_roles
-
-    if is_sales_manager:
-        # For sales managers, show team opportunities
-        return get_team_opportunities_for_user(user, include_completed)
-    else:
-        # For regular users, show personal opportunities
-        return get_personal_opportunities(user, include_completed)
+    # Always return the caller's personal assignments — the mobile hub has
+    # a separate "Team" tab that hits get_team_opportunities* for the
+    # manager view. Previously this auto-routed Sales Managers to the team
+    # view, which made every team opportunity show up under their "Mine"
+    # tab (including ones assigned to their direct reports).
+    return get_personal_opportunities(user, include_completed)
 
 
 def get_personal_opportunities(user, include_completed=False):
@@ -150,10 +151,17 @@ def get_personal_opportunities(user, include_completed=False):
         opp = frappe.get_doc("Opportunity", row.name)
 
         assigned_users = _get_assigned_user_ids(opp)
-        if not assigned_users:
-            continue
-        if user not in assigned_users and opp.owner != user:
-            continue
+        # If someone is on the hook via custom_responsible_party, filter
+        # STRICTLY to that list — the creator should NOT keep seeing an
+        # opportunity in their "Mine" tab once they've handed it off.
+        # Fall back to the creator only when no responsible party is set
+        # (otherwise the opportunity would fall off everyone's radar).
+        if assigned_users:
+            if user not in assigned_users:
+                continue
+        else:
+            if opp.owner != user:
+                continue
 
         has_quotation = frappe.db.exists("Quotation", {
             "opportunity": opp.name,
