@@ -241,7 +241,10 @@ def get_personal_opportunities(user, include_completed=False):
             "opportunity_type": opp.opportunity_type,
         })
 
-    opportunities.sort(key=lambda x: (x["days_remaining"] is None, x["days_remaining"] or 9999))
+    # Same urgency-first ordering as get_team_opportunities: due_today
+    # sits above overdue so today's actionable items land at the top.
+    _urgency_rank = {"due_today": 0, "overdue": 1, "critical": 2, "high": 3, "medium": 4, "low": 5, "completed": 6, "unknown": 7}
+    opportunities.sort(key=lambda x: (_urgency_rank.get(x.get("urgency"), 99), x["days_remaining"] or 9999))
 
     return opportunities
 
@@ -358,7 +361,10 @@ def get_team_opportunities_for_user(user, include_completed=False):
 
     # Convert to list and sort
     opportunities = list(opp_map.values())
-    opportunities.sort(key=lambda x: (x["days_remaining"] is None, x["days_remaining"] or 9999))
+    # Same urgency-first ordering as get_team_opportunities: due_today
+    # sits above overdue so today's actionable items land at the top.
+    _urgency_rank = {"due_today": 0, "overdue": 1, "critical": 2, "high": 3, "medium": 4, "low": 5, "completed": 6, "unknown": 7}
+    opportunities.sort(key=lambda x: (_urgency_rank.get(x.get("urgency"), 99), x["days_remaining"] or 9999))
 
     return opportunities
 
@@ -850,6 +856,19 @@ def get_team_opportunities(team=None, include_completed=False):
         else:
             urgency = "low"
 
+        # Card color for the mobile UI. Same mapping as
+        # get_personal_opportunities so team + mine cards look identical.
+        if days_remaining is None:
+            status_color = "gray"
+        elif days_remaining < 0 or days_remaining == 0:
+            status_color = "red"
+        elif days_remaining <= 3:
+            status_color = "orange"
+        elif days_remaining <= 7:
+            status_color = "yellow"
+        else:
+            status_color = "green"
+
         opp_map[row.name] = {
             "opportunity": row.name,
             "customer": row.party_name,
@@ -858,6 +877,7 @@ def get_team_opportunities(team=None, include_completed=False):
             "closing_date": str(row.expected_closing) if row.expected_closing else None,
             "days_remaining": days_remaining,
             "urgency": urgency,
+            "status_color": status_color,
             "status": row.status,
             "has_quotation": has_quotation,
             "has_draft_quotation": has_draft_quotation,
@@ -865,11 +885,12 @@ def get_team_opportunities(team=None, include_completed=False):
             "assignees": assignees
         }
 
-    # Convert to list and sort by urgency
+    # Convert to list and sort by urgency.
+    # `due_today` sits above `overdue` — actionable today wins over
+    # already-slipped so the manager's eye lands on the "close it before
+    # 5 PM" cases first.
     opportunities = list(opp_map.values())
-
-    # Sort by urgency (most urgent first)
-    urgency_order = {"overdue": 0, "due_today": 1, "critical": 2, "high": 3, "medium": 4, "low": 5, "unknown": 6}
+    urgency_order = {"due_today": 0, "overdue": 1, "critical": 2, "high": 3, "medium": 4, "low": 5, "unknown": 6}
     opportunities.sort(key=lambda x: (urgency_order.get(x["urgency"], 99), x["days_remaining"] or 9999))
 
     # Get employee statistics for the selected team
