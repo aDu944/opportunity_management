@@ -1458,28 +1458,38 @@ def submit_late_checkin_leave(employee, checkin_time=None):
 
     # Server-side guard: refuse to create a leave for a check-in that isn't
     # actually late. Older app versions (pre-1.0.6+13) used the wrong anchor
-    # (checkin_window_start_hour instead of expected_checkin_hour) and call
-    # this endpoint at any check-in past 9:00. We re-validate here so the
-    # leave only gets created when the time really is past the cutoff.
+    # and could call this endpoint at any check-in past 9:00. We re-validate
+    # here so the leave only gets created when the time really is past the
+    # cutoff.
+    #
+    # The guard runs UNCONDITIONALLY, even when the ESS Mobile Settings
+    # single is missing/inaccessible. Previously the whole guard was wrapped
+    # in `if s is not None`, so when `get_single` raised (ESS Mobile Settings
+    # DocType was removed from the DB at some point without patching this
+    # code), the guard was silently skipped and every check-in — including
+    # on-time ones like 08:57 — auto-created a "late" leave. Falling back
+    # to hardcoded 09:15 keeps behavior sane while HR restores the DocType.
     if s is not None:
         try:
             expected_h = int(s.get("expected_checkin_hour") or 9)
             threshold_m = int(s.get("late_checkin_threshold_minutes") or 15)
         except (TypeError, ValueError):
             expected_h, threshold_m = 9, 15
+    else:
+        expected_h, threshold_m = 9, 15
 
-        from frappe.utils import get_datetime
-        try:
-            t = get_datetime(checkin_time) if checkin_time else frappe.utils.now_datetime()
-        except Exception:
-            t = frappe.utils.now_datetime()
+    from frappe.utils import get_datetime
+    try:
+        t = get_datetime(checkin_time) if checkin_time else frappe.utils.now_datetime()
+    except Exception:
+        t = frappe.utils.now_datetime()
 
-        # Cutoff = today at expected_h:threshold_m (e.g. 09:15:00).
-        # Anything at or before this is on-time; only after is "late".
-        on_time_minutes = expected_h * 60 + threshold_m
-        actual_minutes = t.hour * 60 + t.minute + (1 if t.second > 0 else 0)
-        if actual_minutes <= on_time_minutes:
-            return {"status": "on_time", "cutoff": f"{expected_h:02d}:{threshold_m:02d}"}
+    # Cutoff = today at expected_h:threshold_m (e.g. 09:15:00).
+    # Anything at or before this is on-time; only after is "late".
+    on_time_minutes = expected_h * 60 + threshold_m
+    actual_minutes = t.hour * 60 + t.minute + (1 if t.second > 0 else 0)
+    if actual_minutes <= on_time_minutes:
+        return {"status": "on_time", "cutoff": f"{expected_h:02d}:{threshold_m:02d}"}
 
     # Avoid duplicate: if a leave already exists for today, skip
     existing = frappe.db.exists("Leave Application", {
