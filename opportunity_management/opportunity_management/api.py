@@ -2544,6 +2544,116 @@ def process_scheduled_broadcasts():
 
 
 @frappe.whitelist()
+def get_opportunities_dashboard(scope="mine"):
+    """Aggregated dashboard payload for the opportunities hub.
+
+    Returns hero-metric counts, a status breakdown for a donut chart, an
+    urgency-bucket breakdown for a segmented bar, and top customers /
+    engineers for leaderboard lists. `scope` is `mine` (opportunities the
+    caller is on the hook for) or `team` (aggregate across the team — falls
+    back to `mine` when the caller isn't a Sales/System Manager).
+
+    Reuses `get_personal_opportunities` / `get_team_opportunities` under the
+    hood so the numbers agree with the list views.
+    """
+    scope = (scope or "mine").strip().lower()
+    if scope not in ("mine", "team"):
+        scope = "mine"
+
+    if scope == "team":
+        user_roles = set(frappe.get_roles(frappe.session.user))
+        if not ({"System Manager", "Sales Manager"} & user_roles):
+            scope = "mine"
+
+    if scope == "mine":
+        rows = get_personal_opportunities(
+            frappe.session.user, include_completed=True
+        ) or []
+    else:
+        payload = get_team_opportunities(include_completed=True) or {}
+        rows = payload.get("opportunities", []) if isinstance(payload, dict) else payload
+
+    today = getdate(nowdate())
+
+    open_count = 0
+    today_count = 0
+    overdue_count = 0
+    won_month = 0
+
+    status_counts = {}
+    urgency = {
+        "overdue": 0, "today": 0, "week": 0, "later": 0, "no_date": 0,
+    }
+    customers = {}
+    engineers = {}
+
+    completed_statuses = ("Closed", "Lost", "Converted", "Quotation", "Ordered")
+
+    for r in rows:
+        status = (r.get("opportunity_status")
+                  or r.get("status")
+                  or "").strip()
+
+        status_counts[status] = status_counts.get(status, 0) + 1
+
+        party = (r.get("customer") or r.get("party_name") or "").strip() or "—"
+        customers[party] = customers.get(party, 0) + 1
+
+        for a in (r.get("assignees") or []):
+            key = (a.get("employee") or a.get("user") or "").strip()
+            if key:
+                engineers[key] = engineers.get(key, 0) + 1
+
+        is_ordered = status in ("Converted", "Ordered")
+        if status in completed_statuses:
+            if is_ordered:
+                cd = r.get("closing_date") or r.get("expected_closing")
+                if cd:
+                    try:
+                        cdate = getdate(cd)
+                        if cdate.year == today.year and cdate.month == today.month:
+                            won_month += 1
+                    except Exception:
+                        pass
+            continue
+
+        open_count += 1
+        days = r.get("days_remaining")
+        if days is None:
+            urgency["no_date"] += 1
+        elif days < 0:
+            urgency["overdue"] += 1
+            overdue_count += 1
+        elif days == 0:
+            urgency["today"] += 1
+            today_count += 1
+        elif days <= 7:
+            urgency["week"] += 1
+        else:
+            urgency["later"] += 1
+
+    def _top(m, n=5):
+        return sorted(
+            [{"label": k, "count": v} for k, v in m.items()],
+            key=lambda x: -x["count"],
+        )[:n]
+
+    return {
+        "scope": scope,
+        "metrics": {
+            "open": open_count,
+            "today": today_count,
+            "overdue": overdue_count,
+            "won_month": won_month,
+        },
+        "urgency": urgency,
+        "status_breakdown": _top(status_counts, n=6),
+        "top_customers": _top(customers, n=5),
+        "top_engineers": _top(engineers, n=5),
+    }
+
+
+@frappe.whitelist()
 def set_opportunity_status(name, action, lost_reasons=None, remark=None):
     """Close or mark-Lost an opportunity from the mobile app.
 
