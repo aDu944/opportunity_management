@@ -2544,6 +2544,85 @@ def process_scheduled_broadcasts():
 
 
 @frappe.whitelist()
+def set_opportunity_status(name, action, lost_reasons=None, remark=None):
+    """Close or mark-Lost an opportunity from the mobile app.
+
+    Requires the caller to hold System Manager or Sales Manager.
+
+    Args:
+        name: Opportunity docname.
+        action: "close" (status=Closed) or "lost" (status=Lost).
+        lost_reasons: list[str] of Opportunity Lost Reason names (only used
+                      when action=="lost"). Accepts a JSON-encoded string
+                      from the mobile client for convenience.
+        remark: optional comment appended to the opportunity's timeline.
+    """
+    if not frappe.has_permission("Opportunity", "write"):
+        frappe.throw(_("Not permitted to modify opportunities."))
+
+    user_roles = set(frappe.get_roles(frappe.session.user))
+    if not ({"System Manager", "Sales Manager"} & user_roles):
+        frappe.throw(_("Only Sales Manager or System Manager can close or mark opportunities as lost."))
+
+    action = (action or "").strip().lower()
+    if action not in ("close", "lost"):
+        frappe.throw(_("Unknown action. Use 'close' or 'lost'."))
+
+    if not frappe.db.exists("Opportunity", name):
+        frappe.throw(_("Opportunity not found."))
+
+    doc = frappe.get_doc("Opportunity", name)
+
+    if action == "close":
+        doc.status = "Closed"
+    else:
+        doc.status = "Lost"
+        # normalise lost_reasons — the mobile client sends JSON
+        if isinstance(lost_reasons, str):
+            try:
+                lost_reasons = frappe.parse_json(lost_reasons) or []
+            except Exception:
+                lost_reasons = [lost_reasons]
+        lost_reasons = lost_reasons or []
+        # clear existing rows then re-populate
+        doc.lost_reasons = []
+        for r in lost_reasons:
+            r = (r or "").strip()
+            if r:
+                doc.append("lost_reasons", {"lost_reason": r})
+
+    doc.save(ignore_permissions=False)
+
+    if remark:
+        try:
+            doc.add_comment("Comment", (remark or "").strip())
+        except Exception:
+            pass
+
+    frappe.db.commit()
+
+    return {
+        "name": doc.name,
+        "status": _display_status(doc.status),
+        "lost_reasons": [r.lost_reason for r in (doc.get("lost_reasons") or [])],
+    }
+
+
+@frappe.whitelist()
+def get_opportunity_lost_reasons():
+    """Return the master list of Opportunity Lost Reasons for the Mark Lost picker."""
+    try:
+        rows = frappe.db.get_all(
+            "Opportunity Lost Reason",
+            fields=["name", "lost_reason"],
+            order_by="lost_reason asc",
+        )
+    except Exception:
+        return []
+    return [{"name": r["name"], "label": r["lost_reason"] or r["name"]} for r in rows]
+
+
+@frappe.whitelist()
 def get_expense_categories():
     """Return active expense categories from ESS Mobile Settings.
 
