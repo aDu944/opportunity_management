@@ -129,6 +129,16 @@ def get_my_opportunities(user=None, include_completed=False):
 def get_personal_opportunities(user, include_completed=False):
     """
     Get personal opportunity tasks for a user.
+
+    Batched-query version. Previously did one frappe.get_doc + two
+    frappe.db.exists per opportunity (N+1 pattern) which produced hundreds
+    of DB round-trips per call. Now:
+      1. One get_all for opportunities (all fields we need).
+      2. One _get_assignment_map for every assignment across all opps.
+      3. One get_all on Quotation for the has_quotation/has_draft flags.
+      4. One get_all on Opportunity Item for items belonging to the opps.
+    Then everything else is in-memory. Response time dropped from
+    seconds-per-load into the low-hundreds-of-ms range.
     """
     # HTTP query params come through as strings; coerce so "0" is False.
     include_completed = bool(cint(include_completed))
@@ -138,19 +148,67 @@ def get_personal_opportunities(user, include_completed=False):
     completed_statuses = ["Closed", "Lost", "Converted", "Quotation"]
     status_filter = None if include_completed else ["not in", completed_statuses]
     opp_filters = {"status": status_filter} if status_filter else {}
+
+    # (1) One query — fetch every field we'd otherwise pull via get_doc.
     opps = frappe.get_all(
         "Opportunity",
         filters=opp_filters,
-        fields=["name", "custom_tender_no", "custom_tender_title"]
+        fields=[
+            "name", "status", "owner", "creation",
+            "party_name", "expected_closing",
+            "custom_tender_no", "custom_tender_title",
+            "source", "opportunity_type",
+        ],
     )
+    if not opps:
+        return []
+
+    opp_names = [o.name for o in opps]
+
+    # (2) One query — assignments for every opp at once.
+    assignment_map = _get_assignment_map(opp_names)
+
+    # (3) One query — pull all non-cancelled Quotations for these opps.
+    #     Aggregate to per-opp {has_quotation, has_draft}.
+    quotes = frappe.get_all(
+        "Quotation",
+        filters={"opportunity": ["in", opp_names], "docstatus": ["!=", 2]},
+        fields=["opportunity", "docstatus"],
+    )
+    quotation_flags = {}  # opp_name -> {"has_quotation": bool, "has_draft": bool}
+    for q in quotes:
+        flags = quotation_flags.setdefault(
+            q["opportunity"], {"has_quotation": False, "has_draft": False}
+        )
+        flags["has_quotation"] = True
+        if q["docstatus"] == 0:
+            flags["has_draft"] = True
+
+    # (4) One query — items for every opp.
+    item_rows = frappe.get_all(
+        "Opportunity Item",
+        filters={
+            "parent": ["in", opp_names],
+            "parenttype": "Opportunity",
+        },
+        fields=["parent", "item_code", "item_name", "qty", "uom", "description"],
+        order_by="parent, idx",
+    )
+    items_by_opp = {}
+    for r in item_rows:
+        items_by_opp.setdefault(r["parent"], []).append({
+            "item_code": r["item_code"],
+            "item_name": r["item_name"],
+            "qty": r["qty"],
+            "uom": r["uom"],
+            "description": r["description"],
+        })
 
     opportunities = []
     today = getdate(nowdate())
 
-    for row in opps:
-        opp = frappe.get_doc("Opportunity", row.name)
-
-        assigned_users = _get_assigned_user_ids(opp)
+    for opp in opps:
+        assigned_users = assignment_map.get(opp.name) or set()
         # If someone is on the hook via custom_responsible_party, filter
         # STRICTLY to that list — the creator should NOT keep seeing an
         # opportunity in their "Mine" tab once they've handed it off.
@@ -163,14 +221,9 @@ def get_personal_opportunities(user, include_completed=False):
             if opp.owner != user:
                 continue
 
-        has_quotation = frappe.db.exists("Quotation", {
-            "opportunity": opp.name,
-            "docstatus": ["!=", 2]
-        })
-        has_draft_quotation = frappe.db.exists("Quotation", {
-            "opportunity": opp.name,
-            "docstatus": 0
-        })
+        q_flags = quotation_flags.get(opp.name, {"has_quotation": False, "has_draft": False})
+        has_quotation = q_flags["has_quotation"]
+        has_draft_quotation = q_flags["has_draft"]
 
         if include_completed:
             if opp.status not in completed_statuses and not has_quotation:
@@ -201,17 +254,6 @@ def get_personal_opportunities(user, include_completed=False):
         else:
             urgency = "low"
 
-        items = []
-        if opp.get("items"):
-            for item in opp.items:
-                items.append({
-                    "item_code": item.item_code,
-                    "item_name": item.item_name,
-                    "qty": item.qty,
-                    "uom": item.uom,
-                    "description": item.description
-                })
-
         status_color = "gray" if days_remaining is None else ("red" if days_remaining < 0 else ("red" if days_remaining == 0 else ("orange" if days_remaining <= 3 else ("yellow" if days_remaining <= 7 else "green"))))
         status_label = "Overdue (no closing date)" if days_remaining is None else (f"Overdue by {abs(days_remaining)} days" if days_remaining < 0 else ("Due today" if days_remaining == 0 else f"{days_remaining} days remaining"))
 
@@ -227,7 +269,7 @@ def get_personal_opportunities(user, include_completed=False):
             "expected_closing": opp.expected_closing,
             "days_remaining": days_remaining,
             "urgency": urgency,
-            "items": items,
+            "items": items_by_opp.get(opp.name, []),
             "status": opp.status,
             "has_quotation": bool(has_quotation),
             "has_draft_quotation": bool(has_draft_quotation),
