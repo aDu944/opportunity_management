@@ -965,3 +965,182 @@ def filter_invalid_email_recipients(doc, method=None):
         frappe.logger().info(
             f"Email Queue {doc.name or '(new)'}: dropped {len(dropped)} undeliverable recipient(s): {dropped}"
         )
+
+
+@frappe.whitelist()
+def notify_buyer_message_digest(
+    role_name,
+    source_label,
+    brand_color,
+    header_emoji,
+    audience_explainer,
+    dashboard_url,
+    tenders_json,
+    max_total_attachment_bytes=15 * 1024 * 1024,
+):
+    """Send a digest email of buyer clarification messages to every enabled
+    User with `role_name`. Groups multiple tenders' messages into ONE email.
+    Full message body is rendered (escaped, so buyers can't inject markup).
+    Attachments are inlined via frappe.sendmail's `attachments` argument;
+    total is capped (default 15MB) — overflow files still show in the
+    'Attachments' section (labeled as fetch-from-Tender-Hub).
+
+    `tenders_json` (string OR list):
+      [
+        {
+          "tender_no", "tender_title", "tender_url", "buyer", "closes",
+          "messages": [
+            {"sender", "subject", "sent", "body_text",
+             "attachments": [{"filename", "content_base64"}, ...]}
+          ]
+        }, ...
+      ]
+    """
+    import json
+    import base64
+    from frappe.utils import escape_html
+
+    if isinstance(tenders_json, str):
+        try:
+            tenders = json.loads(tenders_json)
+        except Exception:
+            tenders = []
+    else:
+        tenders = tenders_json or []
+    if not tenders:
+        return {"ok": False, "reason": "no tenders"}
+    total_messages = sum(len(t.get("messages") or []) for t in tenders)
+    if not total_messages:
+        return {"ok": False, "reason": "no messages"}
+
+    recipients = frappe.db.sql_list("""
+        SELECT DISTINCT u.name FROM `tabUser` u
+        INNER JOIN `tabHas Role` hr ON hr.parent = u.name AND hr.parenttype = 'User'
+        WHERE u.enabled = 1 AND hr.role = %(role)s
+          AND u.name NOT IN ('Guest', 'Administrator')
+    """, {"role": role_name})
+    recipients = [r for r in (recipients or []) if r]
+    if not recipients:
+        frappe.logger().warning(
+            f"notify_buyer_message_digest: no users with role {role_name!r}"
+        )
+        return {"ok": False, "reason": f"no users with role {role_name}"}
+
+    color = brand_color or "#0070f2"
+
+    if total_messages == 1 and len(tenders) == 1:
+        t = tenders[0]
+        m = (t.get("messages") or [{}])[0]
+        subj = f"{header_emoji} New message on {t.get('tender_no') or ''} — {m.get('subject') or t.get('tender_title') or ''}"[:200]
+    else:
+        subj = f"{header_emoji} {total_messages} new messages from {source_label}"
+
+    email_attachments = []
+    total_bytes = 0
+    try:
+        cap = int(max_total_attachment_bytes)
+    except Exception:
+        cap = 15 * 1024 * 1024
+    for t in tenders:
+        for m in (t.get("messages") or []):
+            for a in (m.get("attachments") or []):
+                b64 = a.get("content_base64") or ""
+                if not b64:
+                    a["included_in_email"] = False
+                    continue
+                try:
+                    raw = base64.b64decode(b64)
+                except Exception:
+                    a["included_in_email"] = False
+                    continue
+                if total_bytes + len(raw) > cap:
+                    a["included_in_email"] = False
+                    continue
+                total_bytes += len(raw)
+                email_attachments.append({"fname": a.get("filename") or "attachment", "fcontent": raw})
+                a["included_in_email"] = True
+                a["size_bytes"] = len(raw)
+
+    def _render_message(m):
+        subject = escape_html(m.get("subject") or "(no subject)")
+        sender = escape_html(m.get("sender") or "buyer")
+        sent = escape_html(m.get("sent") or "")
+        body = (m.get("body_text") or "").strip()
+        body_html_part = escape_html(body).replace("\n", "<br>") if body else '<span style="color:#9ca3af;">[no body captured]</span>'
+        rtl = ' dir="rtl"' if any(c in body for c in "آأإابتثجحخدذرزسشصضطظعغفقكلمنهويةى") else ""
+        atts = m.get("attachments") or []
+        att_html = ""
+        if atts:
+            items = []
+            for a in atts:
+                fn = escape_html(a.get("filename") or "attachment")
+                if a.get("included_in_email") is True:
+                    size_kb = int((a.get("size_bytes") or 0) / 1024) or 1
+                    items.append('<li>📎 <span style="font-weight:500;">' + fn + '</span> <span style="color:#9ca3af;font-size:11px;">· ' + str(size_kb) + ' KB · attached to this email</span></li>')
+                else:
+                    items.append('<li>📎 <span style="font-weight:500;">' + fn + '</span> <span style="color:#9ca3af;font-size:11px;">· fetch from Tender Hub (not attached)</span></li>')
+            att_html = ('<div style="margin-top:10px;font-size:12px;color:#374151;">'
+                        '<div style="color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;font-size:11px;">Attachments (' + str(len(atts)) + ')</div>'
+                        '<ul style="margin:0;padding-left:18px;">' + "".join(items) + '</ul></div>')
+        card = (
+            '<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;font-size:13px;color:#374151;margin-top:14px;">'
+            '<tr><td style="padding:2px 12px 2px 0;color:#6b7280;width:84px;">Subject</td><td style="font-weight:600;">' + subject + '</td></tr>'
+            '<tr><td style="padding:2px 12px 2px 0;color:#6b7280;">From</td><td>' + sender + '</td></tr>'
+            '<tr><td style="padding:2px 12px 2px 0;color:#6b7280;">Sent</td><td>' + sent + '</td></tr>'
+            '</table>'
+            '<div' + rtl + ' style="margin-top:8px;padding:12px 14px;background:#f9fafb;border-left:3px solid ' + color + ';border-radius:4px;font-size:13px;color:#374151;line-height:1.55;">'
+            + body_html_part + '</div>' + att_html
+        )
+        return card
+
+    def _render_tender(t):
+        rows = '<tr><td style="padding:2px 12px 2px 0;color:#6b7280;">No.</td><td style="font-family:ui-monospace,Menlo,monospace;">' + escape_html(t.get("tender_no") or "") + '</td></tr>'
+        if t.get("buyer"):
+            rows += '<tr><td style="padding:2px 12px 2px 0;color:#6b7280;">Buyer</td><td>' + escape_html(t.get("buyer")) + '</td></tr>'
+        if t.get("closes"):
+            rows += '<tr><td style="padding:2px 12px 2px 0;color:#6b7280;">Closes</td><td>' + escape_html(t.get("closes")) + '</td></tr>'
+        msgs = t.get("messages") or []
+        msg_cards = "".join(_render_message(m) for m in msgs)
+        cta_href = escape_html(t.get("tender_url") or dashboard_url)
+        cta = '<a href="' + cta_href + '" style="display:inline-block;margin-top:14px;padding:8px 18px;background:' + color + ';color:#ffffff;text-decoration:none;font-weight:600;font-size:13px;border-radius:6px;">View thread on Tender Hub →</a>'
+        return (
+            '<tr><td style="padding:22px 24px 8px;border-top:1px solid #e5e7eb;">'
+            '<div style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Tender</div>'
+            '<div style="font-size:16px;font-weight:600;color:#111827;line-height:1.35;">' + escape_html(t.get("tender_title") or "") + '</div>'
+            '<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-top:8px;font-size:13px;color:#374151;">' + rows + '</table>'
+            + msg_cards + cta + '</td></tr>'
+        )
+
+    tender_blocks = "".join(_render_tender(t) for t in tenders)
+    noun = "MESSAGE" if total_messages == 1 else "MESSAGES"
+    html = (
+        '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#111827;">'
+        '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f3f4f6;padding:24px 0;">'
+        '<tr><td align="center"><table role="presentation" width="640" cellspacing="0" cellpadding="0" border="0" style="background:#ffffff;border-radius:10px;overflow:hidden;">'
+        '<tr><td style="background:' + color + ';padding:16px 24px;color:#ffffff;font-size:14px;font-weight:600;letter-spacing:0.5px;">'
+        + header_emoji + ' ' + str(total_messages) + ' NEW ' + noun + ' — ' + escape_html(source_label).upper() + '</td></tr>'
+        + tender_blocks +
+        '<tr><td align="center" style="padding:12px 24px 24px;">'
+        '<a href="' + escape_html(dashboard_url) + '" style="display:inline-block;padding:9px 20px;background:#ffffff;color:' + color + ';border:1px solid ' + color + ';text-decoration:none;font-weight:500;font-size:13px;border-radius:6px;">Open dashboard →</a>'
+        '</td></tr>'
+        '<tr><td style="padding:14px 24px 18px;background:#f9fafb;font-size:12px;color:#6b7280;line-height:1.5;border-top:1px solid #e5e7eb;">'
+        "You&#39;re receiving this because " + audience_explainer + '<br>'
+        '<span style="color:#9ca3af;">— ALKHORA Tender Hub · sent from <a href="https://tender.alkhora.com" style="color:#6b7280;">tender.alkhora.com</a></span>'
+        '</td></tr></table></td></tr></table></body></html>'
+    )
+    sendmail_kwargs = dict(recipients=recipients, subject=subj, message=html, now=False)
+    if email_attachments:
+        sendmail_kwargs["attachments"] = email_attachments
+    try:
+        frappe.sendmail(**sendmail_kwargs)
+        return {
+            "ok": True, "recipients": recipients,
+            "tenders": len(tenders), "messages": total_messages,
+            "attachments_bytes": total_bytes,
+        }
+    except Exception as e:
+        frappe.log_error(
+            f"notify_buyer_message_digest ({role_name}, {source_label}) failed: {e}",
+            "Tender Hub Buyer Message Digest",
+        )
+        return {"ok": False, "error": str(e)[:300]}
