@@ -1488,6 +1488,42 @@ def act_on_leave(name, action):
 
 
 @frappe.whitelist()
+def delete_leave_application(name):
+    """Delete a Leave Application from the mobile approvals list.
+
+    Authorization mirrors act_on_leave: the caller must be the doc's
+    leave_approver, or hold HR Manager / HR User / System Manager, or be
+    a designated Leave Approver. Cancels first if the doc is submitted so
+    the delete succeeds without hitting the "Cannot delete a submitted
+    document" guard.
+    """
+    if not frappe.db.exists("Leave Application", name):
+        frappe.throw(f"Leave Application {name} does not exist")
+
+    caller = frappe.session.user
+    roles = set(frappe.get_roles(caller) or [])
+    doc_approver = frappe.db.get_value(
+        "Leave Application", name, "leave_approver"
+    )
+    is_privileged = bool(roles & {"HR Manager", "HR User", "System Manager"})
+    if (not is_privileged and doc_approver != caller
+            and "Leave Approver" not in roles):
+        frappe.throw("You are not authorized to delete this leave request.")
+
+    docstatus = frappe.db.get_value("Leave Application", name, "docstatus")
+    if docstatus == 1:
+        # Cancel first — Frappe blocks delete on submitted docs.
+        doc = frappe.get_doc("Leave Application", name)
+        doc.flags.ignore_permissions = True
+        doc.cancel()
+
+    frappe.delete_doc("Leave Application", name, ignore_permissions=True,
+                      force=True)
+    frappe.db.commit()
+    return {"ok": True, "name": name}
+
+
+@frappe.whitelist()
 def register_fcm_token(token, app_version=None, platform=None):
     """Store the FCM token on the Employee record for the logged-in user.
     Also records the reported app version + platform so HR can target
