@@ -238,7 +238,9 @@ def get_personal_opportunities(user, include_completed=False):
         if include_completed:
             urgency = "completed"
         elif days_remaining is None:
-            urgency = "overdue"
+            # Undated: distinct from overdue — these need a decision made,
+            # not a deadline chased. Sorted FIRST in the list.
+            urgency = "no_closing_date"
         elif has_quotation:
             urgency = "low"
         elif days_remaining < 0:
@@ -255,7 +257,7 @@ def get_personal_opportunities(user, include_completed=False):
             urgency = "low"
 
         status_color = "gray" if days_remaining is None else ("red" if days_remaining < 0 else ("red" if days_remaining == 0 else ("orange" if days_remaining <= 3 else ("yellow" if days_remaining <= 7 else "green"))))
-        status_label = "Overdue (no closing date)" if days_remaining is None else (f"Overdue by {abs(days_remaining)} days" if days_remaining < 0 else ("Due today" if days_remaining == 0 else f"{days_remaining} days remaining"))
+        status_label = "No closing date" if days_remaining is None else (f"Overdue by {abs(days_remaining)} days" if days_remaining < 0 else ("Due today" if days_remaining == 0 else f"{days_remaining} days remaining"))
 
         opportunities.append({
             "todo_name": None,
@@ -283,10 +285,28 @@ def get_personal_opportunities(user, include_completed=False):
             "opportunity_type": opp.opportunity_type,
         })
 
-    # Same urgency-first ordering as get_team_opportunities: due_today
-    # sits above overdue so today's actionable items land at the top.
-    _urgency_rank = {"due_today": 0, "overdue": 1, "critical": 2, "high": 3, "medium": 4, "low": 5, "completed": 6, "unknown": 7}
-    opportunities.sort(key=lambda x: (_urgency_rank.get(x.get("urgency"), 99), x["days_remaining"] or 9999))
+    # Same three-group ordering as get_team_opportunities:
+    #   1. Undated (no_closing_date) — decision needed
+    #   2. On-track (due_today → low) — nearest closing first
+    #   3. Overdue — least overdue first
+    _urgency_rank = {
+        "no_closing_date": 0,
+        "due_today": 1, "critical": 2, "high": 3, "medium": 4, "low": 5,
+        "overdue": 6,
+        "completed": 7,
+        "unknown": 8,
+    }
+
+    def _sort_key(x):
+        rank = _urgency_rank.get(x.get("urgency"), 99)
+        dr = x["days_remaining"]
+        if x.get("urgency") == "overdue" and dr is not None:
+            secondary = -dr
+        else:
+            secondary = dr if dr is not None else 9999
+        return (rank, secondary)
+
+    opportunities.sort(key=_sort_key)
 
     return opportunities
 
@@ -403,10 +423,28 @@ def get_team_opportunities_for_user(user, include_completed=False):
 
     # Convert to list and sort
     opportunities = list(opp_map.values())
-    # Same urgency-first ordering as get_team_opportunities: due_today
-    # sits above overdue so today's actionable items land at the top.
-    _urgency_rank = {"due_today": 0, "overdue": 1, "critical": 2, "high": 3, "medium": 4, "low": 5, "completed": 6, "unknown": 7}
-    opportunities.sort(key=lambda x: (_urgency_rank.get(x.get("urgency"), 99), x["days_remaining"] or 9999))
+    # Same three-group ordering as get_team_opportunities:
+    #   1. Undated (no_closing_date) — decision needed
+    #   2. On-track (due_today → low) — nearest closing first
+    #   3. Overdue — least overdue first
+    _urgency_rank = {
+        "no_closing_date": 0,
+        "due_today": 1, "critical": 2, "high": 3, "medium": 4, "low": 5,
+        "overdue": 6,
+        "completed": 7,
+        "unknown": 8,
+    }
+
+    def _sort_key(x):
+        rank = _urgency_rank.get(x.get("urgency"), 99)
+        dr = x["days_remaining"]
+        if x.get("urgency") == "overdue" and dr is not None:
+            secondary = -dr
+        else:
+            secondary = dr if dr is not None else 9999
+        return (rank, secondary)
+
+    opportunities.sort(key=_sort_key)
 
     return opportunities
 
@@ -882,7 +920,9 @@ def get_team_opportunities(team=None, include_completed=False):
         if include_completed:
             urgency = "completed"
         elif days_remaining is None:
-            urgency = "overdue"
+            # Undated: distinct from overdue — these need a decision made,
+            # not a deadline chased. Sorted FIRST in the team view.
+            urgency = "no_closing_date"
         elif has_quotation:
             urgency = "low"
         elif days_remaining < 0:
@@ -927,13 +967,33 @@ def get_team_opportunities(team=None, include_completed=False):
             "assignees": assignees
         }
 
-    # Convert to list and sort by urgency.
-    # `due_today` sits above `overdue` — actionable today wins over
-    # already-slipped so the manager's eye lands on the "close it before
-    # 5 PM" cases first.
+    # Convert to list and sort.
+    # Order (per user's spec for the team view):
+    #   1. Undated — "not closed yet" (no deadline set → needs a decision)
+    #   2. Open, closing date still ahead — sorted by nearest first
+    #   3. Overdue — sorted by least-overdue first (nearest to today at top)
     opportunities = list(opp_map.values())
-    urgency_order = {"due_today": 0, "overdue": 1, "critical": 2, "high": 3, "medium": 4, "low": 5, "unknown": 6}
-    opportunities.sort(key=lambda x: (urgency_order.get(x["urgency"], 99), x["days_remaining"] or 9999))
+    urgency_order = {
+        "no_closing_date": 0,
+        "due_today": 1, "critical": 2, "high": 3, "medium": 4, "low": 5,
+        "overdue": 6,
+        "unknown": 7,
+    }
+
+    def _sort_key(x):
+        rank = urgency_order.get(x["urgency"], 99)
+        dr = x["days_remaining"]
+        # Inside the overdue bucket, prefer least-overdue (nearest to
+        # zero) at the top of that section. `dr` there is negative, so
+        # negating flips the natural ascending sort into "least
+        # overdue first".
+        if x["urgency"] == "overdue" and dr is not None:
+            secondary = -dr
+        else:
+            secondary = dr if dr is not None else 9999
+        return (rank, secondary)
+
+    opportunities.sort(key=_sort_key)
 
     # Get employee statistics for the selected team
     employee_stats = get_employee_opportunity_stats(team)
