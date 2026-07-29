@@ -13,6 +13,34 @@ from datetime import datetime
 from opportunity_management.opportunity_management import notification_utils
 
 
+# ── Display-name mapping ─────────────────────────────────────────────────────
+# ERPNext's stock Opportunity.status option "Converted" is stored verbatim
+# in the DB, but the business-side wording preferred here is "Ordered".
+# We rewrite ONLY the outbound "status" field emitted to the mobile API,
+# leaving the DB and every filter/logic reference to "Converted" alone —
+# no schema change, no data migration needed.
+_STATUS_DISPLAY_ALIASES = {
+    "Converted": "Ordered",
+}
+
+
+def _display_status(raw):
+    if raw is None:
+        return raw
+    return _STATUS_DISPLAY_ALIASES.get(raw, raw)
+
+
+def _apply_status_display(rows):
+    """Walk a list of opportunity dicts and rewrite outbound status
+    labels. Fields touched: `status` and `opportunity_status` (if present)."""
+    for r in rows:
+        if "status" in r:
+            r["status"] = _display_status(r["status"])
+        if "opportunity_status" in r:
+            r["opportunity_status"] = _display_status(r["opportunity_status"])
+    return rows
+
+
 def _get_party_display_name(party_name):
     """Resolve display name for Responsible Party/Employee/Shareholder."""
     if not party_name:
@@ -308,7 +336,7 @@ def get_personal_opportunities(user, include_completed=False):
 
     opportunities.sort(key=_sort_key)
 
-    return opportunities
+    return _apply_status_display(opportunities)
 
 
 def get_team_opportunities_for_user(user, include_completed=False):
@@ -446,7 +474,7 @@ def get_team_opportunities_for_user(user, include_completed=False):
 
     opportunities.sort(key=_sort_key)
 
-    return opportunities
+    return _apply_status_display(opportunities)
 
 
 @frappe.whitelist()
@@ -999,8 +1027,8 @@ def get_team_opportunities(team=None, include_completed=False):
     employee_stats = get_employee_opportunity_stats(team)
 
     return {
-        "opportunities": opportunities,
-        "employee_stats": employee_stats
+        "opportunities": _apply_status_display(opportunities),
+        "employee_stats": employee_stats,
     }
 
 
