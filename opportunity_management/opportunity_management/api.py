@@ -326,10 +326,21 @@ def get_personal_opportunities(user, include_completed=False, search=None):
 
     if include_completed:
         # Completed tab: closest completion first (most recent expected
-        # closing at the top). Undated rows sink to the bottom.
+        # closing at the top). Undated rows sink to the bottom. Coerce
+        # everything to `datetime.date` so the sort never mixes types
+        # (Frappe returns dates as `date` objects; a string fallback
+        # would throw TypeError on compare).
+        from datetime import date
         def _completed_key(x):
             cd = x.get("closing_date") or x.get("expected_closing")
-            return cd or "0000-00-00"
+            if not cd:
+                return date(1, 1, 1)
+            if isinstance(cd, date):
+                return cd
+            try:
+                return getdate(cd)
+            except Exception:
+                return date(1, 1, 1)
         opportunities.sort(key=_completed_key, reverse=True)
     else:
         # Open tab: three-group order per user spec.
@@ -472,10 +483,21 @@ def get_team_opportunities_for_user(user, include_completed=False):
     opportunities = list(opp_map.values())
     if include_completed:
         # Completed tab: closest completion first (most recent expected
-        # closing at the top). Undated rows sink to the bottom.
+        # closing at the top). Undated rows sink to the bottom. Coerce
+        # everything to `datetime.date` so the sort never mixes types
+        # (Frappe returns dates as `date` objects; a string fallback
+        # would throw TypeError on compare).
+        from datetime import date
         def _completed_key(x):
             cd = x.get("closing_date") or x.get("expected_closing")
-            return cd or "0000-00-00"
+            if not cd:
+                return date(1, 1, 1)
+            if isinstance(cd, date):
+                return cd
+            try:
+                return getdate(cd)
+            except Exception:
+                return date(1, 1, 1)
         opportunities.sort(key=_completed_key, reverse=True)
     else:
         # Open tab: three-group order per user spec.
