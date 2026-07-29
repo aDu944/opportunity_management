@@ -125,7 +125,7 @@ def _is_user_assigned(user, doc):
 
 
 @frappe.whitelist()
-def get_my_opportunities(user=None, include_completed=False):
+def get_my_opportunities(user=None, include_completed=False, search=None):
     """
     Get opportunity tasks for the current user.
 
@@ -151,10 +151,10 @@ def get_my_opportunities(user=None, include_completed=False):
     # manager view. Previously this auto-routed Sales Managers to the team
     # view, which made every team opportunity show up under their "Mine"
     # tab (including ones assigned to their direct reports).
-    return get_personal_opportunities(user, include_completed)
+    return get_personal_opportunities(user, include_completed, search=search)
 
 
-def get_personal_opportunities(user, include_completed=False):
+def get_personal_opportunities(user, include_completed=False, search=None):
     """
     Get personal opportunity tasks for a user.
 
@@ -178,8 +178,10 @@ def get_personal_opportunities(user, include_completed=False):
     opp_filters = {"status": status_filter} if status_filter else {}
 
     # (1) One query — fetch every field we'd otherwise pull via get_doc.
-    opps = frappe.get_all(
-        "Opportunity",
+    # When a search term is provided, match it (case-insensitive substring)
+    # across identity + customer + tender fields via OR-filters. The base
+    # status filter still applies as AND.
+    get_all_kwargs = dict(
         filters=opp_filters,
         fields=[
             "name", "status", "owner", "creation",
@@ -188,6 +190,15 @@ def get_personal_opportunities(user, include_completed=False):
             "source", "opportunity_type",
         ],
     )
+    if search and str(search).strip():
+        q = f"%{str(search).strip()}%"
+        get_all_kwargs["or_filters"] = [
+            ["name", "like", q],
+            ["party_name", "like", q],
+            ["custom_tender_no", "like", q],
+            ["custom_tender_title", "like", q],
+        ]
+    opps = frappe.get_all("Opportunity", **get_all_kwargs)
     if not opps:
         return []
 
@@ -313,28 +324,36 @@ def get_personal_opportunities(user, include_completed=False):
             "opportunity_type": opp.opportunity_type,
         })
 
-    # Same three-group ordering as get_team_opportunities:
-    #   1. Undated (no_closing_date) — decision needed
-    #   2. On-track (due_today → low) — nearest closing first
-    #   3. Overdue — least overdue first
-    _urgency_rank = {
-        "no_closing_date": 0,
-        "due_today": 1, "critical": 2, "high": 3, "medium": 4, "low": 5,
-        "overdue": 6,
-        "completed": 7,
-        "unknown": 8,
-    }
+    if include_completed:
+        # Completed tab: closest completion first (most recent expected
+        # closing at the top). Undated rows sink to the bottom.
+        def _completed_key(x):
+            cd = x.get("closing_date") or x.get("expected_closing")
+            return cd or "0000-00-00"
+        opportunities.sort(key=_completed_key, reverse=True)
+    else:
+        # Open tab: three-group order per user spec.
+        #   1. Undated (no_closing_date) — decision needed
+        #   2. On-track (due_today → low) — nearest closing first
+        #   3. Overdue — least overdue first
+        _urgency_rank = {
+            "no_closing_date": 0,
+            "due_today": 1, "critical": 2, "high": 3, "medium": 4, "low": 5,
+            "overdue": 6,
+            "completed": 7,
+            "unknown": 8,
+        }
 
-    def _sort_key(x):
-        rank = _urgency_rank.get(x.get("urgency"), 99)
-        dr = x["days_remaining"]
-        if x.get("urgency") == "overdue" and dr is not None:
-            secondary = -dr
-        else:
-            secondary = dr if dr is not None else 9999
-        return (rank, secondary)
+        def _sort_key(x):
+            rank = _urgency_rank.get(x.get("urgency"), 99)
+            dr = x["days_remaining"]
+            if x.get("urgency") == "overdue" and dr is not None:
+                secondary = -dr
+            else:
+                secondary = dr if dr is not None else 9999
+            return (rank, secondary)
 
-    opportunities.sort(key=_sort_key)
+        opportunities.sort(key=_sort_key)
 
     return _apply_status_display(opportunities)
 
@@ -451,28 +470,36 @@ def get_team_opportunities_for_user(user, include_completed=False):
 
     # Convert to list and sort
     opportunities = list(opp_map.values())
-    # Same three-group ordering as get_team_opportunities:
-    #   1. Undated (no_closing_date) — decision needed
-    #   2. On-track (due_today → low) — nearest closing first
-    #   3. Overdue — least overdue first
-    _urgency_rank = {
-        "no_closing_date": 0,
-        "due_today": 1, "critical": 2, "high": 3, "medium": 4, "low": 5,
-        "overdue": 6,
-        "completed": 7,
-        "unknown": 8,
-    }
+    if include_completed:
+        # Completed tab: closest completion first (most recent expected
+        # closing at the top). Undated rows sink to the bottom.
+        def _completed_key(x):
+            cd = x.get("closing_date") or x.get("expected_closing")
+            return cd or "0000-00-00"
+        opportunities.sort(key=_completed_key, reverse=True)
+    else:
+        # Open tab: three-group order per user spec.
+        #   1. Undated (no_closing_date) — decision needed
+        #   2. On-track (due_today → low) — nearest closing first
+        #   3. Overdue — least overdue first
+        _urgency_rank = {
+            "no_closing_date": 0,
+            "due_today": 1, "critical": 2, "high": 3, "medium": 4, "low": 5,
+            "overdue": 6,
+            "completed": 7,
+            "unknown": 8,
+        }
 
-    def _sort_key(x):
-        rank = _urgency_rank.get(x.get("urgency"), 99)
-        dr = x["days_remaining"]
-        if x.get("urgency") == "overdue" and dr is not None:
-            secondary = -dr
-        else:
-            secondary = dr if dr is not None else 9999
-        return (rank, secondary)
+        def _sort_key(x):
+            rank = _urgency_rank.get(x.get("urgency"), 99)
+            dr = x["days_remaining"]
+            if x.get("urgency") == "overdue" and dr is not None:
+                secondary = -dr
+            else:
+                secondary = dr if dr is not None else 9999
+            return (rank, secondary)
 
-    opportunities.sort(key=_sort_key)
+        opportunities.sort(key=_sort_key)
 
     return _apply_status_display(opportunities)
 
@@ -829,7 +856,7 @@ def get_opportunity_details(opportunity_name):
 
 
 @frappe.whitelist()
-def get_team_opportunities(team=None, include_completed=False):
+def get_team_opportunities(team=None, include_completed=False, search=None):
     """
     Get opportunities for a team with their assignees.
 
@@ -863,11 +890,21 @@ def get_team_opportunities(team=None, include_completed=False):
     completed_statuses = ["Closed", "Lost", "Converted", "Quotation"]
     status_filter = None if include_completed else ["not in", completed_statuses]
     opp_filters = {"status": status_filter} if status_filter else {}
-    opps = frappe.get_all(
-        "Opportunity",
+
+    # Search — match against identity + customer + tender fields via OR.
+    get_all_kwargs = dict(
         filters=opp_filters,
-        fields=["name", "party_name", "expected_closing", "status", "owner", "custom_tender_no", "custom_tender_title"]
+        fields=["name", "party_name", "expected_closing", "status", "owner", "custom_tender_no", "custom_tender_title"],
     )
+    if search and str(search).strip():
+        q = f"%{str(search).strip()}%"
+        get_all_kwargs["or_filters"] = [
+            ["name", "like", q],
+            ["party_name", "like", q],
+            ["custom_tender_no", "like", q],
+            ["custom_tender_title", "like", q],
+        ]
+    opps = frappe.get_all("Opportunity", **get_all_kwargs)
 
     if not opps:
         return {"opportunities": [], "employee_stats": []}
@@ -1001,27 +1038,33 @@ def get_team_opportunities(team=None, include_completed=False):
     #   2. Open, closing date still ahead — sorted by nearest first
     #   3. Overdue — sorted by least-overdue first (nearest to today at top)
     opportunities = list(opp_map.values())
-    urgency_order = {
-        "no_closing_date": 0,
-        "due_today": 1, "critical": 2, "high": 3, "medium": 4, "low": 5,
-        "overdue": 6,
-        "unknown": 7,
-    }
 
-    def _sort_key(x):
-        rank = urgency_order.get(x["urgency"], 99)
-        dr = x["days_remaining"]
-        # Inside the overdue bucket, prefer least-overdue (nearest to
-        # zero) at the top of that section. `dr` there is negative, so
-        # negating flips the natural ascending sort into "least
-        # overdue first".
-        if x["urgency"] == "overdue" and dr is not None:
-            secondary = -dr
-        else:
-            secondary = dr if dr is not None else 9999
-        return (rank, secondary)
+    if include_completed:
+        # Completed tab: most recent expected closing first.
+        def _completed_key(x):
+            cd = x.get("closing_date") or x.get("expected_closing")
+            return cd or "0000-00-00"
+        opportunities.sort(key=_completed_key, reverse=True)
+    else:
+        urgency_order = {
+            "no_closing_date": 0,
+            "due_today": 1, "critical": 2, "high": 3, "medium": 4, "low": 5,
+            "overdue": 6,
+            "unknown": 7,
+        }
 
-    opportunities.sort(key=_sort_key)
+        def _sort_key(x):
+            rank = urgency_order.get(x["urgency"], 99)
+            dr = x["days_remaining"]
+            # Inside the overdue bucket, least-overdue (closest to zero)
+            # at the top of the section.
+            if x["urgency"] == "overdue" and dr is not None:
+                secondary = -dr
+            else:
+                secondary = dr if dr is not None else 9999
+            return (rank, secondary)
+
+        opportunities.sort(key=_sort_key)
 
     # Get employee statistics for the selected team
     employee_stats = get_employee_opportunity_stats(team)
@@ -2480,22 +2523,33 @@ def process_scheduled_broadcasts():
 
 @frappe.whitelist()
 def get_expense_categories():
-    """Return active ESS Expense Categories with their mapped accounts."""
+    """Return active expense categories from ESS Mobile Settings.
+
+    Categories now live as child rows on the ESS Mobile Settings single
+    (child DocType: ESS Expense Category). Admins manage them inside the
+    settings form rather than a separate list view.
+    """
     try:
-        categories = frappe.db.get_all(
-            "ESS Expense Category",
-            filters={"is_active": 1},
-            fields=["name", "category_name", "category_name_ar", "account"],
-            order_by="category_name asc",
-        )
-        # Fetch account currency for each account
-        for cat in categories:
-            if cat.get("account"):
-                currency = frappe.db.get_value(
-                    "Account", cat["account"], "account_currency"
-                ) or "IQD"
-                cat["account_currency"] = currency
-        return categories
+        s = frappe.get_single("ESS Mobile Settings")
     except Exception:
-        # DocType may not exist yet — return empty so app doesn't crash
         return []
+
+    rows = s.get("expense_categories") or []
+    categories = []
+    for r in rows:
+        if not r.get("is_active"):
+            continue
+        cat = {
+            "name": r.get("category_name") or "",
+            "category_name": r.get("category_name") or "",
+            "category_name_ar": r.get("category_name_ar") or "",
+            "account": r.get("account") or "",
+        }
+        if cat["account"]:
+            cat["account_currency"] = frappe.db.get_value(
+                "Account", cat["account"], "account_currency"
+            ) or "IQD"
+        categories.append(cat)
+
+    categories.sort(key=lambda c: c["category_name"].lower())
+    return categories

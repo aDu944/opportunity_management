@@ -75,6 +75,8 @@
   "col_break_exp_1",
   "require_receipt_for_amounts_above",
   "default_currency",
+  "sec_exp_categories",
+  "expense_categories",
 
   "notifications_tab",
   "daily_checkin_reminder_time",
@@ -183,6 +185,9 @@
   {"fieldname": "col_break_exp_1", "fieldtype": "Column Break"},
   {"fieldname": "require_receipt_for_amounts_above", "fieldtype": "Currency", "label": "Require Receipt for Amounts Above"},
   {"fieldname": "default_currency", "fieldtype": "Data", "label": "Default Currency", "default": "IQD"},
+
+  {"fieldname": "sec_exp_categories", "fieldtype": "Section Break", "label": "Expense Categories"},
+  {"fieldname": "expense_categories", "fieldtype": "Table", "label": "Expense Categories", "options": "ESS Expense Category", "description": "Types of expense employees can pick when submitting from the mobile app."},
 
   {"fieldname": "notifications_tab", "fieldtype": "Tab Break", "label": "Notifications"},
   {"fieldname": "daily_checkin_reminder_time", "fieldtype": "Data", "label": "Daily Check-in Reminder Time (HH:MM, empty = disabled)"},
