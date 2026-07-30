@@ -463,6 +463,15 @@ def on_notification_log_insert(doc, method=None):
         if (doc.get('document_type') or '') in _TEMPLATE_DOCTYPES:
             return
 
+        # Frappe's comment/mention pipeline drops a generic 'X commented
+        # on Y' entry into Notification Log with the full HTML email body.
+        # business_hooks.on_comment_after_insert now handles this class
+        # of event with the actual comment text, so skip the ugly generic
+        # push here regardless of document_type.
+        subject = (doc.get('subject') or '').lower()
+        if 'commented on' in subject or 'mentioned you' in subject:
+            return
+
         user = doc.get('for_user')
         if not user or user == 'Administrator':
             return

@@ -43,6 +43,9 @@ doc_events = {
     "Purchase Receipt": {
         "on_submit": "opportunity_management.opportunity_management.business_hooks.on_purchase_receipt_submit",
     },
+    "Comment": {
+        "after_insert": "opportunity_management.opportunity_management.business_hooks.on_comment_after_insert",
+    },
     "Project": {
         "after_insert": "opportunity_management.opportunity_management.business_hooks.on_project_after_insert",
     },

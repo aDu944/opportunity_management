@@ -329,6 +329,54 @@ def purchase_receipt_submitted(doc):
     )
 
 
+def comment_added(comment_doc, ref_doctype: str, ref_name: str):
+    """A user commented on a business doc. Push the full comment text so
+    the recipient doesn't have to open the app to read it.
+
+    comment_doc — the Comment row (has `content` HTML, `owner`,
+                  `comment_by`). Distinct signature vs the other
+                  templates because Comment isn't itself a business doc.
+    """
+    import re
+    from html import unescape
+    raw_html = (comment_doc.get("content") or "").strip()
+    # Strip HTML tags but preserve whitespace between words so a
+    # <p>Hello</p><p>world</p> becomes "Hello world" rather than
+    # "Helloworld".
+    text = re.sub(r"<br\s*/?>", "\n", raw_html, flags=re.IGNORECASE)
+    text = re.sub(r"</p\s*>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = unescape(text)
+    text = re.sub(r"\n{2,}", "\n", text).strip()
+    if len(text) > 240:
+        text = text[:237].rstrip() + "…"
+
+    author = (comment_doc.get("comment_by")
+              or comment_doc.get("owner") or "").strip()
+    author_name = ""
+    if author:
+        author_name = frappe.db.get_value("User", author, "full_name") or author
+
+    header = f"{ref_doctype} {ref_name}"
+    body_lines = []
+    if text:
+        body_lines.append(text)
+    else:
+        body_lines.append("(no comment text)")
+    body_lines.append(f"— {author_name} • on {header}" if author_name
+                      else f"— on {header}")
+
+    return (
+        f"💬 تعليق جديد • Comment on {ref_name}",
+        "\n".join(body_lines),
+        {
+            "doctype": ref_doctype,
+            "name": ref_name,
+            "kind": "comment",
+        },
+    )
+
+
 def project_created(doc):
     proj_name = (doc.get("project_name") or doc.name).strip()
     customer = _customer_of(doc)

@@ -282,6 +282,93 @@ def on_purchase_receipt_submit(doc, method=None):
     _dispatch(recipients, T.purchase_receipt_submitted, doc)
 
 
+# Which business doctypes get their own FCM push when a Comment is added.
+# Everything else (User, Role, ToDo, etc.) is ignored so system noise
+# doesn't reach phones. Add doctypes here as their notification story
+# matures.
+_COMMENT_WATCHED_DOCTYPES = {
+    "Journal Entry",
+    "Payment Entry",
+    "Sales Invoice",
+    "Purchase Invoice",
+    "Sales Order",
+    "Purchase Order",
+    "Purchase Receipt",
+    "Delivery Note",
+    "Quotation",
+    "Opportunity",
+    "Material Request",
+    "Project",
+    "Task",
+    "Leave Application",
+    "Expense Claim",
+}
+
+
+def on_comment_after_insert(doc, method=None):
+    """A user commented on a business doc. Push the full comment text to
+    everyone who has a stake in that doc — creator, previous commenters,
+    and users the doc is assigned to via ToDo — so the recipient doesn't
+    have to open the app to see what was said.
+
+    Only fires for `Comment` type (skips Info, Assigned, Attachment,
+    Workflow etc.) and only for doctypes in _COMMENT_WATCHED_DOCTYPES.
+    """
+    if (doc.get("comment_type") or "").strip() != "Comment":
+        return
+    ref_dt = (doc.get("reference_doctype") or "").strip()
+    ref_name = (doc.get("reference_name") or "").strip()
+    if not ref_dt or not ref_name or ref_dt not in _COMMENT_WATCHED_DOCTYPES:
+        return
+    if not frappe.db.exists(ref_dt, ref_name):
+        return
+
+    ref_doc = frappe.db.get_value(ref_dt, ref_name, ["owner"], as_dict=True) \
+        or {}
+    author = (doc.get("comment_by")
+              or doc.get("owner")
+              or frappe.session.user or "").strip()
+
+    recipients = []
+    # 1) The doc owner (creator).
+    if ref_doc.get("owner"):
+        recipients.append(ref_doc["owner"])
+    # 2) Users the doc is assigned to (open ToDos).
+    try:
+        assignees = frappe.db.sql_list(
+            """
+            SELECT DISTINCT allocated_to FROM `tabToDo`
+            WHERE reference_type = %s AND reference_name = %s
+              AND status = 'Open' AND allocated_to IS NOT NULL
+            """,
+            (ref_dt, ref_name),
+        )
+        recipients.extend(assignees or [])
+    except Exception:
+        pass
+    # 3) Prior commenters (so threads stay conversational).
+    try:
+        prev = frappe.db.sql_list(
+            """
+            SELECT DISTINCT COALESCE(comment_by, owner) FROM `tabComment`
+            WHERE reference_doctype = %s AND reference_name = %s
+              AND comment_type = 'Comment' AND name != %s
+            """,
+            (ref_dt, ref_name, doc.name),
+        )
+        recipients.extend(prev or [])
+    except Exception:
+        pass
+    # Author never notifies themselves.
+    recipients = [u for u in recipients if u and u != author]
+
+    if not recipients:
+        return
+
+    title, body, data = T.comment_added(doc, ref_dt, ref_name)
+    _send_to_users(recipients, title, body, data)
+
+
 def on_project_after_insert(doc, method=None):
     """Notify System Manager + Projects Manager + creator of every new Project."""
     recipients = list(_users_with_role("System Manager"))
