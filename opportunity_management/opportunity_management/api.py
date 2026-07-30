@@ -1293,7 +1293,16 @@ def get_employee_directory(search=None, branch=None, department=None, limit=200)
     """
     limit = min(int(limit or 200), 1000)
 
-    conditions = ["e.status = 'Active'"]
+    # App-store review accounts (Apple Review / Apple Reveiew / Google
+    # Review) are provisioned as Employees so the reviewer can sign in
+    # and exercise the app, but they must never appear in the real
+    # Employee Directory. Match the display name case-insensitively so
+    # small typos like 'Reveiew' don't slip past.
+    conditions = [
+        "e.status = 'Active'",
+        "LOWER(TRIM(e.employee_name)) NOT IN ("
+        "'apple review','apple reveiew','google review')",
+    ]
     values = {}
     if branch:
         conditions.append("e.branch = %(branch)s")
