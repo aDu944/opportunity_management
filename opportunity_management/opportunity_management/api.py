@@ -1299,10 +1299,15 @@ def get_employee_directory(search=None, branch=None, department=None, limit=200)
     # in the real Employee Directory. Substring match on {brand} + review
     # so future spelling variants ('Reviewer', 'Reveiewer'…) stay
     # excluded without another patch.
+    # NOTE the doubled %% in the literal LIKE patterns — this SQL is
+    # passed through pymysql's parameter interpolation later, and a bare
+    # % gets consumed by the format machinery, which then throws
+    # "TypeError: not enough arguments for format string" when the
+    # values dict doesn't provide matching keys.
     conditions = [
         "e.status = 'Active'",
-        "LOWER(e.employee_name) NOT LIKE '%apple%review%'",
-        "LOWER(e.employee_name) NOT LIKE '%google%review%'",
+        "LOWER(e.employee_name) NOT LIKE '%%apple%%review%%'",
+        "LOWER(e.employee_name) NOT LIKE '%%google%%review%%'",
     ]
     values = {}
     if branch:
