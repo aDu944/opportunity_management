@@ -1488,6 +1488,69 @@ def act_on_leave(name, action):
 
 
 @frappe.whitelist()
+def get_todays_leave_status(user=None):
+    """If the caller already has an approved leave covering today, return a
+    short summary so the mobile home card can render an 'on leave today'
+    chip instead of pushing them toward a check-in / late-check-in action.
+
+    Returns {"on_leave": bool, "leave_type": str|None, "name": str|None,
+             "from_date": ISO, "to_date": ISO}.
+    """
+    user = user or frappe.session.user
+    emp_id = frappe.db.get_value("Employee", {"user_id": user}, "name")
+    if not emp_id:
+        return {"on_leave": False}
+
+    today = getdate(nowdate())
+    row = frappe.db.get_all(
+        "Leave Application",
+        filters={
+            "employee": emp_id,
+            "status": "Approved",
+            "docstatus": 1,
+            "from_date": ["<=", today],
+            "to_date": [">=", today],
+        },
+        fields=["name", "leave_type", "from_date", "to_date"],
+        order_by="from_date desc",
+        limit=1,
+    )
+    if not row:
+        return {"on_leave": False}
+
+    r = row[0]
+    return {
+        "on_leave": True,
+        "name": r["name"],
+        "leave_type": r["leave_type"],
+        "from_date": str(r["from_date"]),
+        "to_date": str(r["to_date"]),
+    }
+
+
+@frappe.whitelist()
+def submit_missed_checkin_leave(user=None):
+    """Log today as a missed / late check-in when the caller opens the app
+    after the check-in window has closed. Mirrors submit_late_checkin_leave
+    but does not require an actual check-in event — the mobile home card
+    fires this when the user taps 'Submit late check-in' from the missed
+    state, so the timestamp is 'now' (Baghdad time) instead of an event.
+    """
+    user = user or frappe.session.user
+    emp_id = frappe.db.get_value("Employee", {"user_id": user}, "name")
+    if not emp_id:
+        frappe.throw(_("Employee record not found for {0}").format(user))
+
+    # Reuse the same server-side path as the auto-late flow. Time is now
+    # (server-local Baghdad time).
+    from opportunity_management.opportunity_management.api import (
+        submit_late_checkin_leave,
+    )
+    now_dt = frappe.utils.now_datetime()
+    return submit_late_checkin_leave(emp_id, str(now_dt))
+
+
+@frappe.whitelist()
 def delete_leave_application(name):
     """Delete a Leave Application from the mobile approvals list.
 
