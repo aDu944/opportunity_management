@@ -271,6 +271,17 @@ def on_purchase_order_submit(doc, method=None):
     _dispatch(recipients, T.purchase_order_submitted, doc)
 
 
+def on_purchase_receipt_submit(doc, method=None):
+    """Notify Stock Manager + Purchase Manager + creator when a Purchase
+    Receipt is submitted (goods received against a PO). Festo scoping
+    applies via _scoped_role_users so a Festo PR only pings FESTO-role
+    holders inside those roles, everyone else for non-Festo docs."""
+    recipients = _scoped_role_users(doc, "Stock Manager", "Purchase Manager")
+    if doc.owner:
+        recipients.append(doc.owner)
+    _dispatch(recipients, T.purchase_receipt_submitted, doc)
+
+
 def on_project_after_insert(doc, method=None):
     """Notify System Manager + Projects Manager + creator of every new Project."""
     recipients = list(_users_with_role("System Manager"))

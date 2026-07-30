@@ -314,6 +314,21 @@ def purchase_order_submitted(doc):
     )
 
 
+def purchase_receipt_submitted(doc):
+    supplier = _supplier_of(doc)
+    total = _money(doc.get("grand_total"), doc.get("currency"))
+    return (
+        "📥 استلام شراء • Purchase Received",
+        (
+            f"استلام {doc.name} — {supplier}"
+            + (f" — {total}" if total else "") + "\n"
+            f"Receipt {doc.name} — {supplier}"
+            + (f" — {total}" if total else "")
+        ) + _by_line(doc),
+        {"doctype": "Purchase Receipt", "name": doc.name},
+    )
+
+
 def project_created(doc):
     proj_name = (doc.get("project_name") or doc.name).strip()
     customer = _customer_of(doc)
