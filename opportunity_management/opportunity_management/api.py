@@ -2686,6 +2686,25 @@ def get_opportunities_dashboard(scope="mine"):
     customers = {}
     engineers = {}
 
+    # Funnel — linear conversion stages. Open counts everything still
+    # active (Open | Draft | anything not-final); Quotation groups any
+    # doc that reached the quote stage; Ordered = Converted/Ordered;
+    # Lost = explicitly lost. Closed (abandoned without win/loss) is
+    # excluded so the funnel reads as a real conversion path.
+    funnel = {"open": 0, "quotation": 0, "ordered": 0, "lost": 0}
+
+    # Weekly-created series — last 8 weeks (Monday-anchored). Keyed by
+    # ISO week-start date so the mobile can bin without knowing the
+    # server timezone. Missing weeks are filled with 0 at the end.
+    from datetime import timedelta
+    weekly = {}
+    week_span = 8
+    week_end_anchor = today - timedelta(days=today.weekday())  # this Monday
+    week_start_bound = week_end_anchor - timedelta(weeks=week_span - 1)
+
+    # Avg days-to-close (Ordered only) — creation → closing_date.
+    ordered_days = []
+
     completed_statuses = ("Closed", "Lost", "Converted", "Quotation", "Ordered")
 
     for r in rows:
@@ -2703,7 +2722,31 @@ def get_opportunities_dashboard(scope="mine"):
             if key:
                 engineers[key] = engineers.get(key, 0) + 1
 
+        # Weekly-created bin (uses assigned_date which is the doc's
+        # `creation` timestamp — always present on rows).
+        created_raw = r.get("assigned_date") or r.get("creation")
+        if created_raw:
+            try:
+                cdate = getdate(created_raw)
+                if cdate >= week_start_bound and cdate <= today:
+                    monday = cdate - timedelta(days=cdate.weekday())
+                    key = monday.isoformat()
+                    weekly[key] = weekly.get(key, 0) + 1
+            except Exception:
+                pass
+
         is_ordered = status in ("Converted", "Ordered")
+
+        # Funnel bucketing (all rows, not just open).
+        if is_ordered:
+            funnel["ordered"] += 1
+        elif status == "Lost":
+            funnel["lost"] += 1
+        elif status == "Quotation" or (r.get("has_quotation") is True):
+            funnel["quotation"] += 1
+        elif status not in ("Closed",):
+            funnel["open"] += 1
+
         if status in completed_statuses:
             if is_ordered:
                 cd = r.get("closing_date") or r.get("expected_closing")
@@ -2712,6 +2755,15 @@ def get_opportunities_dashboard(scope="mine"):
                         cdate = getdate(cd)
                         if cdate.year == today.year and cdate.month == today.month:
                             won_month += 1
+                        # Days-to-close (creation → closing).
+                        if created_raw:
+                            try:
+                                created = getdate(created_raw)
+                                days_to_close = (cdate - created).days
+                                if 0 <= days_to_close <= 365 * 3:
+                                    ordered_days.append(days_to_close)
+                            except Exception:
+                                pass
                     except Exception:
                         pass
             continue
@@ -2737,6 +2789,21 @@ def get_opportunities_dashboard(scope="mine"):
             key=lambda x: -x["count"],
         )[:n]
 
+    # Fill missing weeks with zeros so the mobile trend chart draws a
+    # continuous baseline.
+    weekly_series = []
+    for i in range(week_span):
+        wk = week_start_bound + timedelta(weeks=i)
+        weekly_series.append({
+            "week_start": wk.isoformat(),
+            "count": int(weekly.get(wk.isoformat(), 0)),
+        })
+
+    avg_days_to_close = (
+        round(sum(ordered_days) / len(ordered_days), 1)
+        if ordered_days else 0.0
+    )
+
     return {
         "scope": scope,
         "metrics": {
@@ -2744,11 +2811,15 @@ def get_opportunities_dashboard(scope="mine"):
             "today": today_count,
             "overdue": overdue_count,
             "won_month": won_month,
+            "avg_days_to_close": avg_days_to_close,
+            "ordered_sample_size": len(ordered_days),
         },
         "urgency": urgency,
         "status_breakdown": _top(status_counts, n=6),
         "top_customers": _top(customers, n=5),
         "top_engineers": _top(engineers, n=5),
+        "funnel": funnel,
+        "weekly_created": weekly_series,
     }
 
 
