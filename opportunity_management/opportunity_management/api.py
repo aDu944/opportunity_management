@@ -916,7 +916,8 @@ def get_team_opportunities(team=None, include_completed=False, search=None):
     # Search — match against identity + customer + tender fields via OR.
     get_all_kwargs = dict(
         filters=opp_filters,
-        fields=["name", "party_name", "expected_closing", "status", "owner", "custom_tender_no", "custom_tender_title"],
+        fields=["name", "party_name", "expected_closing", "creation", "status",
+                "owner", "custom_tender_no", "custom_tender_title"],
     )
     if search and str(search).strip():
         q = f"%{str(search).strip()}%"
@@ -1040,10 +1041,18 @@ def get_team_opportunities(team=None, include_completed=False, search=None):
 
         opp_map[row.name] = {
             "opportunity": row.name,
+            "name": row.name,
             "customer": row.party_name,
             "tender_no": row.custom_tender_no,
             "tender_title": row.custom_tender_title,
             "closing_date": str(row.expected_closing) if row.expected_closing else None,
+            # `assigned_date` mirrors the personal endpoint's shape and
+            # is used by the dashboard aggregator to bucket the weekly
+            # trend and compute avg-days-to-close. Both were reading
+            # zero on team scope because this field was missing.
+            "assigned_date": str(row.creation) if row.creation else None,
+            "creation": str(row.creation) if row.creation else None,
+            "opportunity_status": row.status,
             "days_remaining": days_remaining,
             "urgency": urgency,
             "status_color": status_color,
