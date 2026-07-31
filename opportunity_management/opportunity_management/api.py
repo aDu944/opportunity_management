@@ -2729,6 +2729,11 @@ def get_opportunities_dashboard(scope="mine"):
     # Avg days-to-close (Ordered only) — creation → closing_date.
     ordered_days = []
 
+    # Earliest opportunity creation date across the queried rows.
+    # Used as the "Since {date}" label on the mobile Overview header
+    # so users know what time-window every metric on the page covers.
+    earliest_created = None
+
     completed_statuses = ("Closed", "Lost", "Converted", "Quotation", "Ordered")
 
     for r in rows:
@@ -2752,6 +2757,8 @@ def get_opportunities_dashboard(scope="mine"):
         if created_raw:
             try:
                 cdate = getdate(created_raw)
+                if earliest_created is None or cdate < earliest_created:
+                    earliest_created = cdate
                 if cdate >= week_start_bound and cdate <= today:
                     monday = cdate - timedelta(days=cdate.weekday())
                     key = monday.isoformat()
@@ -2844,6 +2851,11 @@ def get_opportunities_dashboard(scope="mine"):
         "top_engineers": _top(engineers, n=5),
         "funnel": funnel,
         "weekly_created": weekly_series,
+        # ISO date of the oldest opportunity in the queried scope. The
+        # mobile Overview header renders this as "Since Feb 2023" so
+        # users know exactly what time-window all the metrics on the
+        # page cover. `null` when no rows exist (empty scope).
+        "since_date": earliest_created.isoformat() if earliest_created else None,
     }
 
 
