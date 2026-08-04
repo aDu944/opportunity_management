@@ -556,7 +556,8 @@ def send_manager_weekly_digest():
     opportunities = frappe.get_all(
         "Opportunity",
         filters={
-            "status": ["not in", ["Lost", "Closed", "Converted"]],
+            # exclude opps that already have a quotation — they are awaiting customer response, not "open"
+            "status": ["not in", ["Lost", "Closed", "Converted", "Quotation"]],
             "expected_closing": ["is", "set"]
         },
         fields=["name", "expected_closing", "party_name", "status"]

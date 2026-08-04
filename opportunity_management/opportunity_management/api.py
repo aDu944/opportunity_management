@@ -20,7 +20,7 @@ from opportunity_management.opportunity_management import notification_utils
 # leaving the DB and every filter/logic reference to "Converted" alone —
 # no schema change, no data migration needed.
 _STATUS_DISPLAY_ALIASES = {
-    "Converted": "Ordered",
+    "Converted": "Won",
 }
 
 
