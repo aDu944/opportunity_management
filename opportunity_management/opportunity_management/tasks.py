@@ -543,6 +543,49 @@ def _get_department_managers_by_department(department):
     return managers
 
 
+
+def _fmt_amount(amt, ccy):
+    """Compact money format: 12.4M IQD, 173K USD, 847M IQD."""
+    amt = float(amt or 0)
+    if amt >= 1_000_000_000:
+        return f"{amt/1_000_000_000:.1f}B {ccy}"
+    if amt >= 1_000_000:
+        return f"{amt/1_000_000:.1f}M {ccy}"
+    if amt >= 1_000:
+        return f"{amt/1_000:.0f}K {ccy}"
+    return f"{amt:.0f} {ccy}"
+
+
+def _effective_amount(opp_name, opp_amount):
+    """Use opportunity_amount if set, else fall back to max linked quotation grand_total."""
+    if opp_amount and float(opp_amount) > 0:
+        return float(opp_amount), None
+    q = frappe.db.sql(
+        "SELECT MAX(grand_total), MAX(currency) FROM tabQuotation "
+        "WHERE opportunity=%s AND docstatus!=2",
+        (opp_name,), as_list=True,
+    )
+    if q and q[0][0]:
+        return float(q[0][0]), q[0][1]
+    return 0.0, None
+
+
+def _totals_by_ccy(items):
+    """Group items' amounts by currency, return dict."""
+    totals = {}
+    for opp in items:
+        ccy = opp.get("currency") or "IQD"
+        totals[ccy] = totals.get(ccy, 0.0) + float(opp.get("amount") or 0)
+    return totals
+
+
+def _fmt_totals(totals):
+    """{'IQD': 12400000, 'USD': 173000} → '12.4M IQD · 173K USD'."""
+    if not totals or all(v == 0 for v in totals.values()):
+        return "—"
+    return " · ".join(_fmt_amount(v, k) for k, v in sorted(totals.items()) if v > 0)
+
+
 def send_manager_weekly_digest():
     """
     Weekly digest to department managers.
@@ -560,7 +603,7 @@ def send_manager_weekly_digest():
             "status": ["not in", ["Lost", "Closed", "Converted", "Quotation"]],
             "expected_closing": ["is", "set"]
         },
-        fields=["name", "expected_closing", "party_name", "status"]
+        fields=["name", "expected_closing", "party_name", "status", "opportunity_amount", "currency"]
     )
 
     dept_opportunities = {}
@@ -581,11 +624,14 @@ def send_manager_weekly_digest():
             if department not in dept_opportunities:
                 dept_opportunities[department] = {}
 
+            _amt, _q_ccy = _effective_amount(opp.name, opp.opportunity_amount)
             dept_opportunities[department][opp.name] = {
                 "name": opp.name,
                 "party_name": opp.party_name,
                 "expected_closing": opp.expected_closing,
-                "status": opp.status
+                "status": opp.status,
+                "amount": _amt,
+                "currency": _q_ccy or opp.currency or "IQD",
             }
 
     site_url = frappe.utils.get_url()
@@ -613,6 +659,7 @@ def send_manager_weekly_digest():
                         <td><a href="{site_url}/app/opportunity/{opp['name']}">{opp['name']}</a></td>
                         <td>{opp['party_name'] or '-'}</td>
                         <td>{format_date(opp['expected_closing'], 'dd/MM/yyyy')}</td>
+                        <td style="text-align:right; white-space:nowrap;">{_fmt_amount(opp.get('amount'), opp.get('currency') or 'IQD')}</td>
                         <td style="text-align:center;">{opp['days_remaining']}</td>
                     </tr>
                 """
@@ -626,9 +673,9 @@ def send_manager_weekly_digest():
             <h2>Weekly Opportunity Digest - {department}</h2>
             <p>Summary for the next 7 days:</p>
             <ul>
-                <li>Total open: {len(opp_list)}</li>
-                <li>Overdue: {len(overdue)}</li>
-                <li>Due in 7 days: {len(due_soon)}</li>
+                <li>Total open: {len(opp_list)} · Value: {_fmt_totals(_totals_by_ccy(opp_list))}</li>
+                <li>Overdue: {len(overdue)} · Value: {_fmt_totals(_totals_by_ccy(overdue))}</li>
+                <li>Due in 7 days: {len(due_soon)} · Value: {_fmt_totals(_totals_by_ccy(due_soon))}</li>
             </ul>
 
             <h3>Overdue Opportunities</h3>
@@ -638,11 +685,12 @@ def send_manager_weekly_digest():
                         <th>Opportunity</th>
                         <th>Customer</th>
                         <th>Closing Date</th>
+                        <th>Value</th>
                         <th>Days Overdue</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {overdue_rows or '<tr><td colspan="4">None</td></tr>'}
+                    {overdue_rows or '<tr><td colspan="5">None</td></tr>'}
                 </tbody>
             </table>
 
@@ -653,11 +701,12 @@ def send_manager_weekly_digest():
                         <th>Opportunity</th>
                         <th>Customer</th>
                         <th>Closing Date</th>
+                        <th>Value</th>
                         <th>Days Remaining</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {due_rows or '<tr><td colspan="4">None</td></tr>'}
+                    {due_rows or '<tr><td colspan="5">None</td></tr>'}
                 </tbody>
             </table>
         </div>
