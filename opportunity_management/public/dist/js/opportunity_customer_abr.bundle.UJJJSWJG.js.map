@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../../../../../apps/opportunity_management/opportunity_management/public/js/opportunity_customer_abr.bundle.js"],
-  "sourcesContent": ["// From ERPNext Client Script: Delivery Time Calculation\n// Doctype: Purchase Order | View: Form | Size: 745 bytes\nfrappe.ui.form.on('Opportunity', {\n    party_name: function(frm) {\n        if (frm.doc.party_name) {\n            // Fetch the Customer document\n            frappe.db.get_value('Customer', frm.doc.party_name, 'custom_abr')\n                .then(r => {\n                    if (r.message) {\n                        // Set the Opportunity's custom_abr field with the Customer's custom_abr value\n                        frm.set_value('custom_abr', r.message.custom_abr);\n                    } else {\n                        frm.set_value('custom_abr', '');\n                    }\n                });\n        } else {\n            // Clear the custom_abr field if no customer is selected\n            frm.set_value('custom_abr', '');\n        }\n    }\n});\n"],
-  "mappings": "MAEA,OAAO,GAAG,KAAK,GAAG,cAAe,CAC7B,WAAY,SAASA,EAAK,CAClBA,EAAI,IAAI,WAER,OAAO,GAAG,UAAU,WAAYA,EAAI,IAAI,WAAY,YAAY,EAC3D,KAAKC,GAAK,CACHA,EAAE,QAEFD,EAAI,UAAU,aAAcC,EAAE,QAAQ,UAAU,EAEhDD,EAAI,UAAU,aAAc,EAAE,CAEtC,CAAC,EAGLA,EAAI,UAAU,aAAc,EAAE,CAEtC,CACJ,CAAC",
-  "names": ["frm", "r"]
-}

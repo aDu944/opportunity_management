@@ -1,2 +1,0 @@
-(()=>{frappe.ui.form.on("Opportunity",{refresh:function(t){frappe.user.has_role("System Manager")?t.set_df_property("status","hidden",0):t.set_df_property("status","hidden",1),t.doc.name&&!t.is_new()&&frappe.db.count("Quotation",{filters:{opportunity:t.doc.name,docstatus:["!=",2]}}).then(e=>{e>0&&t.add_custom_button(__("View Related Quotations ("+e+")"),()=>{frappe.route_options={opportunity:t.doc.name},frappe.set_route("List","Quotation")})})}});})();
-//# sourceMappingURL=opportunity_status.bundle.US23FTG2.js.map

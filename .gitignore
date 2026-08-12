@@ -4,4 +4,4 @@ __pycache__/
 .env
 opportunity_management/firebase_service_account.json
 *.egg-info/
-public/dist/
+**/public/dist/
