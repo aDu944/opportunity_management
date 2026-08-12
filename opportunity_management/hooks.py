@@ -15,6 +15,8 @@ doc_events = {
         # Keep assignment hooks disabled to avoid duplicates.
         "validate": "opportunity_management.opportunity_management.notification_utils.set_opportunity_notification_recipients",
         "on_update": "opportunity_management.opportunity_management.notification_utils.send_closing_date_extended_notification",
+        "on_trash":  "opportunity_management.opportunity_management.notification_utils.delete_related_notification_logs",
+        "on_cancel": "opportunity_management.opportunity_management.notification_utils.delete_related_notification_logs",
     },
     "Email Queue": {
         "after_insert": "opportunity_management.opportunity_management.notification_utils.log_opportunity_notification_from_email_queue",
@@ -207,3 +209,16 @@ doctype_list_js = {
 # Installation/Setup Hooks
 # ============================================================================
 after_install = "opportunity_management.opportunity_management.setup.install.after_install"
+
+
+# --- Bundled Client Scripts (migrated from DB for perf) ---
+app_include_js = [
+    'alt_items_form_totals_quotation.bundle.js',
+    'je_project_and_opportunity.bundle.js',
+    'opportunity_list_year_first_sort.bundle.js',
+    'opportunity_status.bundle.js',
+    'opportunity_customer_abr.bundle.js',
+    'quotation_general_customer_name.bundle.js',
+    'quotation_subtotals_by_section.bundle.js',
+    'quotation_title_row.bundle.js',
+]
