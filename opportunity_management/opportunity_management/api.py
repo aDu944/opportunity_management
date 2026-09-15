@@ -1250,11 +1250,6 @@ def get_my_punch_locations():
     """
     user = frappe.session.user
     employee = frappe.db.get_value("Employee", {"user_id": user}, "name")
-    # TEMP trace — remove once we've confirmed the mobile hits this on cold-start.
-    frappe.log_error(
-        title="punch_locations trace",
-        message=f"user={user!r} employee={employee!r}",
-    )
     if not employee:
         return {"locations": []}
 
@@ -1576,26 +1571,66 @@ def submit_missed_checkin_leave(user=None):
 
 @frappe.whitelist()
 def delete_leave_application(name):
-    """Delete a Leave Application from the mobile approvals list.
+    """Delete a Leave Application from the mobile app.
 
-    Authorization mirrors act_on_leave: the caller must be the doc's
-    leave_approver, or hold HR Manager / HR User / System Manager, or be
-    a designated Leave Approver. Cancels first if the doc is submitted so
-    the delete succeeds without hitting the "Cannot delete a submitted
-    document" guard.
+    Two callers share this endpoint:
+
+    * the Approvals list — an approver removing someone else's request;
+    * the Leave page "الطلبات" tab, which lists the caller's OWN requests
+      and offers the same swipe-to-delete.
+
+    So authorization allows either an approver (doc leave_approver, the
+    Leave Approver role, or HR Manager / HR User / System Manager) or the
+    employee who raised the request. A plain employee may only withdraw a
+    request that is still pending — once it is Approved the leave balance
+    has been consumed, so removing it is an HR/approver action.
+
+    Cancels first if the doc is submitted so the delete succeeds without
+    hitting the "Cannot delete a submitted document" guard.
     """
     if not frappe.db.exists("Leave Application", name):
-        frappe.throw(f"Leave Application {name} does not exist")
+        frappe.throw(_("Leave Application {0} does not exist").format(name))
 
     caller = frappe.session.user
     roles = set(frappe.get_roles(caller) or [])
-    doc_approver = frappe.db.get_value(
-        "Leave Application", name, "leave_approver"
+    doc_approver, doc_employee, doc_status, doc_docstatus = frappe.db.get_value(
+        "Leave Application", name,
+        ["leave_approver", "employee", "status", "docstatus"],
     )
     is_privileged = bool(roles & {"HR Manager", "HR User", "System Manager"})
-    if (not is_privileged and doc_approver != caller
-            and "Leave Approver" not in roles):
-        frappe.throw("You are not authorized to delete this leave request.")
+    is_approver = (doc_approver == caller) or ("Leave Approver" in roles)
+
+    caller_employee = frappe.db.get_value(
+        "Employee", {"user_id": caller}, "name"
+    )
+    is_owner = bool(caller_employee) and caller_employee == doc_employee
+
+    if not (is_privileged or is_approver or is_owner):
+        frappe.throw(_("You are not authorized to delete this leave request."))
+
+    # A plain employee may only withdraw their own DRAFT request.
+    #
+    # Draft is the right line rather than "not yet Approved": the late
+    # check-in flow (submit_late_checkin_leave) auto-creates and SUBMITS a
+    # half-day Time-Off leave with status "Open", so a "not Approved" test
+    # would let an employee swipe away the very leave that records their
+    # lateness. Anything already submitted is an approver/HR action.
+    if is_owner and not (is_privileged or is_approver):
+        if doc_docstatus == 1:
+            if doc_status == "Approved":
+                frappe.throw(
+                    _("This leave request has already been approved. "
+                      "Ask HR or your approver to remove it.")
+                )
+            frappe.throw(
+                _("This leave request has already been submitted. "
+                  "Ask HR or your approver to remove it.")
+            )
+        if doc_docstatus == 2:
+            frappe.throw(
+                _("This leave request has been cancelled. "
+                  "Ask HR or your approver to remove it.")
+            )
 
     docstatus = frappe.db.get_value("Leave Application", name, "docstatus")
     if docstatus == 1:
