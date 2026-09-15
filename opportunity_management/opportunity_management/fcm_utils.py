@@ -184,6 +184,31 @@ def _unread_badge_for_token(token: str) -> int:
         return 1
 
 
+def _describe_token(token: str) -> str:
+    """Identify a token's owner for error logs, without logging the token.
+
+    A raw FCM token is a device credential, so only a short prefix goes in
+    the log — enough to tell two failing devices apart, useless on its own.
+    """
+    prefix = (token or "")[:12]
+    try:
+        row = frappe.db.sql(
+            """
+            SELECT name, employee_name, custom_app_platform, custom_app_version
+            FROM `tabEmployee`
+            WHERE custom_fcm_token = %s
+            LIMIT 1
+            """,
+            (token,),
+        )
+        if row:
+            emp, emp_name, plat, ver = row[0]
+            return f"{emp} ({emp_name}) {plat or '?'} {ver or '?'} token={prefix}…"
+    except Exception:
+        pass
+    return f"<no Employee holds this token> token={prefix}…"
+
+
 def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
     """Send an FCM notification to a single device token. Returns True on success.
 
@@ -254,11 +279,16 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
         resp = session.post(url, json=payload, timeout=15)
         if resp.status_code == 200:
             return True
-        # Frappe's log_error title is capped at 140 chars — keep title constant.
+        # Frappe's log_error title is capped at 140 chars — keep title constant
+        # and put the identifying detail in the body. Without the recipient
+        # here a recurring UNREGISTERED 404 is unattributable: you can see a
+        # dead token is being retried but not whose, which turns a log read
+        # into a live token-validation exercise. Never log the token itself.
         frappe.log_error(
             title="FCM Send Error",
             message=(
                 f"status={resp.status_code}\n"
+                f"recipient={_describe_token(token)}\n"
                 f"body={resp.text[:600]}"
             ),
         )
@@ -270,7 +300,11 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
             tb = ""
         frappe.log_error(
             title="FCM Send Error",
-            message=f"exc_type={type(e).__name__}\nexc_str={str(e)[:400]}\ntraceback:\n{tb}",
+            message=(
+                f"recipient={_describe_token(token)}\n"
+                f"exc_type={type(e).__name__}\nexc_str={str(e)[:400]}\n"
+                f"traceback:\n{tb}"
+            ),
         )
         return False
 
