@@ -1844,6 +1844,24 @@ def submit_late_checkin_leave(employee, checkin_time=None):
     if actual_minutes <= on_time_minutes:
         return {"status": "on_time", "cutoff": f"{expected_h:02d}:{threshold_m:02d}"}
 
+    # Hard stop. Past this hour the day is absent, not late — filing a
+    # half-day Time-Off would understate it. The mobile app hides the late
+    # check-in button at the same hour and offers Apply for Leave instead,
+    # but the rule is enforced here so it holds for any caller.
+    try:
+        cutoff_h = int((s.get("late_checkin_cutoff_hour") if s else None) or 12)
+    except (TypeError, ValueError):
+        cutoff_h = 12
+    if cutoff_h and t.hour >= cutoff_h:
+        return {
+            "status": "too_late",
+            "cutoff_hour": cutoff_h,
+            "message": _(
+                "Check-in closed at {0}:00. Today counts as absent \u2014 "
+                "please apply for leave instead."
+            ).format(f"{cutoff_h:02d}"),
+        }
+
     # Avoid duplicate: if a leave already exists for today, skip
     existing = frappe.db.exists("Leave Application", {
         "employee": employee,
@@ -2069,6 +2087,46 @@ def _is_system_manager() -> bool:
     return "System Manager" in set(frappe.get_roles(frappe.session.user))
 
 
+def _resolve_bottom_nav_layout(s) -> str:
+    """Flatten the Bottom Nav Tabs tables into the comma-separated string
+    the app already consumes.
+
+    Resolution order, per calling user:
+      1. the System Manager table, if the caller holds that role and the
+         table has rows — lets admins carry different shortcuts from
+         regular employees;
+      2. the default table;
+      3. the legacy free-text `bottom_nav_layout`, so sites configured
+         before the tables existed keep working untouched.
+
+    Returning the same `bottom_nav_layout` key means no app change is
+    needed — the client keeps parsing one string and applying its own
+    role/module filtering on top.
+    """
+    def _flatten(rows):
+        out = []
+        for r in (rows or []):
+            key = (r.get("tab") if hasattr(r, "get") else getattr(r, "tab", None)) or ""
+            key = key.strip()
+            if key and key not in out:  # ignore blanks and accidental repeats
+                out.append(key)
+        return ",".join(out)
+
+    try:
+        if _is_system_manager():
+            admin = _flatten(s.get("bottom_nav_tabs_system_manager"))
+            if admin:
+                return admin
+        default = _flatten(s.get("bottom_nav_tabs"))
+        if default:
+            return default
+    except Exception:
+        # Tables not migrated yet — fall through to the legacy field.
+        pass
+
+    return s.get("bottom_nav_layout") or "home,attendance,more"
+
+
 @frappe.whitelist(allow_guest=True)
 def get_mobile_config():
     """
@@ -2153,6 +2211,7 @@ def get_mobile_config():
             "checkin_window_end_hour": _i("checkin_window_end_hour", 10),
             "expected_checkin_hour": _i("expected_checkin_hour", 9),
             "late_checkin_threshold_minutes": _i("late_checkin_threshold_minutes", 15),
+            "late_checkin_cutoff_hour": _i("late_checkin_cutoff_hour", 12),
             "default_leave_type_for_late_checkin": s.get("default_leave_type_for_late_checkin") or "",
             "auto_checkout_hour": _i("auto_checkout_hour", 0),
             "early_checkout_warning_hour": _i("early_checkout_warning_hour", 0),
@@ -2200,7 +2259,7 @@ def get_mobile_config():
 
         "layout": {
             "default_tab": s.get("default_tab") or "home",
-            "bottom_nav_layout": s.get("bottom_nav_layout") or "home,attendance,more",
+            "bottom_nav_layout": _resolve_bottom_nav_layout(s),
             "default_language": s.get("default_language") or "",
             "allowed_languages": s.get("allowed_languages") or "en,ar",
             "date_format_override": s.get("date_format_override") or "",

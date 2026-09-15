@@ -1,0 +1,35 @@
+{
+ "actions": [],
+ "creation": "2026-09-15 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "istable": 1,
+ "field_order": [
+  "tab"
+ ],
+ "fields": [
+  {
+   "fieldname": "tab",
+   "fieldtype": "Select",
+   "label": "Tab",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 6,
+   "options": "home\nattendance\nmore\nnotifications\napprovals\nleave\npayslips\nexpenses\nbank_balances",
+   "description": "Row order = order in the app's bottom pill. Drag rows to reorder. Logout is appended automatically, never add it. approvals needs System Manager; bank_balances needs bank access; attendance / notifications / approvals / expenses / bank_balances each also need their module enabled on the Modules tab."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-15 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Opportunity Management",
+ "name": "ESS Bottom Nav Tab",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
