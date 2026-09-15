@@ -1144,3 +1144,30 @@ def notify_buyer_message_digest(
             "Tender Hub Buyer Message Digest",
         )
         return {"ok": False, "error": str(e)[:300]}
+
+
+# ---------------------------------------------------------------------------
+# Cascade-delete Opportunity Notification Log rows when the Opportunity is
+# trashed (on_trash) or cancelled (on_cancel). Prevents "linked with
+# Opportunity Notification Log …" errors that block deletion/cancellation.
+# ---------------------------------------------------------------------------
+
+def delete_related_notification_logs(doc, method=None):
+    """Delete all Opportunity Notification Log rows that reference this Opportunity."""
+    import frappe
+    log_names = frappe.get_all(
+        "Opportunity Notification Log",
+        filters={"opportunity": doc.name},
+        pluck="name",
+    )
+    for name in log_names:
+        try:
+            frappe.delete_doc(
+                "Opportunity Notification Log", name,
+                ignore_permissions=True, force=True, delete_permanently=True,
+            )
+        except Exception:
+            frappe.log_error(
+                title="Cascade delete of Opportunity Notification Log failed",
+                message=f"opp={doc.name} log={name}",
+            )
