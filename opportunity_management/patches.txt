@@ -1,3 +1,4 @@
+[pre_model_sync]
 opportunity_management.patches.create_workspace
 opportunity_management.patches.expense_category_to_child_table
 
