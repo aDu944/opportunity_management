@@ -243,7 +243,7 @@ fixtures = [
     # ── WhatsApp team inbox ──────────────────────────────────────────────
     # NOTE: fixtures are synced AFTER post-model-sync patches, so the same
     # objects are also created idempotently in
-    # whatsapp_utils.create_whatsapp_message_custom_fields() /
+    # whatsapp_setup.create_whatsapp_message_custom_fields() /
     # ensure_whatsapp_roles_and_perms(), which the backfill patch and
     # after_install call. These blocks exist so a site export carries them.
     {

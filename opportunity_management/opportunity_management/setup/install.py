@@ -25,17 +25,17 @@ def setup_whatsapp_inbox():
     idempotent and individually guarded: a site without frappe_whatsapp
     installed must still finish `after_install` cleanly.
     """
-    from opportunity_management.opportunity_management import whatsapp_utils
+    from opportunity_management.opportunity_management import whatsapp_setup
 
     if not frappe.db.exists("DocType", "WhatsApp Message"):
         print("frappe_whatsapp is not installed — skipping WhatsApp inbox setup")
         return
 
     for step, label in (
-        (whatsapp_utils.create_whatsapp_message_custom_fields, "custom fields"),
-        (whatsapp_utils.ensure_message_index, "message index"),
-        (whatsapp_utils.ensure_whatsapp_roles_and_perms, "roles and permissions"),
-        (whatsapp_utils.seed_inbox_defaults, "inbox defaults"),
+        (whatsapp_setup.create_whatsapp_message_custom_fields, "custom fields"),
+        (whatsapp_setup.ensure_message_index, "message index"),
+        (whatsapp_setup.ensure_whatsapp_roles_and_perms, "roles and permissions"),
+        (whatsapp_setup.seed_inbox_defaults, "inbox defaults"),
     ):
         try:
             step()
