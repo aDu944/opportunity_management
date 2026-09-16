@@ -562,8 +562,19 @@ def on_journal_entry_submit(doc, method=None):
     # System Manager override — silent submit.
     if doc.get("custom_skip_employee_notification"):
         return
-    # totals[employee] = (paid_amount, owed_amount, currency)
-    totals = {}
+    # Skip the payroll Accrual JE — the Salary Slip flow already sends a
+    # dedicated "Payslip Ready" push per employee. Firing an "Expenses added"
+    # here as well produces a duplicate notification for the same event.
+    remark = (doc.get("user_remark") or "").lower()
+    if "accrual journal entry for salaries" in remark:
+        return
+    # Split payment rows so salary settlements and extra/advance payments
+    # send SEPARATE notifications instead of one lumped total.
+    # totals[employee] = (paid, owed, currency)  — SALARY only (ref=Payroll Entry)
+    salary_totals = {}
+    # non_salary_rows: list of (emp, amount_paid, amount_owed, currency, user_remark)
+    #   fired as one push per row so each carries its own reason.
+    non_salary_rows = []
     for row in doc.accounts:
         if (row.get("party_type") or "") != "Employee":
             continue
@@ -573,18 +584,50 @@ def on_journal_entry_submit(doc, method=None):
         credit = float(row.get("credit_in_account_currency") or row.get("credit") or 0)
         debit = float(row.get("debit_in_account_currency") or row.get("debit") or 0)
         currency = row.get("account_currency") or ""
-        prev_paid, prev_owed, prev_cur = totals.get(emp, (0.0, 0.0, currency))
-        totals[emp] = (
-            prev_paid + max(debit - credit, 0),
-            prev_owed + max(credit - debit, 0),
-            prev_cur or currency,
-        )
+        is_salary = (row.get("reference_type") or "") == "Payroll Entry"
+        if is_salary:
+            prev_paid, prev_owed, prev_cur = salary_totals.get(emp, (0.0, 0.0, currency))
+            salary_totals[emp] = (
+                prev_paid + max(debit - credit, 0),
+                prev_owed + max(credit - debit, 0),
+                prev_cur or currency,
+            )
+        else:
+            non_salary_rows.append((emp,
+                                     max(debit - credit, 0),
+                                     max(credit - debit, 0),
+                                     currency,
+                                     row.get("user_remark") or ""))
 
-    for emp, (paid, owed, currency) in totals.items():
+    for emp, (paid, owed, currency) in salary_totals.items():
         if paid > 0:
             _notify_employee_payment(emp, paid, currency, "Journal Entry", doc.name, "paid")
         elif owed > 0:
             _notify_employee_payment(emp, owed, currency, "Journal Entry", doc.name, "owed")
+
+    # Non-salary rows: one push per row, message body carries the row remark
+    for emp, paid, owed, currency, remark in non_salary_rows:
+        amt = paid if paid > 0 else owed
+        if amt <= 0:
+            continue
+        kind = "paid" if paid > 0 else "owed"
+        reason = (remark or "").strip()
+        title_paid = "💸 دفعة إضافية / Extra payment received"
+        title_owed = "💰 مبلغ مسجل لحسابك / Amount registered to your account"
+        title = title_paid if kind == "paid" else title_owed
+        body = _fmt_money(amt, currency)
+        if reason:
+            body = body + " — " + reason
+        enqueue_fcm_to_employee(
+            emp,
+            title=title,
+            body=body,
+            data={
+                "type": "extra_payment" if kind == "paid" else "extra_payable",
+                "doctype": "Journal Entry",
+                "name": doc.name,
+            },
+        )
 
 
 def on_payment_entry_submit(doc, method=None):

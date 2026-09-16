@@ -5,8 +5,17 @@ from frappe.utils import nowdate, getdate, flt
 
 def on_quotation_save(doc, method):
     """
-    When a Quotation is saved (draft), close the Opportunity and notify assignees
-    if it has items and total > 0.
+    When a new Quotation is inserted with items + total > 0:
+      - move the Opportunity's status Open -> Quotation (intermediate state,
+        never Converted/'Won' — that only happens on Sales Order submission)
+      - notify the Opportunity's assignees + log the assignment (once per opp)
+
+    Status transition rules:
+      Open       -> Quotation
+      Quotation  -> Quotation (no-op)
+      Converted  -> no change (Won stays Won)
+      Lost       -> no change
+      Closed     -> no change
     """
     if not doc or doc.docstatus == 2:
         return
@@ -19,13 +28,90 @@ def on_quotation_save(doc, method):
         # Try to find opportunity from items or other links
         opportunity_name = find_linked_opportunity(doc)
 
-    if opportunity_name:
-        opp_status = frappe.db.get_value("Opportunity", opportunity_name, "status")
-        if opp_status in ["Closed", "Converted"]:
-            return
-        close_opportunity(opportunity_name, doc.name)
-        notify_opportunity_assignees(opportunity_name, doc.name)
-        update_assignment_log(opportunity_name, doc.name)
+    if not opportunity_name:
+        return
+
+    # Advance status Open -> Quotation. Never touch Converted/Lost/Closed —
+    # ERPNext auto-sets Converted on Sales Order submission and other states
+    # are manual/meaningful.
+    opp_status = frappe.db.get_value("Opportunity", opportunity_name, "status")
+    if opp_status == "Open":
+        try:
+            frappe.db.set_value(
+                "Opportunity", opportunity_name, "status", "Quotation",
+                update_modified=False,
+            )
+            opp = frappe.get_doc("Opportunity", opportunity_name)
+            opp.add_comment(
+                "Comment",
+                f"Status: Open -> Quotation (draft Quotation {doc.name} created)",
+            )
+        except Exception as e:
+            frappe.log_error(f"Failed to advance Opportunity {opportunity_name} to Quotation: {e}")
+
+    # Notify + log only on the FIRST quotation per opportunity — skip if
+    # another non-cancelled quotation already exists.
+    existing = frappe.db.count(
+        "Quotation",
+        filters={
+            "opportunity": opportunity_name,
+            "docstatus": ["!=", 2],
+            "name": ["!=", doc.name],
+        },
+    )
+    if existing > 0:
+        return
+
+    notify_opportunity_assignees(opportunity_name, doc.name)
+    update_assignment_log(opportunity_name, doc.name)
+
+
+def on_sales_order_save(doc, method):
+    """
+    When a Sales Order is created (draft OR submitted), mark every linked
+    Opportunity as Converted ("Won"). Linkage traversal:
+
+        Sales Order Item.prevdoc_docname -> Quotation.opportunity -> Opportunity
+
+    Never overwrites Lost/Closed — those are terminal states.
+    Idempotent: if the Opportunity is already Converted, no change.
+    """
+    if not doc:
+        return
+    if doc.docstatus == 2:  # cancelled
+        return
+
+    opps = frappe.db.sql_list(
+        """
+        SELECT DISTINCT q.opportunity
+        FROM `tabSales Order Item` sit
+        JOIN tabQuotation q ON q.name = sit.prevdoc_docname
+        WHERE sit.parent = %s
+          AND q.opportunity IS NOT NULL
+          AND q.opportunity != ''
+        """,
+        doc.name,
+    )
+    if not opps:
+        return
+
+    for opp_name in opps:
+        try:
+            current = frappe.db.get_value("Opportunity", opp_name, "status")
+            if current in ("Converted", "Lost", "Closed"):
+                continue
+            frappe.db.set_value(
+                "Opportunity", opp_name, "status", "Converted",
+                update_modified=False,
+            )
+            opp = frappe.get_doc("Opportunity", opp_name)
+            stage = "draft" if doc.docstatus == 0 else "submitted"
+            opp.add_comment(
+                "Comment",
+                f"Status: {current} -> Converted (Won) — Sales Order {doc.name} created ({stage})",
+            )
+        except Exception as e:
+            frappe.log_error(f"Failed to mark Opportunity {opp_name} Won from SO {doc.name}: {e}")
 
 
 def find_linked_opportunity(doc):

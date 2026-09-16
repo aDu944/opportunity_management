@@ -1351,12 +1351,53 @@ def get_employee_directory(search=None, branch=None, department=None, limit=200)
     return rows
 
 
+def _decide_leave(name, new_status, actor):
+    """Apply an approve / reject decision through the document lifecycle.
+
+    Uses the ORM and a SINGLE submit() pass rather than frappe.db.set_value:
+    set_value writes the column only, so validate / on_submit never run and the
+    Leave Ledger Entry + Attendance update never happen - the document stays in
+    Draft while reading "Approved". One pass, not save()+submit(), because
+    Frappe runs on_update for BOTH and ess_hooks.on_leave_application_update
+    has no has_value_changed guard, so two passes would double the employee's
+    email and FCM push.
+
+    Runs as `actor` so attribution and permission checks are correct. Raises on
+    failure so the caller reports the truth instead of a success page.
+    """
+    original = frappe.session.user
+    try:
+        frappe.set_user(actor)
+        doc = frappe.get_doc("Leave Application", name)
+        if doc.docstatus == 2:
+            frappe.throw("This leave was cancelled and cannot be modified.")
+        if doc.docstatus == 1:
+            # `status` is allow_on_submit=0: it cannot be changed after submit.
+            frappe.throw("This leave is already submitted. Reversing the "
+                         "decision requires cancel and amend.")
+        doc.status = new_status
+        doc.leave_approver = actor
+        doc.submit()                 # validate -> on_update -> on_submit
+        # `status` is permlevel 1. If `actor` lacked permlevel-1 write, Frappe
+        # would DROP the change silently and on_submit would fail obscurely.
+        if doc.status != new_status or doc.docstatus != 1:
+            frappe.throw("The decision did not persist (status={0}, docstatus={1}). "
+                         "Check permlevel-1 write access on Leave Application."
+                         .format(doc.status, doc.docstatus))
+        frappe.db.commit()
+        return doc
+    finally:
+        frappe.set_user(original)
+
+
 @frappe.whitelist(allow_guest=True)
 def approve_leave_via_email(name=None, action=None, user=None, exp=None, token=None):
     """One-click leave approve / reject from a signed URL in the notification
     email. Validates: HMAC signature (site secret) + expiry (14 days) +
-    recipient has an HR role. On success, updates the leave status + sets
-    leave_approver for attribution, then shows a small confirmation page.
+    recipient has an HR role. On success sets the status, sets
+    leave_approver for attribution, and SUBMITS the document via
+    `_decide_leave`, then shows a small confirmation page. Failures are
+    reported on that page rather than shown as success.
     """
     from opportunity_management.opportunity_management.ess_hooks import (
         _sign_leave_action,
@@ -1414,31 +1455,16 @@ def approve_leave_via_email(name=None, action=None, user=None, exp=None, token=N
                      f"This leave request for {emp_name} was already "
                      f"{new_status.lower()}.", ok=True)
 
-    # Idempotent update — bypasses workflow so it works regardless of
-    # docstatus (0 = draft, 1 = submitted). Cancelled leaves are blocked.
-    docstatus = frappe.db.get_value("Leave Application", name, "docstatus")
-    if docstatus == 2:
-        return _page("Cancelled", "This leave was cancelled and cannot be "
-                     "modified.", ok=False)
-
-    frappe.db.set_value("Leave Application", name, {
-        "status": new_status,
-        "leave_approver": user,
-    })
-    frappe.db.commit()
-
-    # frappe.db.set_value bypasses doc events, so on_leave_application_update
-    # (which sends the FCM push + confirmation email to the employee) never
-    # fires. Reload the doc and call the notifier manually.
+    # Go through the document lifecycle so the leave is actually SUBMITTED and
+    # the ledger entry / attendance update happen. The employee notification is
+    # fired by the on_update doc event, so it is not called manually here.
     try:
-        from opportunity_management.opportunity_management.ess_hooks import (
-            on_leave_application_update,
-        )
-        updated = frappe.get_doc("Leave Application", name)
-        on_leave_application_update(updated)
-    except Exception:
-        frappe.log_error(frappe.get_traceback(),
-                         "approve_leave_via_email — notify failed")
+        _decide_leave(name, new_status, user)
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "approve_leave_via_email")
+        return _page("Could Not Save",
+                     "ERPNext refused this change: "
+                     + frappe.utils.strip_html(str(e)).strip()[:300], ok=False)
 
     return _page(
         f"Leave {new_status}",
@@ -1452,12 +1478,14 @@ def approve_leave_via_email(name=None, action=None, user=None, exp=None, token=N
 def act_on_leave(name, action):
     """Mobile approvals — approve or reject a Leave Application.
 
-    The generic /api/resource/Leave Application PUT with
-    {status: Approved, docstatus: 1} triggers HRMS validation that runs
-    before the submit lifecycle and rejects the request with a 417. We
-    use the same approach as `approve_leave_via_email`: `set_value` to
-    update status + attribution, bypass the doc lifecycle, then manually
-    fire the notifier hook so the employee still gets the FCM push.
+    Sets the status and SUBMITS via `_decide_leave`, so the Leave Ledger
+    Entry and the Attendance update actually happen. Do NOT go back to
+    frappe.db.set_value here: it writes the column only, leaving the
+    document in Draft while it reads "Approved" - no ledger entry, no
+    attendance, no balance deducted. (A REST PUT carrying docstatus: 1
+    fails because Frappe refuses docstatus changes through save(); the
+    answer is submit(), not set_value.) The employee notification is
+    fired by the on_update doc event, so never call it manually.
 
     Auth: caller must either be the leave_approver on the document, hold
     HR Manager / HR User / System Manager, OR be a direct manager (Sales
@@ -1482,28 +1510,10 @@ def act_on_leave(name, action):
     if current_status == new_status:
         return {"ok": True, "already": True, "status": new_status}
 
-    docstatus = frappe.db.get_value("Leave Application", name, "docstatus")
-    if docstatus == 2:
-        frappe.throw("This leave was cancelled and cannot be modified.")
-
-    frappe.db.set_value("Leave Application", name, {
-        "status": new_status,
-        "leave_approver": caller,
-    })
-    frappe.db.commit()
-
-    # set_value bypasses doc events → fire the notifier manually so the
-    # employee gets the FCM push + confirmation email.
-    try:
-        from opportunity_management.opportunity_management.ess_hooks import (
-            on_leave_application_update,
-        )
-        updated = frappe.get_doc("Leave Application", name)
-        on_leave_application_update(updated)
-    except Exception:
-        frappe.log_error(frappe.get_traceback(), "act_on_leave — notify failed")
-
-    return {"ok": True, "status": new_status}
+    # Same lifecycle path as the email approval; the on_update doc event sends
+    # the employee notification, so it is not fired manually here.
+    doc = _decide_leave(name, new_status, caller)
+    return {"ok": True, "status": doc.status, "docstatus": doc.docstatus}
 
 
 @frappe.whitelist()
@@ -1843,6 +1853,23 @@ def submit_late_checkin_leave(employee, checkin_time=None):
     actual_minutes = t.hour * 60 + t.minute + (1 if t.second > 0 else 0)
     if actual_minutes <= on_time_minutes:
         return {"status": "on_time", "cutoff": f"{expected_h:02d}:{threshold_m:02d}"}
+    # Hard stop. Past this hour the day is absent, not late — filing a
+    # half-day Time-Off would understate it. The mobile app hides the late
+    # check-in button at the same hour and offers Apply for Leave instead,
+    # but the rule is enforced here so it holds for any caller.
+    try:
+        cutoff_h = int((s.get("late_checkin_cutoff_hour") if s else None) or 12)
+    except (TypeError, ValueError):
+        cutoff_h = 12
+    if cutoff_h and t.hour >= cutoff_h:
+        return {
+            "status": "too_late",
+            "cutoff_hour": cutoff_h,
+            "message": _(
+                "Check-in closed at {0}:00. Today counts as absent \u2014 "
+                "please apply for leave instead."
+            ).format(f"{cutoff_h:02d}"),
+        }
 
     # Hard stop. Past this hour the day is absent, not late — filing a
     # half-day Time-Off would understate it. The mobile app hides the late
