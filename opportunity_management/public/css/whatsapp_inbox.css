@@ -1,0 +1,492 @@
+/*
+ * Desk WhatsApp inbox (plan §2).
+ *
+ * Everything is expressed in Frappe's own CSS variables (--bg-color,
+ * --fg-color, --border-color, --text-muted, --primary …) so the page follows
+ * the Desk light/dark theme instead of shipping a second palette. WhatsApp
+ * green appears only as the module accent (--wa-green), never as a surface.
+ *
+ * Bubble sides are pinned by class, not by flex direction: an Arabic Desk sets
+ * dir="rtl" on the app root and must NOT mirror inbound/outbound.
+ */
+
+:root {
+	--wa-green: #25d366;
+	--wa-amber: #f0ad4e;
+	--wa-amber-bg: rgba(240, 173, 78, 0.12);
+	--wa-green-bg: rgba(37, 211, 102, 0.12);
+	--wa-read-blue: #34b7f1;
+}
+
+/* ── layout ─────────────────────────────────────────────────────────────── */
+
+.wa-inbox {
+	display: grid;
+	grid-template-columns: 320px 1fr 300px;
+	gap: 0;
+	height: calc(100vh - 160px);
+	min-height: 420px;
+	border: 1px solid var(--border-color);
+	border-radius: var(--border-radius-md, 6px);
+	overflow: hidden;
+	background: var(--card-bg, var(--bg-color));
+}
+
+.wa-pane {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	overflow: hidden;
+	border-inline-end: 1px solid var(--border-color);
+}
+
+.wa-pane-side { border-inline-end: none; }
+
+@media (max-width: 1000px) {
+	.wa-inbox { grid-template-columns: 1fr; height: auto; }
+
+	.wa-pane { border-inline-end: none; border-bottom: 1px solid var(--border-color); max-height: 70vh; }
+}
+
+/* ── left pane ──────────────────────────────────────────────────────────── */
+
+.wa-list-head { padding: 8px; border-bottom: 1px solid var(--border-color); }
+
+.wa-scopes { display: flex; gap: 4px; margin-bottom: 8px; }
+
+.wa-scope {
+	flex: 1;
+	padding: 4px 6px;
+	font-size: var(--text-sm, 12px);
+	background: transparent;
+	color: var(--text-muted);
+	border: 1px solid var(--border-color);
+	border-radius: var(--border-radius, 4px);
+	cursor: pointer;
+}
+
+.wa-scope.active { color: var(--text-color); border-color: var(--wa-green); background: var(--wa-green-bg); }
+
+.wa-scope-count:not(:empty) { margin-inline-start: 4px; font-weight: 600; color: var(--primary); }
+
+.wa-list-filters { display: flex; flex-direction: column; gap: 6px; }
+
+.wa-tag-filter { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.wa-tag-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 1px 6px;
+	font-size: var(--text-xs, 11px);
+	color: var(--text-muted);
+	background: transparent;
+	border: 1px solid var(--border-color);
+	border-radius: 10px;
+	cursor: pointer;
+}
+
+.wa-tag-chip.active { color: var(--text-color); border-color: var(--primary); }
+
+.wa-tag-dot {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+}
+
+.wa-list-body { flex: 1; overflow-y: auto; }
+
+.wa-row {
+	display: flex;
+	gap: 8px;
+	padding: 8px;
+	cursor: pointer;
+	border-bottom: 1px solid var(--border-color);
+}
+
+.wa-row:hover { background: var(--bg-light-gray, var(--control-bg)); }
+
+.wa-row.active { background: var(--control-bg); border-inline-start: 3px solid var(--wa-green); }
+
+.wa-row.unread .wa-row-name,
+.wa-row.unread .wa-row-preview { font-weight: 600; color: var(--text-color); }
+
+.wa-avatar {
+	flex: 0 0 34px;
+	height: 34px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	background: var(--wa-green-bg);
+	color: var(--text-color);
+	font-size: var(--text-xs, 11px);
+	font-weight: 600;
+}
+
+.wa-row-main { flex: 1; min-width: 0; }
+
+.wa-row-top,
+.wa-row-sub,
+.wa-row-bottom {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	justify-content: space-between;
+}
+
+.wa-row-name,
+.wa-row-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.wa-row-time,
+.wa-row-phone { flex: none; font-size: var(--text-xs, 11px); color: var(--text-muted); }
+
+.wa-row-sub { justify-content: flex-start; }
+
+.wa-row-preview { flex: 1; font-size: var(--text-sm, 12px); color: var(--text-muted); }
+
+.wa-dir { color: var(--text-muted); }
+
+.wa-unread-pill {
+	flex: none;
+	min-width: 18px;
+	padding: 0 5px;
+	text-align: center;
+	font-size: var(--text-xs, 11px);
+	line-height: 18px;
+	color: #fff;
+	background: var(--wa-green);
+	border-radius: 9px;
+}
+
+.wa-row-foot { margin-top: 2px; }
+
+.wa-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0 6px;
+	font-size: var(--text-xs, 11px);
+	color: var(--text-color);
+	background: var(--control-bg);
+	border-radius: 10px;
+}
+
+.wa-chip-muted { color: var(--text-muted); }
+
+.wa-chip-x { cursor: pointer; color: var(--text-muted); }
+
+/* ── centre pane ────────────────────────────────────────────────────────── */
+
+.wa-thread-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 8px;
+	border-bottom: 1px solid var(--border-color);
+}
+
+.wa-head-main { flex: 1; min-width: 0; }
+
+.wa-head-name { font-weight: 600; }
+
+.wa-head-phone { font-size: var(--text-xs, 11px); color: var(--text-muted); }
+
+.wa-head-controls { display: flex; align-items: center; gap: 6px; }
+
+.wa-head-controls .form-control { min-width: 130px; }
+
+.wa-head-tags {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px;
+	flex-basis: 100%;
+}
+
+.wa-tag-add .form-control { min-width: 110px; }
+
+.wa-banner { padding: 4px 8px; font-size: var(--text-sm, 12px); text-align: center; }
+
+.wa-banner-open {
+	color: var(--text-color);
+	background: var(--wa-green-bg);
+	border-bottom: 1px solid var(--wa-green);
+}
+
+.wa-banner-closed {
+	color: var(--text-color);
+	background: var(--wa-amber-bg);
+	border-bottom: 1px solid var(--wa-amber);
+}
+
+.wa-messages {
+	flex: 1;
+	overflow-y: auto;
+	padding: 10px;
+	display: flex;
+	flex-direction: column;
+	background: var(--bg-color);
+}
+
+.wa-day {
+	align-self: center;
+	margin: 8px 0;
+	padding: 1px 10px;
+	font-size: var(--text-xs, 11px);
+	color: var(--text-muted);
+	background: var(--control-bg);
+	border-radius: 10px;
+}
+
+.wa-older { align-self: center; margin-bottom: 8px; }
+
+/* Bubbles — sides pinned with margin, never with flex direction. */
+
+.wa-bubble {
+	max-width: 72%;
+	margin-bottom: 6px;
+	padding: 6px 8px;
+	border-radius: 8px;
+	border: 1px solid var(--border-color);
+	background: var(--card-bg, var(--bg-color));
+	word-wrap: break-word;
+}
+
+/* Physical auto margins, not align-self: in a column flex container align-self
+   runs along the INLINE axis, so flex-start would become "right" under RTL.
+   An auto cross-axis margin overrides align-self and is always physical. */
+.wa-in { margin-right: auto; margin-left: 0; border-top-left-radius: 2px; }
+
+.wa-out {
+	margin-left: auto;
+	margin-right: 0;
+	border-top-right-radius: 2px;
+	background: var(--wa-green-bg);
+	border-color: var(--wa-green);
+}
+
+.wa-note {
+	max-width: 80%;
+	margin-left: auto;
+	margin-right: auto;
+	background: var(--wa-amber-bg);
+	border-color: var(--wa-amber);
+}
+
+.wa-note-head {
+	display: flex;
+	gap: 8px;
+	justify-content: space-between;
+	font-size: var(--text-xs, 11px);
+	color: var(--text-muted);
+}
+
+.wa-note-type { font-style: italic; }
+
+.wa-auto { font-size: var(--text-xs, 11px); color: var(--text-muted); margin-bottom: 2px; }
+
+.wa-quote {
+	margin-bottom: 4px;
+	padding: 3px 6px;
+	font-size: var(--text-sm, 12px);
+	color: var(--text-muted);
+	background: var(--control-bg);
+	border-inline-start: 3px solid var(--primary);
+	border-radius: 4px;
+}
+
+.wa-text { white-space: pre-wrap; }
+
+.wa-media {
+	display: block;
+	max-width: 260px;
+	max-height: 260px;
+	margin-bottom: 4px;
+	border-radius: 6px;
+}
+
+.wa-audio { width: 240px; margin-bottom: 4px; }
+
+.wa-doc {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 4px;
+	padding: 4px 6px;
+	background: var(--control-bg);
+	border-radius: 6px;
+}
+
+.wa-doc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.wa-meta {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 4px;
+	margin-top: 2px;
+	font-size: var(--text-xs, 11px);
+	color: var(--text-muted);
+}
+
+.wa-tick-read { color: var(--wa-read-blue); }
+
+.wa-tick-failed { color: var(--red-500, #e24c4c); }
+
+/* ── composer ───────────────────────────────────────────────────────────── */
+
+.wa-composer { position: relative; border-top: 1px solid var(--border-color); padding: 6px; }
+
+.wa-composer-bar { display: flex; align-items: flex-end; gap: 6px; }
+
+.wa-input { flex: 1; resize: none; max-height: 160px; }
+
+.wa-note-mode .wa-input { background: var(--wa-amber-bg); border-color: var(--wa-amber); }
+
+.wa-note-toggle.active {
+	border-color: var(--wa-amber);
+	color: var(--text-color);
+	background: var(--wa-amber-bg);
+}
+
+.wa-quick-popover {
+	position: absolute;
+	bottom: 100%;
+	inset-inline-start: 8px;
+	z-index: 10;
+	width: 320px;
+	max-height: 240px;
+	overflow-y: auto;
+	background: var(--card-bg, var(--bg-color));
+	border: 1px solid var(--border-color);
+	border-radius: 6px;
+	box-shadow: var(--shadow-base, 0 2px 8px rgba(0, 0, 0, 0.15));
+}
+
+.wa-quick-item {
+	display: flex;
+	gap: 8px;
+	padding: 5px 8px;
+	cursor: pointer;
+}
+
+.wa-quick-item:hover { background: var(--control-bg); }
+
+.wa-quick-shortcut { color: var(--primary); font-family: var(--font-stack-mono, monospace); }
+
+.wa-template-picker {
+	border-top: 1px solid var(--border-color);
+	padding: 8px;
+	background: var(--wa-amber-bg);
+}
+
+.wa-picker-head { margin-bottom: 6px; font-size: var(--text-sm, 12px); color: var(--text-color); }
+
+.wa-picker-params {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin: 6px 0;
+}
+
+.wa-picker-preview {
+	margin: 6px 0;
+	padding: 6px;
+	white-space: pre-wrap;
+	background: var(--card-bg, var(--bg-color));
+	border: 1px dashed var(--border-color);
+	border-radius: 6px;
+}
+
+/* ── right pane ─────────────────────────────────────────────────────────── */
+
+.wa-side-tabs { display: flex; gap: 4px; padding: 8px 8px 0; }
+
+.wa-side-tab {
+	padding: 3px 8px;
+	font-size: var(--text-sm, 12px);
+	color: var(--text-muted);
+	background: transparent;
+	border: none;
+	border-bottom: 2px solid transparent;
+	cursor: pointer;
+}
+
+.wa-side-tab.active { color: var(--text-color); border-bottom-color: var(--wa-green); }
+
+.wa-side-body { flex: 1; overflow-y: auto; padding: 8px; }
+
+.wa-card {
+	margin-bottom: 10px;
+	padding: 8px;
+	border: 1px solid var(--border-color);
+	border-radius: 6px;
+}
+
+.wa-card-title { margin-bottom: 6px; font-weight: 600; }
+
+.wa-kv {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	justify-content: space-between;
+	padding: 2px 0;
+	font-size: var(--text-sm, 12px);
+}
+
+.wa-kv > span:first-child { color: var(--text-muted); }
+
+.wa-crm-actions { display: flex; gap: 4px; }
+
+.wa-link { color: var(--primary); }
+
+.wa-muted,
+.wa-empty {
+	padding: 10px;
+	text-align: center;
+	color: var(--text-muted);
+	font-size: var(--text-sm, 12px);
+}
+
+.wa-hit {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 5px 6px;
+	cursor: pointer;
+	border-bottom: 1px solid var(--border-color);
+}
+
+.wa-hit:hover { background: var(--control-bg); }
+
+.wa-hit-id { color: var(--text-muted); font-size: var(--text-xs, 11px); }
+
+.wa-range {
+	display: flex;
+	align-items: flex-end;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.wa-table { width: 100%; font-size: var(--text-sm, 12px); border-collapse: collapse; }
+
+.wa-table th,
+.wa-table td { padding: 3px 4px; text-align: start; border-bottom: 1px solid var(--border-color); }
+
+.wa-table th { color: var(--text-muted); font-weight: 500; }
+
+/* ── CRM form dashboard section ─────────────────────────────────────────── */
+
+.wa-crm-section .wa-crm-conv {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	justify-content: space-between;
+	padding: 4px 0;
+	border-bottom: 1px solid var(--border-color);
+}
+
+.wa-crm-section .wa-crm-conv:last-child { border-bottom: none; }

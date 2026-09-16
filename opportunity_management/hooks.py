@@ -262,15 +262,13 @@ doctype_list_js = {
 }
 
 # ── WhatsApp Desk inbox assets (M3) ──────────────────────────────────────────
-# Registered but commented out until the M3 workstream lands the files:
-# `bench build` hard-fails on an app_include_css entry whose file does not
-# exist, which would break the M1 deploy. Uncomment together with the files.
-# doctype_js = {
-#     "Contact": "public/js/whatsapp_crm_form.js",
-#     "Lead": "public/js/whatsapp_crm_form.js",
-#     "Customer": "public/js/whatsapp_crm_form.js",
-# }
-# app_include_css = ["/assets/opportunity_management/css/whatsapp_inbox.css"]
+# The files these point at landed with the M3 workstream, so the block is live.
+doctype_js = {
+    "Contact": "public/js/whatsapp_crm_form.js",
+    "Lead": "public/js/whatsapp_crm_form.js",
+    "Customer": "public/js/whatsapp_crm_form.js",
+}
+app_include_css = ["/assets/opportunity_management/css/whatsapp_inbox.css"]
 
 # ============================================================================
 # Installation/Setup Hooks
