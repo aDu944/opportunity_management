@@ -47,6 +47,16 @@ def window_seconds_remaining(last_inbound_at, now=None) -> int:
     return int(remaining) if remaining > 0 else 0
 
 
+def _int_or_none(value):
+    """Int for a real number, None for unset — never a misleading 0."""
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _full_names(users):
     """Batch User → full_name so a 30-row list is one query, not thirty."""
     wanted = sorted({u for u in users if u})
@@ -135,6 +145,9 @@ def conv_row(conv, tags=None, assignee_name=None, now=None):
         "opportunity": _g(conv, "opportunity") or None,
         "customer_language": _g(conv, "customer_language", "") or "",
         "notes_count": int(_g(conv, "notes_count", 0) or 0),
+        # Maintained by `whatsapp_hooks` on the first agent reply. Null, not 0,
+        # while the customer is still waiting — the two mean different things.
+        "first_response_seconds": _int_or_none(_g(conv, "first_response_seconds")),
     }
 
 

@@ -102,7 +102,7 @@ def list_conversations_for_crm(doctype, name):
             "name", "phone", "display_name", "whatsapp_account", "status", "assigned_to",
             "last_message_at", "last_inbound_at", "last_message_preview",
             "last_message_direction", "unread_count", "contact", "lead", "customer",
-            "opportunity", "customer_language", "notes_count",
+            "opportunity", "customer_language", "notes_count", "first_response_seconds",
         ],
         order_by="last_message_at desc",
         limit_page_length=20,

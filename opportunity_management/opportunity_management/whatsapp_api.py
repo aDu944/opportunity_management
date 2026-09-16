@@ -37,6 +37,7 @@ from opportunity_management.opportunity_management.whatsapp_api_inbox import (  
     claim,
     get_conversation,
     get_inbox_meta,
+    get_or_create_conversation,
     get_unread_count,
     list_conversations,
     mark_read,
@@ -64,13 +65,14 @@ from opportunity_management.opportunity_management.whatsapp_api_crm import (  # 
     unlink_crm,
 )
 
-# The 24 endpoint names of plan §1.7 + §5. Anything not listed here is not
+# The 25 endpoint names of plan §1.7 + §5. Anything not listed here is not
 # part of the contract.
 __all__ = [
     # conversations
     "get_inbox_meta",
     "list_conversations",
     "get_conversation",
+    "get_or_create_conversation",
     "get_unread_count",
     # assignment & status
     "claim",

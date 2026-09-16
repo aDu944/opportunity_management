@@ -2,7 +2,7 @@
  * Bundle entry for the Desk WhatsApp inbox (plan §2).
  *
  * `page/whatsapp_inbox/whatsapp_inbox.js` pulls this in with
- * `frappe.require("whatsapp_inbox.bundle.js")`, so the seven modules below
+ * `frappe.require("whatsapp_inbox.bundle.js")`, so the eight modules below
  * ship as one asset that is only fetched when the page is actually opened —
  * unlike `app_include_js`, which would load them on every Desk boot.
  */
@@ -12,6 +12,7 @@ import * as time from "./whatsapp_inbox/time.js";
 import { WhatsAppInbox } from "./whatsapp_inbox/inbox.js";
 import { ConversationList } from "./whatsapp_inbox/conversation_list.js";
 import { Thread } from "./whatsapp_inbox/thread.js";
+import { ThreadHeader } from "./whatsapp_inbox/thread_header.js";
 import { Composer } from "./whatsapp_inbox/composer.js";
 import { SidePanel } from "./whatsapp_inbox/side_panel.js";
 
@@ -27,6 +28,7 @@ opportunity_management.whatsapp = {
 	WhatsAppInbox: WhatsAppInbox,
 	ConversationList: ConversationList,
 	Thread: Thread,
+	ThreadHeader: ThreadHeader,
 	Composer: Composer,
 	SidePanel: SidePanel,
 };

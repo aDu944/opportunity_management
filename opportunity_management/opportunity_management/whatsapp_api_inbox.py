@@ -6,6 +6,8 @@ Re-exported by `whatsapp_api.py`, which is the path clients call. Nothing
 routes here directly.
 """
 
+import json
+
 import frappe
 from frappe import _
 from frappe.utils import cint, now_datetime
@@ -15,6 +17,7 @@ from opportunity_management.opportunity_management import whatsapp_serializers a
 from opportunity_management.opportunity_management.whatsapp_utils import (
     get_inbox_settings,
     inbox_users,
+    normalize_phone,
 )
 from opportunity_management.opportunity_management.whatsapp_api_common import (
     _crm_label,
@@ -64,14 +67,51 @@ def get_inbox_meta():
     }
 
 
+def _tag_list(raw):
+    """Normalize the `tags` argument into a deduped list of tag names.
+
+    Desk sends a JSON array (`frappe.call` stringifies arrays); a comma string
+    is accepted too so the endpoint is usable from the API console.
+    """
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        text = raw.strip()
+        if text.startswith("["):
+            try:
+                raw = json.loads(text)
+            except (TypeError, ValueError):
+                raw = text
+        if isinstance(raw, str):
+            raw = text.split(",")
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out = []
+    for item in raw:
+        item = str(item if item is not None else "").strip()
+        if item and item not in out:
+            out.append(item)
+    return out
+
+
 @frappe.whitelist()
 def list_conversations(
-    scope="all", search=None, tag=None, status=None, limit_start=0, limit_page_length=None
+    scope="all",
+    search=None,
+    tag=None,
+    tags=None,
+    status=None,
+    limit_start=0,
+    limit_page_length=None,
 ):
     """Paged conversation list.
 
     scope: mine | unassigned | all | resolved. `all` hides Resolved threads —
     the resolved pile is its own tab, not noise in the working list.
+
+    `tag` (one name) and `tags` (JSON list or comma string) both filter on the
+    conversation's tags; when several are given the conversation must carry
+    **all** of them. `tag` is kept for the existing mobile callers.
     """
     _require_inbox_access()
     start, length = _paging(limit_start, limit_page_length)
@@ -96,14 +136,26 @@ def list_conversations(
         clauses.append("c.status = %(status)s")
         params["status"] = status
 
-    if tag:
+    wanted_tags = _tag_list(tags)
+    if tag and tag not in wanted_tags:
+        wanted_tags.append(tag)
+    if wanted_tags:
+        # AND semantics: one EXISTS over the child table, grouped per parent,
+        # that only matches when every requested tag is present. No literal
+        # `%` in this SQL — the only percent signs are pymysql placeholders,
+        # so nothing here needs doubling.
+        placeholders = ", ".join("%({0})s".format("tag_" + str(i)) for i in range(len(wanted_tags)))
+        for i, name in enumerate(wanted_tags):
+            params["tag_" + str(i)] = name
+        params["tag_count"] = len(wanted_tags)
         clauses.append(
-            """EXISTS (SELECT 1 FROM `tabWhatsApp Conversation Tag` t
+            """EXISTS (SELECT t.parent FROM `tabWhatsApp Conversation Tag` t
                         WHERE t.parent = c.name
                           AND t.parenttype = 'WhatsApp Conversation'
-                          AND t.tag = %(tag)s)"""
+                          AND t.tag IN ({0})
+                        GROUP BY t.parent
+                        HAVING COUNT(DISTINCT t.tag) = %(tag_count)s)""".format(placeholders)
         )
-        params["tag"] = tag
 
     search = (search or "").strip()
     if search:
@@ -125,7 +177,7 @@ def list_conversations(
                c.assigned_to, c.tags, c.last_message_at, c.last_inbound_at,
                c.last_message_preview, c.last_message_direction, c.unread_count,
                c.contact, c.lead, c.customer, c.opportunity, c.customer_language,
-               c.notes_count
+               c.notes_count, c.first_response_seconds
         FROM `tabWhatsApp Conversation` c
         WHERE {where}
         ORDER BY c.last_message_at DESC, c.modified DESC
@@ -139,6 +191,81 @@ def list_conversations(
     return {"rows": S.conv_rows(rows[:length]), "has_more": has_more}
 
 
+def _profile_name(phone):
+    """The raw WhatsApp profile name Meta sent for this number.
+
+    `display_name` on the conversation is overwritten the moment the thread is
+    linked to a Contact/Lead/Customer, so the name the customer set on their
+    own handset is only recoverable from frappe_whatsapp's `WhatsApp Profiles`.
+    Looked up here rather than in the shared serializer so list queries stay
+    one-shot — this is a single-conversation detail.
+    """
+    if not phone:
+        return None
+    try:
+        return frappe.db.get_value("WhatsApp Profiles", {"number": phone}, "profile_name") or None
+    except Exception:
+        # The profiles doctype is frappe_whatsapp's, not ours; a build without
+        # it must not take the whole conversation payload down.
+        return None
+
+
+def _resolve_account(whatsapp_account=None):
+    """Which WhatsApp Account an agent-initiated thread belongs to.
+
+    Explicit argument wins; otherwise the default outgoing account; otherwise
+    the single Active one. With several accounts and no default configured we
+    refuse rather than guess — the account decides which number the customer
+    sees the message from.
+    """
+    if whatsapp_account:
+        if not frappe.db.exists("WhatsApp Account", whatsapp_account):
+            frappe.throw(_("WhatsApp Account {0} not found").format(whatsapp_account))
+        return whatsapp_account
+
+    default = frappe.db.get_value("WhatsApp Account", {"is_default_outgoing": 1}, "name")
+    if default:
+        return default
+
+    try:
+        active = frappe.get_all(
+            "WhatsApp Account", filters={"status": "Active"}, pluck="name", limit_page_length=2
+        )
+    except Exception:
+        # Older frappe_whatsapp builds have no `status` field on the account.
+        active = frappe.get_all("WhatsApp Account", pluck="name", limit_page_length=2)
+    if len(active) == 1:
+        return active[0]
+
+    frappe.throw(
+        _("No WhatsApp Account is set as the default outgoing account — pick one in WhatsApp Account.")
+    )
+
+
+@frappe.whitelist()
+def get_or_create_conversation(phone, whatsapp_account=None, display_name=None):
+    """Get-or-create the thread for a phone number (Desk "Start conversation").
+
+    Idempotent: `upsert_conversation` keys on the unique `conversation_key`, so
+    calling this twice for the same number returns the same row rather than a
+    duplicate thread. `notify=False` — an agent opening a thread from a Contact
+    form is not an inbox event anyone needs pushed to them; the first outbound
+    message publishes on its own.
+    """
+    _require_inbox_access()
+    number = normalize_phone(phone)
+    if not number:
+        frappe.throw(_("{0} is not a usable WhatsApp number").format(phone or ""))
+
+    account = _resolve_account(whatsapp_account)
+    conv = whatsapp_hooks.upsert_conversation(
+        number, account, profile_name=display_name, notify=False
+    )
+    if not conv:
+        frappe.throw(_("Could not open a conversation for {0}").format(number))
+    return S.conv_row(conv)
+
+
 @frappe.whitelist()
 def get_conversation(name):
     _require_inbox_access()
@@ -146,6 +273,7 @@ def get_conversation(name):
     row = S.conv_row(conv)
     row.update(
         {
+            "profile_name": _profile_name(conv.phone),
             "window_open": conv.window_open(),
             "window_seconds_remaining": conv.window_seconds_remaining(),
             "can_assign": _is_manager(),

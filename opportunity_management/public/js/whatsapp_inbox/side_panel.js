@@ -85,6 +85,9 @@ export class SidePanel {
 			<div class="wa-card">
 				<div class="wa-card-title" dir="auto">${esc(conv.display_name || conv.phone)}</div>
 				<div class="wa-kv"><span>${esc(__("Phone"))}</span><span>${esc(conv.phone)}</span></div>
+				<div class="wa-kv"><span>${esc(__("WhatsApp profile name"))}</span><span dir="auto">${esc(
+			conv.profile_name || "—"
+		)}</span></div>
 				<div class="wa-kv"><span>${esc(__("Account"))}</span><span>${esc(
 			conv.whatsapp_account || "—"
 		)}</span></div>
@@ -105,6 +108,11 @@ export class SidePanel {
 		)}</span></div>
 				<div class="wa-kv"><span>${esc(__("Resolved"))}</span><span>${esc(
 			conv.resolved_at ? day_label(conv.resolved_at) : "—"
+		)}</span></div>
+				<div class="wa-kv"><span>${esc(__("First response"))}</span><span>${esc(
+			conv.first_response_seconds == null
+				? "—"
+				: duration_label(conv.first_response_seconds)
 		)}</span></div>
 				<div class="wa-kv"><span>${esc(__("Notes"))}</span><span>${esc(
 			conv.notes_count || 0

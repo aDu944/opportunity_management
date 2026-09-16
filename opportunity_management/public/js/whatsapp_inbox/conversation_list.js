@@ -104,7 +104,8 @@ export class ConversationList {
 		this.render_scopes();
 	}
 
-	/** Tag chips come from `get_inbox_meta().tags`; multi-select is an AND-free OR. */
+	/** Tag chips come from `get_inbox_meta().tags`. Picking several narrows:
+	 *  the server's `tags` filter is an AND, so a row must carry all of them. */
 	render_tag_filter(tags) {
 		this.$tag_filter.empty();
 		(tags || []).forEach((tag) => {
@@ -185,9 +186,10 @@ export class ConversationList {
 			.list_conversations({
 				scope: this.scope,
 				search: this.search || undefined,
-				// The API takes a single tag; with several picked we filter the
-				// extra ones client-side rather than invent an endpoint shape.
-				tag: this.tags.length ? this.tags[0] : undefined,
+				// `tags` is the AND filter; the server does the narrowing so the
+				// pager stays honest (client-side filtering would drop rows out
+				// of a page and break `has_more`).
+				tags: this.tags.length ? JSON.stringify(this.tags) : undefined,
 				limit_start: start,
 				limit_page_length: PAGE_LENGTH,
 			})
@@ -199,7 +201,7 @@ export class ConversationList {
 				}
 				const rows = (res && res.rows) || [];
 				this.has_more = !!(res && res.has_more);
-				rows.filter((row) => this.matches_tags(row)).forEach((row) => this.append(row));
+				rows.forEach((row) => this.append(row));
 				if (!this.rows.length) {
 					this.$body.html(`<div class="wa-empty">${esc(__("No conversations"))}</div>`);
 				}
@@ -209,14 +211,6 @@ export class ConversationList {
 				this.loading = false;
 				this.$body.html(`<div class="wa-empty">${esc(err.message)}</div>`);
 			});
-	}
-
-	matches_tags(row) {
-		if (this.tags.length < 2) {
-			return true;
-		}
-		const on = (row.tags || []).map((t) => t.tag);
-		return this.tags.every((t) => on.indexOf(t) !== -1);
 	}
 
 	append(row) {

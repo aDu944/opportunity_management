@@ -34,8 +34,15 @@ class MetaSendError(frappe.ValidationError):
     """Meta rejected the send; nothing was persisted."""
 
 
-class NotAssigneeError(frappe.PermissionError):
-    """The caller is not the assignee (and is not a manager)."""
+class NotAssigneeError(frappe.ValidationError):
+    """The caller is not the assignee (and is not a manager).
+
+    Deliberately NOT a `frappe.PermissionError`: that maps to HTTP 403, and the
+    mobile client's auth interceptor treats any 401/403 as a dead session and
+    re-logs in before the typed error ever reaches the caller. 417 keeps this a
+    normal "someone else owns this chat" the UI can render inline. Clients
+    branch on `exc_type`, which is the class name — unchanged.
+    """
 
 
 # ── access ───────────────────────────────────────────────────────────────────
