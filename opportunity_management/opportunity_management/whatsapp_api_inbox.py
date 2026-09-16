@@ -174,7 +174,7 @@ def list_conversations(
     rows = frappe.db.sql(
         f"""
         SELECT c.name, c.phone, c.display_name, c.whatsapp_account, c.status,
-               c.assigned_to, c.tags, c.last_message_at, c.last_inbound_at,
+               c.assigned_to, c.last_message_at, c.last_inbound_at,
                c.last_message_preview, c.last_message_direction, c.unread_count,
                c.contact, c.lead, c.customer, c.opportunity, c.customer_language,
                c.notes_count, c.first_response_seconds
