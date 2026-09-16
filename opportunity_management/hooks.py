@@ -40,22 +40,49 @@ doc_events = {
         "on_trash": "opportunity_management.quotation_handler.recalc_opportunity_amount",
     },
     "Purchase Order": {
-        "on_submit": "opportunity_management.opportunity_management.business_hooks.on_purchase_order_submit",
+        "after_insert": "opportunity_management.po_status.on_po_after_insert",
+        "on_submit": [
+            "opportunity_management.opportunity_management.business_hooks.on_purchase_order_submit",
+            "opportunity_management.po_status.on_po_submit",
+        ],
+        "on_update_after_submit": "opportunity_management.po_status.on_po_update_after_submit",
+        "on_cancel": "opportunity_management.po_status.on_po_cancel",
     },
     "Purchase Receipt": {
-        "on_submit": "opportunity_management.opportunity_management.business_hooks.on_purchase_receipt_submit",
+        "after_insert": "opportunity_management.po_status.on_purchase_receipt_change",
+        "on_submit": [
+            "opportunity_management.opportunity_management.business_hooks.on_purchase_receipt_submit",
+            "opportunity_management.po_status.on_purchase_receipt_change",
+        ],
+        "on_cancel": "opportunity_management.po_status.on_purchase_receipt_change",
+        "on_trash": "opportunity_management.po_status.on_purchase_receipt_change",
     },
     "Comment": {
         "after_insert": "opportunity_management.opportunity_management.business_hooks.on_comment_after_insert",
     },
     "Project": {
         "after_insert": "opportunity_management.opportunity_management.business_hooks.on_project_after_insert",
+        "validate": "opportunity_management.rp_enforce.enforce_project_responsible_party",
     },
     "Sales Order": {
-        "on_submit": "opportunity_management.opportunity_management.business_hooks.on_sales_order_submit",
+        "after_insert": "opportunity_management.quotation_handler.on_sales_order_save",
+        "on_submit": [
+            "opportunity_management.quotation_handler.on_sales_order_save",
+            "opportunity_management.opportunity_management.business_hooks.on_sales_order_submit",
+        ],
     },
     "Sales Invoice": {
         "on_submit": "opportunity_management.opportunity_management.business_hooks.on_sales_invoice_submit",
+    },
+    "Shipping": {
+        "on_submit": "opportunity_management.po_status.on_shipping_change",
+        "on_cancel": "opportunity_management.po_status.on_shipping_change",
+        "on_update_after_submit": "opportunity_management.po_status.on_shipping_change",
+    },
+    "Purchase Invoice": {
+        "on_submit": "opportunity_management.po_status.on_purchase_invoice_change",
+        "on_cancel": "opportunity_management.po_status.on_purchase_invoice_change",
+        "on_update_after_submit": "opportunity_management.po_status.on_purchase_invoice_change",
     },
     "Delivery Note": {
         "on_submit": "opportunity_management.opportunity_management.business_hooks.on_delivery_note_submit",
@@ -98,7 +125,9 @@ doc_events = {
         "on_submit": [
             "opportunity_management.opportunity_management.ess_hooks.on_payment_entry_submit",
             "opportunity_management.opportunity_management.business_hooks.on_payment_entry_submit_broadcast",
+            "opportunity_management.po_status.on_payment_entry_change",
         ],
+        "on_cancel": "opportunity_management.po_status.on_payment_entry_change",
     },
 }
 
@@ -213,7 +242,6 @@ after_install = "opportunity_management.opportunity_management.setup.install.aft
 
 # --- Bundled Client Scripts (migrated from DB for perf) ---
 app_include_js = [
-    'alt_items_form_totals_quotation.bundle.js',
     'je_project_and_opportunity.bundle.js',
     'opportunity_list_year_first_sort.bundle.js',
     'opportunity_status.bundle.js',
@@ -221,4 +249,5 @@ app_include_js = [
     'quotation_general_customer_name.bundle.js',
     'quotation_subtotals_by_section.bundle.js',
     'quotation_title_row.bundle.js',
+    'purchase_order_list_extend.bundle.js',
 ]

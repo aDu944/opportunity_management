@@ -73,7 +73,24 @@ _FESTO_ROLES = (
 
 
 def _is_festo_doc(doc) -> bool:
-    """True iff any child-table item on `doc` has brand='FESTO'."""
+    """True iff `doc` belongs to the FESTO company, or any child-table item
+    on it has brand='FESTO'.
+
+    The company check comes first and is deliberate. Brand alone was the
+    original test, but it only holds when every line item's Item master is
+    brand-tagged, and in practice that tagging is inconsistent: 7 of the
+    last 25 FESTO-company quotations had no FESTO-branded item, so they
+    classified as non-Festo and `_scoped_role_users` fell through to the
+    generic Sales Manager expansion — notifying the whole AL KHORA sales
+    team about FESTO documents.
+
+    Keying off company as well makes the check fail closed (over-scoping to
+    the Festo team) rather than leaking outward, and matches the condition
+    the built-in "New Quotation Created" Notification already uses.
+    """
+    if (doc.get("company") or "").strip().upper() == "FESTO":
+        return True
+
     items = doc.get("items") or []
     if not items:
         return False

@@ -4,6 +4,10 @@ Helps determine who should receive opportunity notifications
 """
 
 import frappe
+
+# From-address for Tender Hub notifications. Frappe picks the Email Account
+# whose email_id matches; if none exists it falls back to the default.
+TENDER_HUB_SENDER = "Tender Hub <tender-bot@alkhora.com>"
 from frappe import _
 
 
@@ -680,6 +684,7 @@ def notify_new_message(
     try:
         frappe.sendmail(
             recipients=recipients,
+            sender=TENDER_HUB_SENDER,
             subject=subj,
             message=html,
             reference_doctype="Opportunity",
@@ -705,6 +710,7 @@ def notify_new_tenders(
     dashboard_url,
     tenders_json,
     item_noun="tender",
+    extra_recipients="",
 ):
     """Send a 'new tender(s) available' alert to every enabled User who has
     the given role. Used by Tender Hub to fan out alerts to O&G Managers
@@ -746,11 +752,25 @@ def notify_new_tenders(
           AND u.name NOT IN ('Guest', 'Administrator')
     """, {"role": role_name})
     recipients = [r for r in (recipients or []) if r]
+
+    # Union in any per-buyer extra recipients (e.g. account-specific alerts
+    # that Tender Hub wants routed to a single person on top of the role fan-out).
+    extras = extra_recipients
+    if isinstance(extras, str) and extras.strip():
+        try:
+            extras = json.loads(extras)
+        except Exception:
+            extras = [e.strip() for e in extras.split(",") if e.strip()]
+    if isinstance(extras, list):
+        for e in extras:
+            if e and e not in recipients:
+                recipients.append(e)
+
     if not recipients:
         frappe.logger().warning(
-            f"notify_new_tenders: no enabled users with role {role_name!r}"
+            f"notify_new_tenders: no recipients (role={role_name!r}, extras={extras})"
         )
-        return {"ok": False, "reason": f"no users with role {role_name}"}
+        return {"ok": False, "reason": f"no recipients (role={role_name})"}
 
     color = brand_color or "#0070f2"
     is_digest = len(tenders) >= 2
@@ -776,6 +796,10 @@ def notify_new_tenders(
             rows.append(f'<tr><td style="padding:2px 12px 2px 0;color:#6b7280;">Closes</td><td>{escape_html(t.get("closes") or "")}</td></tr>')
         if t.get("type"):
             rows.append(f'<tr><td style="padding:2px 12px 2px 0;color:#6b7280;">Type</td><td>{escape_html(t.get("type") or "")}</td></tr>')
+        if t.get("sector"):
+            rows.append(f'<tr><td style="padding:2px 12px 2px 0;color:#6b7280;">Sector</td><td>{escape_html(t.get("sector") or "")}</td></tr>')
+        if t.get("cost"):
+            rows.append(f'<tr><td style="padding:2px 12px 2px 0;color:#6b7280;">Est. cost</td><td style="font-weight:600;">{escape_html(t.get("cost") or "")}</td></tr>')
         cta = f'<a href="{escape_html(t.get("tender_url") or dashboard_url)}" style="display:inline-block;padding:10px 22px;background:{color};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;border-radius:6px;">View on Tender Hub →</a>'
         if t.get("source_url"):
             cta += f'<a href="{escape_html(t.get("source_url"))}" style="display:inline-block;margin-left:8px;padding:10px 18px;border:1px solid #d1d5db;color:#374151;text-decoration:none;font-weight:500;font-size:14px;border-radius:6px;">Open in source ↗</a>'
@@ -799,6 +823,10 @@ def notify_new_tenders(
             sub = escape_html(sub)
         rtl = ' dir="rtl"' if any(c in (t.get("title") or "") for c in "آأإابتثجحخدذرزسشصضطظعغفقكلمنهويةى") else ""
         meta = f'{escape_html(t.get("number") or "")}' + (f' &nbsp;·&nbsp; closes {escape_html(t.get("closes"))}' if t.get("closes") else '')
+        if t.get("sector"):
+            meta += f' &nbsp;·&nbsp; {escape_html(t.get("sector"))}'
+        if t.get("cost"):
+            meta += f' &nbsp;·&nbsp; <span style="font-weight:600;color:#111827;">{escape_html(t.get("cost"))}</span>'
         actions = f'<a href="{escape_html(t.get("tender_url") or dashboard_url)}" style="display:inline-block;padding:6px 14px;background:{color};color:#ffffff;text-decoration:none;font-weight:500;font-size:12px;border-radius:5px;">View →</a>'
         if t.get("pdf_url"):
             actions += f'<a href="{escape_html(t.get("pdf_url"))}" style="display:inline-block;margin-left:6px;padding:6px 14px;border:1px solid #d1d5db;color:#374151;text-decoration:none;font-weight:500;font-size:12px;border-radius:5px;">📄 PDF</a>'
@@ -839,6 +867,7 @@ def notify_new_tenders(
     try:
         frappe.sendmail(
             recipients=recipients,
+            sender=TENDER_HUB_SENDER,
             subject=subj,
             message=html,
             now=False,
@@ -1128,7 +1157,7 @@ def notify_buyer_message_digest(
         '<span style="color:#9ca3af;">— ALKHORA Tender Hub · sent from <a href="https://tender.alkhora.com" style="color:#6b7280;">tender.alkhora.com</a></span>'
         '</td></tr></table></td></tr></table></body></html>'
     )
-    sendmail_kwargs = dict(recipients=recipients, subject=subj, message=html, now=False)
+    sendmail_kwargs = dict(recipients=recipients, sender=TENDER_HUB_SENDER, subject=subj, message=html, now=False)
     if email_attachments:
         sendmail_kwargs["attachments"] = email_attachments
     try:
