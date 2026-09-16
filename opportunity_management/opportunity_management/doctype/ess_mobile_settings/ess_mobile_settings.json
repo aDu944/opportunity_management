@@ -32,6 +32,7 @@
   "enable_approvals",
   "enable_geofence_reminders",
   "enable_attendance_history_view",
+  "enable_whatsapp_inbox",
   "security_tab",
   "allow_biometric_login",
   "allow_remember_me",
@@ -249,6 +250,13 @@
    "fieldtype": "Check",
    "label": "Attendance History View",
    "default": "1"
+  },
+  {
+   "fieldname": "enable_whatsapp_inbox",
+   "fieldtype": "Check",
+   "label": "WhatsApp Inbox",
+   "default": "0",
+   "description": "Shared WhatsApp team inbox (mobile tile + bottom-nav tab). Also needs the WhatsApp Agent or WhatsApp Manager role on the user."
   },
   {
    "fieldname": "security_tab",

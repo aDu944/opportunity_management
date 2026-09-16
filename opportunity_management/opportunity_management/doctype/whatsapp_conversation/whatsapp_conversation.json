@@ -1,0 +1,336 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:WAC-{#####}",
+ "creation": "2026-09-16 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "phone",
+  "display_name",
+  "whatsapp_account",
+  "column_break_head",
+  "status",
+  "assigned_to",
+  "assigned_at",
+  "assigned_by",
+  "section_break_tags",
+  "tags",
+  "customer_language",
+  "section_break_activity",
+  "last_message_at",
+  "last_inbound_at",
+  "last_outbound_at",
+  "last_message_direction",
+  "column_break_activity",
+  "last_message_preview",
+  "unread_count",
+  "notes_count",
+  "section_break_crm",
+  "contact",
+  "lead",
+  "column_break_crm",
+  "customer",
+  "opportunity",
+  "section_break_analytics",
+  "first_contact_at",
+  "awaiting_reply_since",
+  "first_response_seconds",
+  "column_break_analytics",
+  "resolved_at",
+  "resolved_by",
+  "section_break_automation",
+  "welcome_sent_at",
+  "last_out_of_hours_reply_at",
+  "column_break_automation",
+  "last_team_alert_at",
+  "conversation_key"
+ ],
+ "fields": [
+  {
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "label": "Phone",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "reqd": 1,
+   "description": "Normalized digits, no leading +."
+  },
+  {
+   "fieldname": "display_name",
+   "fieldtype": "Data",
+   "label": "Display Name",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "whatsapp_account",
+   "fieldtype": "Link",
+   "label": "WhatsApp Account",
+   "options": "WhatsApp Account",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Open",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Open\nPending\nResolved",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "assigned_to",
+   "fieldtype": "Link",
+   "label": "Assigned To",
+   "options": "User",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "assigned_at",
+   "fieldtype": "Datetime",
+   "label": "Assigned At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "assigned_by",
+   "fieldtype": "Link",
+   "label": "Assigned By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_tags",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "tags",
+   "fieldtype": "Table MultiSelect",
+   "label": "Tags",
+   "options": "WhatsApp Conversation Tag"
+  },
+  {
+   "fieldname": "customer_language",
+   "fieldtype": "Select",
+   "label": "Customer Language",
+   "options": "\nar\nen"
+  },
+  {
+   "fieldname": "section_break_activity",
+   "fieldtype": "Section Break",
+   "label": "Activity"
+  },
+  {
+   "fieldname": "last_message_at",
+   "fieldtype": "Datetime",
+   "label": "Last Message At",
+   "in_list_view": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "last_inbound_at",
+   "fieldtype": "Datetime",
+   "label": "Last Inbound At",
+   "description": "Drives the Meta 24h customer-service window."
+  },
+  {
+   "fieldname": "last_outbound_at",
+   "fieldtype": "Datetime",
+   "label": "Last Outbound At"
+  },
+  {
+   "fieldname": "last_message_direction",
+   "fieldtype": "Select",
+   "label": "Last Message Direction",
+   "options": "\nIn\nOut"
+  },
+  {
+   "fieldname": "column_break_activity",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_message_preview",
+   "fieldtype": "Small Text",
+   "label": "Last Message Preview"
+  },
+  {
+   "default": "0",
+   "fieldname": "unread_count",
+   "fieldtype": "Int",
+   "label": "Unread Count",
+   "in_list_view": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "notes_count",
+   "fieldtype": "Int",
+   "label": "Notes Count"
+  },
+  {
+   "fieldname": "section_break_crm",
+   "fieldtype": "Section Break",
+   "label": "CRM"
+  },
+  {
+   "fieldname": "contact",
+   "fieldtype": "Link",
+   "label": "Contact",
+   "options": "Contact"
+  },
+  {
+   "fieldname": "lead",
+   "fieldtype": "Link",
+   "label": "Lead",
+   "options": "Lead"
+  },
+  {
+   "fieldname": "column_break_crm",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "opportunity",
+   "fieldtype": "Link",
+   "label": "Opportunity",
+   "options": "Opportunity"
+  },
+  {
+   "fieldname": "section_break_analytics",
+   "fieldtype": "Section Break",
+   "label": "Analytics"
+  },
+  {
+   "fieldname": "first_contact_at",
+   "fieldtype": "Datetime",
+   "label": "First Contact At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "awaiting_reply_since",
+   "fieldtype": "Datetime",
+   "label": "Awaiting Reply Since",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "first_response_seconds",
+   "fieldtype": "Int",
+   "label": "First Response Seconds",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_analytics",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "resolved_at",
+   "fieldtype": "Datetime",
+   "label": "Resolved At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "resolved_by",
+   "fieldtype": "Link",
+   "label": "Resolved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_automation",
+   "fieldtype": "Section Break",
+   "label": "Automation Throttles"
+  },
+  {
+   "fieldname": "welcome_sent_at",
+   "fieldtype": "Datetime",
+   "label": "Welcome Sent At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_out_of_hours_reply_at",
+   "fieldtype": "Datetime",
+   "label": "Last Out Of Hours Reply At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_automation",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_team_alert_at",
+   "fieldtype": "Datetime",
+   "label": "Last Team Alert At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "conversation_key",
+   "fieldtype": "Data",
+   "label": "Conversation Key",
+   "read_only": 1,
+   "unique": 1,
+   "description": "{whatsapp_account}:{phone} — the thread identity."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [
+  {
+   "group": "Inbox",
+   "link_doctype": "WhatsApp Internal Note",
+   "link_fieldname": "conversation"
+  }
+ ],
+ "modified": "2026-09-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Opportunity Management",
+ "name": "WhatsApp Conversation",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "WhatsApp Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "WhatsApp Agent",
+   "write": 1
+  }
+ ],
+ "sort_field": "last_message_at",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "display_name",
+ "track_changes": 1
+}

@@ -1,2 +1,5 @@
 opportunity_management.patches.create_workspace
 opportunity_management.patches.expense_category_to_child_table
+
+[post_model_sync]
+opportunity_management.patches.backfill_whatsapp_conversations

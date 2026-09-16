@@ -415,3 +415,68 @@ def journal_entry_rejected(doc):
         ) + _action_by_line(doc, "رفضه", "Rejected"),
         {"doctype": "Journal Entry", "name": doc.name},
     )
+
+
+# ── WHATSAPP TEAM INBOX ───────────────────────────────────────────────────────
+# Extra-arg signatures like comment_added: a WhatsApp Conversation is not a
+# business doc, so the message / actor is passed alongside it.
+
+def whatsapp_inbound(conv, msg):
+    """A customer wrote in. Push the message text so the agent can triage
+    from the lock screen.
+
+    conv — WhatsApp Conversation doc/dict
+    msg  — the inbound WhatsApp Message doc/dict (its `custom_body_text` is
+           already the normalized display string: media labels, button
+           titles and rendered templates resolved at insert time).
+    """
+    who = (conv.get("display_name") or conv.get("phone") or "").strip()
+    text = (msg.get("custom_body_text") or "").strip()
+    if not text:
+        from opportunity_management.opportunity_management.whatsapp_utils import (
+            normalize_body,
+        )
+        text = normalize_body(msg)
+    if len(text) > 240:
+        text = text[:237].rstrip() + "…"
+    if not text:
+        text = "(رسالة بدون نص • no text)"
+
+    return (
+        "💬 رسالة واتساب • WhatsApp",
+        f"{who}\n{text}",
+        {
+            "type": "whatsapp_message",
+            "screen": "whatsapp",
+            "doctype": "WhatsApp Conversation",
+            "name": conv.get("name"),
+            "kind": "whatsapp",
+        },
+    )
+
+
+def whatsapp_assigned(conv, by):
+    """A manager handed this thread to someone. `by` is the assigning User id."""
+    who = (conv.get("display_name") or conv.get("phone") or "").strip()
+    by_name = ""
+    if by:
+        by_name = frappe.db.get_value("User", by, "full_name") or by
+
+    body = (
+        f"تم إسناد محادثة واتساب مع {who} إليك\n"
+        f"WhatsApp conversation with {who} assigned to you"
+    )
+    if by_name:
+        body += f"\n— بواسطة {by_name} • by {by_name}"
+
+    return (
+        "📥 محادثة مُسندة • WhatsApp Assigned",
+        body,
+        {
+            "type": "whatsapp_assigned",
+            "screen": "whatsapp",
+            "doctype": "WhatsApp Conversation",
+            "name": conv.get("name"),
+            "kind": "whatsapp",
+        },
+    )

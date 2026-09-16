@@ -1,0 +1,35 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "102290129340398",
+      "changes": [
+        {
+          "field": "messages",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "9647700000000",
+              "phone_number_id": "PHONE_NUMBER_ID"
+            },
+            "contacts": [
+              {
+                "profile": { "name": "Ahmed Test" },
+                "wa_id": "9647701234567"
+              }
+            ],
+            "messages": [
+              {
+                "from": "9647701234567",
+                "id": "wamid.SIMULATED.TEXT.0001",
+                "timestamp": "1789000000",
+                "type": "text",
+                "text": { "body": "مرحبا، أريد عرض سعر للمضخات" }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

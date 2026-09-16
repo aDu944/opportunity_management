@@ -1,0 +1,143 @@
+{
+ "actions": [],
+ "autoname": "format:WAQR-{#####}",
+ "creation": "2026-09-16 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "shortcut",
+  "column_break_head",
+  "scope",
+  "owner_user",
+  "section_break_text",
+  "text_en",
+  "text_ar",
+  "section_break_meta",
+  "attach",
+  "column_break_meta",
+  "is_active",
+  "sort_order"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Title",
+   "reqd": 1
+  },
+  {
+   "fieldname": "shortcut",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Shortcut",
+   "unique": 1,
+   "description": "Typed in the composer after a slash, e.g. /hours"
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Team",
+   "fieldname": "scope",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Scope",
+   "options": "Team\nPersonal"
+  },
+  {
+   "depends_on": "eval:doc.scope=='Personal'",
+   "fieldname": "owner_user",
+   "fieldtype": "Link",
+   "label": "Owner User",
+   "options": "User"
+  },
+  {
+   "fieldname": "section_break_text",
+   "fieldtype": "Section Break",
+   "description": "Placeholders {{customer}} and {{agent}} are substituted server-side by whatsapp_api.render_quick_reply."
+  },
+  {
+   "fieldname": "text_en",
+   "fieldtype": "Small Text",
+   "label": "Text (EN)"
+  },
+  {
+   "fieldname": "text_ar",
+   "fieldtype": "Small Text",
+   "label": "Text (AR)"
+  },
+  {
+   "fieldname": "section_break_meta",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "attach",
+   "fieldtype": "Attach",
+   "label": "Attachment"
+  },
+  {
+   "fieldname": "column_break_meta",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Is Active"
+  },
+  {
+   "default": "0",
+   "fieldname": "sort_order",
+   "fieldtype": "Int",
+   "label": "Sort Order"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Opportunity Management",
+ "name": "WhatsApp Quick Reply",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "WhatsApp Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "WhatsApp Agent",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "title",
+ "track_changes": 1
+}

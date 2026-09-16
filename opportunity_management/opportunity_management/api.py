@@ -2195,6 +2195,7 @@ def get_mobile_config():
             "approvals": _i("enable_approvals", 1),
             "geofence_reminders": _i("enable_geofence_reminders", 1),
             "attendance_history_view": _i("enable_attendance_history_view", 1),
+            "whatsapp_inbox": _i("enable_whatsapp_inbox", 0),
         },
 
         "security": {
@@ -2303,6 +2304,7 @@ def _default_mobile_config():
             "holidays": 1, "announcements": 1, "notifications": 1,
             "approvals": 1, "geofence_reminders": 1,
             "attendance_history_view": 1,
+            "whatsapp_inbox": 0,
         },
         "security": {
             "allow_biometric_login": 1, "allow_remember_me": 1,

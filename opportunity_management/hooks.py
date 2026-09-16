@@ -100,6 +100,26 @@ doc_events = {
             "opportunity_management.opportunity_management.business_hooks.on_payment_entry_submit_broadcast",
         ],
     },
+    # WhatsApp team inbox. `after_insert` threads the message onto a
+    # WhatsApp Conversation; `on_update` republishes Meta's status ticks
+    # (frappe_whatsapp's status callback does doc.save(), so on_update fires).
+    # Both handlers swallow every exception internally — they run inside
+    # Meta's webhook request and must never roll back the message insert.
+    "WhatsApp Message": {
+        "after_insert": "opportunity_management.opportunity_management.whatsapp_hooks.on_message_after_insert",
+        "on_update": "opportunity_management.opportunity_management.whatsapp_hooks.on_message_on_update",
+    },
+}
+
+
+# ============================================================================
+# Overridden Whitelisted Methods
+# ============================================================================
+# Meta already points at frappe_whatsapp's webhook URL. Overriding the method
+# lets us verify X-Hub-Signature-256, dedupe on message_id and coerce the
+# inbound types frappe_whatsapp KeyErrors on, without forking that app.
+override_whitelisted_methods = {
+    "frappe_whatsapp.utils.webhook.webhook": "opportunity_management.opportunity_management.whatsapp_webhook.webhook",
 }
 
 # ============================================================================
@@ -137,6 +157,11 @@ scheduler_events = {
             "opportunity_management.opportunity_management.attendance_reminders.send_checkout_reminder_hourly",
             # 5 min before auto-checkout — final warning before we clock people out.
             "opportunity_management.opportunity_management.attendance_reminders.send_pre_auto_checkout_warning",
+            # WhatsApp inbox housekeeping — both self-gate on WhatsApp Inbox
+            # Settings (privatize_outbound_after_sent / auto_resolve_after_days)
+            # and no-op when those are off.
+            "opportunity_management.opportunity_management.whatsapp_jobs.privatize_sent_outbound_media",
+            "opportunity_management.opportunity_management.whatsapp_jobs.auto_resolve_stale_conversations",
         ],
     }
 }
@@ -185,6 +210,37 @@ fixtures = [
     {
         "doctype": "Workspace",
         "filters": [["name", "in", ["Opportunity Management"]]]
+    },
+    # ── WhatsApp team inbox ──────────────────────────────────────────────
+    # NOTE: fixtures are synced AFTER post-model-sync patches, so the same
+    # objects are also created idempotently in
+    # whatsapp_utils.create_whatsapp_message_custom_fields() /
+    # ensure_whatsapp_roles_and_perms(), which the backfill patch and
+    # after_install call. These blocks exist so a site export carries them.
+    {
+        "doctype": "Custom Field",
+        "filters": [
+            ["dt", "in", ["WhatsApp Message"]],
+            ["fieldname", "in", [
+                "custom_conversation",
+                "custom_read",
+                "custom_sent_by",
+                "custom_is_auto",
+                "custom_media_private",
+                "custom_body_text"
+            ]]
+        ]
+    },
+    {
+        "doctype": "Role",
+        "filters": [["name", "in", ["WhatsApp Agent"]]]
+    },
+    {
+        "doctype": "Custom DocPerm",
+        "filters": [
+            ["parent", "in", ["WhatsApp Message", "WhatsApp Templates", "WhatsApp Account"]],
+            ["role", "in", ["WhatsApp Agent", "WhatsApp Manager"]]
+        ]
     }
 ]
 
@@ -204,6 +260,17 @@ fixtures = [
 doctype_list_js = {
     "Employee Checkin": "public/js/employee_checkin_list.js",
 }
+
+# ── WhatsApp Desk inbox assets (M3) ──────────────────────────────────────────
+# Registered but commented out until the M3 workstream lands the files:
+# `bench build` hard-fails on an app_include_css entry whose file does not
+# exist, which would break the M1 deploy. Uncomment together with the files.
+# doctype_js = {
+#     "Contact": "public/js/whatsapp_crm_form.js",
+#     "Lead": "public/js/whatsapp_crm_form.js",
+#     "Customer": "public/js/whatsapp_crm_form.js",
+# }
+# app_include_css = ["/assets/opportunity_management/css/whatsapp_inbox.css"]
 
 # ============================================================================
 # Installation/Setup Hooks

@@ -10,8 +10,39 @@ def after_install():
     """Called after the app is installed."""
     create_opportunity_custom_fields()
     create_workspace()
+    setup_whatsapp_inbox()
     frappe.db.commit()
     print("Opportunity Management app installed successfully!")
+
+
+def setup_whatsapp_inbox():
+    """Stand up the WhatsApp team inbox: Custom Fields on frappe_whatsapp's
+    `WhatsApp Message`, the thread index, the `WhatsApp Agent` role + Custom
+    DocPerms, and the Inbox Settings / tag / quick-reply defaults.
+
+    Shared verbatim with `patches/backfill_whatsapp_conversations.py` so the
+    fresh-install and the migrate path can never drift. Every step is
+    idempotent and individually guarded: a site without frappe_whatsapp
+    installed must still finish `after_install` cleanly.
+    """
+    from opportunity_management.opportunity_management import whatsapp_utils
+
+    if not frappe.db.exists("DocType", "WhatsApp Message"):
+        print("frappe_whatsapp is not installed — skipping WhatsApp inbox setup")
+        return
+
+    for step, label in (
+        (whatsapp_utils.create_whatsapp_message_custom_fields, "custom fields"),
+        (whatsapp_utils.ensure_message_index, "message index"),
+        (whatsapp_utils.ensure_whatsapp_roles_and_perms, "roles and permissions"),
+        (whatsapp_utils.seed_inbox_defaults, "inbox defaults"),
+    ):
+        try:
+            step()
+            print(f"\u2713 WhatsApp inbox: {label}")
+        except Exception as e:
+            frappe.log_error(frappe.get_traceback(), f"WhatsApp inbox setup: {label}")
+            print(f"Warning: WhatsApp inbox {label} failed: {e}")
 
 
 def create_opportunity_custom_fields():

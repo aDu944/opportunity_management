@@ -1,0 +1,265 @@
+{
+ "actions": [],
+ "creation": "2026-09-16 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "issingle": 1,
+ "field_order": [
+  "general_tab",
+  "default_country_code",
+  "default_language",
+  "column_break_general",
+  "agent_roles",
+  "auto_read_receipt",
+  "hours_tab",
+  "business_days",
+  "business_hours_start",
+  "column_break_hours",
+  "business_hours_end",
+  "timezone",
+  "automation_tab",
+  "welcome_section",
+  "enable_welcome",
+  "welcome_text_en",
+  "welcome_text_ar",
+  "out_of_hours_section",
+  "enable_out_of_hours",
+  "out_of_hours_text_en",
+  "out_of_hours_text_ar",
+  "out_of_hours_throttle_hours",
+  "alerts_section",
+  "notify_team_on_unassigned",
+  "team_alert_throttle_minutes",
+  "column_break_alerts",
+  "default_reengage_template",
+  "auto_resolve_after_days",
+  "media_tab",
+  "privatize_inbound_media",
+  "column_break_media",
+  "privatize_outbound_after_sent"
+ ],
+ "fields": [
+  {
+   "fieldname": "general_tab",
+   "fieldtype": "Tab Break",
+   "label": "General"
+  },
+  {
+   "default": "964",
+   "fieldname": "default_country_code",
+   "fieldtype": "Data",
+   "label": "Default Country Code",
+   "description": "Digits only, no +. Used to normalize local numbers like 0770… into 964770…"
+  },
+  {
+   "default": "en",
+   "fieldname": "default_language",
+   "fieldtype": "Select",
+   "label": "Default Language",
+   "options": "en\nar",
+   "description": "Fallback when the customer's script cannot be detected."
+  },
+  {
+   "fieldname": "column_break_general",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "WhatsApp Agent,WhatsApp Manager",
+   "fieldname": "agent_roles",
+   "fieldtype": "Small Text",
+   "label": "Agent Roles",
+   "description": "Comma-separated roles that grant access to the shared inbox."
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_read_receipt",
+   "fieldtype": "Check",
+   "label": "Send Read Receipts",
+   "description": "Send a blue-tick read receipt to the customer when an agent opens the thread."
+  },
+  {
+   "fieldname": "hours_tab",
+   "fieldtype": "Tab Break",
+   "label": "Business Hours"
+  },
+  {
+   "default": "Sun,Mon,Tue,Wed,Thu",
+   "fieldname": "business_days",
+   "fieldtype": "Data",
+   "label": "Business Days",
+   "description": "Comma-separated 3-letter days. Seeded from ESS Mobile Settings working_days but kept separate on purpose."
+  },
+  {
+   "default": "09:00:00",
+   "fieldname": "business_hours_start",
+   "fieldtype": "Time",
+   "label": "Business Hours Start"
+  },
+  {
+   "fieldname": "column_break_hours",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "17:00:00",
+   "fieldname": "business_hours_end",
+   "fieldtype": "Time",
+   "label": "Business Hours End"
+  },
+  {
+   "default": "Asia/Baghdad",
+   "fieldname": "timezone",
+   "fieldtype": "Data",
+   "label": "Timezone",
+   "description": "Informational. Business-hours maths runs in the site timezone."
+  },
+  {
+   "fieldname": "automation_tab",
+   "fieldtype": "Tab Break",
+   "label": "Automation"
+  },
+  {
+   "fieldname": "welcome_section",
+   "fieldtype": "Section Break",
+   "label": "Welcome"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_welcome",
+   "fieldtype": "Check",
+   "label": "Enable Welcome Reply"
+  },
+  {
+   "depends_on": "enable_welcome",
+   "fieldname": "welcome_text_en",
+   "fieldtype": "Small Text",
+   "label": "Welcome Text (EN)"
+  },
+  {
+   "depends_on": "enable_welcome",
+   "fieldname": "welcome_text_ar",
+   "fieldtype": "Small Text",
+   "label": "Welcome Text (AR)"
+  },
+  {
+   "fieldname": "out_of_hours_section",
+   "fieldtype": "Section Break",
+   "label": "Out Of Hours"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_out_of_hours",
+   "fieldtype": "Check",
+   "label": "Enable Out Of Hours Reply"
+  },
+  {
+   "depends_on": "enable_out_of_hours",
+   "fieldname": "out_of_hours_text_en",
+   "fieldtype": "Small Text",
+   "label": "Out Of Hours Text (EN)"
+  },
+  {
+   "depends_on": "enable_out_of_hours",
+   "fieldname": "out_of_hours_text_ar",
+   "fieldtype": "Small Text",
+   "label": "Out Of Hours Text (AR)"
+  },
+  {
+   "default": "12",
+   "depends_on": "enable_out_of_hours",
+   "fieldname": "out_of_hours_throttle_hours",
+   "fieldtype": "Int",
+   "label": "Out Of Hours Throttle (Hours)"
+  },
+  {
+   "fieldname": "alerts_section",
+   "fieldtype": "Section Break",
+   "label": "Alerts & Housekeeping"
+  },
+  {
+   "default": "1",
+   "fieldname": "notify_team_on_unassigned",
+   "fieldtype": "Check",
+   "label": "Notify Team On Unassigned Inbound"
+  },
+  {
+   "default": "10",
+   "fieldname": "team_alert_throttle_minutes",
+   "fieldtype": "Int",
+   "label": "Team Alert Throttle (Minutes)"
+  },
+  {
+   "fieldname": "column_break_alerts",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_reengage_template",
+   "fieldtype": "Link",
+   "label": "Default Re-engagement Template",
+   "options": "WhatsApp Templates",
+   "description": "Offered first in the composer when the 24h window has closed."
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_resolve_after_days",
+   "fieldtype": "Int",
+   "label": "Auto Resolve After (Days)",
+   "description": "0 = off. Open/Pending threads idle for this many days are resolved by the */5 cron."
+  },
+  {
+   "fieldname": "media_tab",
+   "fieldtype": "Tab Break",
+   "label": "Media"
+  },
+  {
+   "default": "1",
+   "fieldname": "privatize_inbound_media",
+   "fieldtype": "Check",
+   "label": "Privatize Inbound Media",
+   "description": "frappe_whatsapp saves inbound media as a public File. Flip it private on arrival."
+  },
+  {
+   "fieldname": "column_break_media",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "privatize_outbound_after_sent",
+   "fieldtype": "Check",
+   "label": "Privatize Outbound Media After Sending",
+   "description": "Outbound media MUST be public at send time (Meta fetches the URL). Turning this on flips it private ~10 minutes after Meta reports a terminal status."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Opportunity Management",
+ "name": "WhatsApp Inbox Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "WhatsApp Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "WhatsApp Agent"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

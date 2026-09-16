@@ -435,6 +435,9 @@ _TEMPLATE_DOCTYPES = {
     "Material Request", "Payment Entry", "Journal Entry",
     "Leave Application", "Expense Claim", "Salary Slip",
     "ToDo",
+    # WhatsApp team inbox — whatsapp_hooks already pushes the pretty
+    # bilingual template for inbound messages and assignments.
+    "WhatsApp Message", "WhatsApp Conversation",
 }
 
 

@@ -16,8 +16,8 @@
    "reqd": 1,
    "in_list_view": 1,
    "columns": 6,
-   "options": "home\nattendance\nmore\nnotifications\napprovals\nleave\npayslips\nexpenses\nbank_balances",
-   "description": "Row order = order in the app's bottom pill. Drag rows to reorder. Logout is appended automatically, never add it. approvals needs System Manager; bank_balances needs bank access; attendance / notifications / approvals / expenses / bank_balances each also need their module enabled on the Modules tab."
+   "options": "home\nattendance\nmore\nnotifications\napprovals\nleave\npayslips\nexpenses\nbank_balances\nwhatsapp",
+   "description": "Row order = order in the app's bottom pill. Drag rows to reorder. Logout is appended automatically, never add it. approvals needs System Manager; bank_balances needs bank access; attendance / notifications / approvals / expenses / bank_balances each also need their module enabled on the Modules tab. whatsapp needs the WhatsApp Inbox module enabled on the Modules tab AND the WhatsApp Agent or WhatsApp Manager role on the user."
   }
  ],
  "index_web_pages_for_search": 0,
