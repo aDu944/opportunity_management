@@ -99,7 +99,7 @@ export const get_templates = () => call("get_templates");
 export const link_crm = (conversation, doctype, name) =>
 	call("link_crm", { conversation, doctype, name });
 export const unlink_crm = (conversation, doctype) => call("unlink_crm", { conversation, doctype });
-export const search_crm = (query) => call("search_crm", { query });
+export const search_crm = (query, doctype) => call("search_crm", { query, doctype });
 export const create_lead_from_conversation = (args) => call("create_lead_from_conversation", args);
 export const get_inbox_stats = (from_date, to_date) =>
 	call("get_inbox_stats", { from_date, to_date });

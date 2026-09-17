@@ -8,6 +8,7 @@
  */
 
 import * as api from "./api.js";
+import { avatar_html } from "./avatar.js";
 import { relative_time } from "./time.js";
 
 const SCOPES = ["mine", "unassigned", "all", "resolved"];
@@ -24,16 +25,16 @@ function esc(value) {
 	return frappe.utils.escape_html(value == null ? "" : String(value));
 }
 
-function initials(row) {
-	const source = (row.display_name || row.phone || "?").trim();
-	const words = source.split(/\s+/).filter(Boolean);
-	if (!words.length) {
-		return "?";
+/** Lexicographic on the serializer's "YYYY-MM-DD HH:MM:SS" is a real
+ *  comparison — no Date parsing needed, and a missing value never wins. */
+function is_newer(candidate, current) {
+	if (!candidate) {
+		return false;
 	}
-	if (words.length === 1) {
-		return words[0].substr(0, 2).toUpperCase();
+	if (!current) {
+		return true;
 	}
-	return (words[0][0] + words[1][0]).toUpperCase();
+	return String(candidate) > String(current);
 }
 
 export class ConversationList {
@@ -238,7 +239,7 @@ export class ConversationList {
 			<div class="wa-row ${row.name === this.active ? "active" : ""} ${
 			row.unread_count > 0 ? "unread" : ""
 		}" data-name="${esc(row.name)}">
-				<div class="wa-avatar">${esc(initials(row))}</div>
+				${avatar_html(row)}
 				<div class="wa-row-main">
 					<div class="wa-row-top">
 						<span class="wa-row-name" dir="auto">${esc(row.display_name || row.phone)}</span>
@@ -259,22 +260,53 @@ export class ConversationList {
 			</div>`;
 	}
 
-	/** Realtime upsert: patch in place, or move to the top if it is new/newer. */
+	/** Realtime upsert.
+	 *
+	 *  Only a strictly newer `last_message_at` earns the top slot. Everything
+	 *  else — a delivery tick, a claim, a status change — carries the *same*
+	 *  timestamp, and re-prepending on those made rows race each other to the
+	 *  top and jump out from under the reader's cursor.
+	 */
 	upsert(row, opts) {
 		if (!row || !row.name) {
 			return;
 		}
 		const options = opts || {};
 		const index = this.rows.findIndex((r) => r.name === row.name);
-		if (index !== -1) {
-			if (options.keep_unread) {
-				row = Object.assign({}, row, { unread_count: this.rows[index].unread_count });
+		if (index === -1) {
+			if (!this.belongs_here(row)) {
+				return;
 			}
-			this.rows.splice(index, 1);
-			this.$body.find(`.wa-row[data-name="${row.name}"]`).remove();
-		} else if (!this.belongs_here(row)) {
+			this.prepend(row);
 			return;
 		}
+
+		const existing = this.rows[index];
+		if (options.keep_unread) {
+			row = Object.assign({}, row, { unread_count: existing.unread_count });
+		}
+		const $existing = this.$body.find(`.wa-row[data-name="${row.name}"]`);
+		if (is_newer(row.last_message_at, existing.last_message_at)) {
+			this.rows.splice(index, 1);
+			$existing.remove();
+			this.prepend(row);
+			return;
+		}
+
+		// Same message, new metadata: repaint where it stands.
+		this.rows[index] = row;
+		if (!$existing.length) {
+			return;
+		}
+		const $fresh = $(this.row_html(row));
+		if ($existing.hasClass("active")) {
+			$fresh.addClass("active");
+		}
+		$existing.replaceWith($fresh);
+		this.render_scopes();
+	}
+
+	prepend(row) {
 		this.rows.unshift(row);
 		this.$body.find(".wa-empty").remove();
 		this.$body.prepend(this.row_html(row));

@@ -136,6 +136,9 @@ export class WhatsAppInbox {
 		this.list.set_active(row.name);
 		if (this.current && this.current.name === row.name) {
 			Object.assign(this.current, row);
+			// Always: a claim or a release changes who may type, and the
+			// composer is the only pane that knows how to say so.
+			this.composer.set_conversation(this.current);
 			if (repaint_panes) {
 				this.side.set_conversation(this.current);
 				this.thread.render_header();
@@ -230,6 +233,8 @@ export class WhatsAppInbox {
 			if (is_open) {
 				Object.assign(this.current, conv);
 				this.thread.render_header();
+				// Someone else claiming the thread locks this box live.
+				this.composer.set_conversation(this.current);
 				this.side.set_conversation(this.current);
 			}
 			return;

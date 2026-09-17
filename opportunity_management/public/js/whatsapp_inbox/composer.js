@@ -9,6 +9,10 @@
 
 import * as api from "./api.js";
 
+// Matches `.wa-input { min-height }` in whatsapp_inbox.css — one row of text
+// plus the control's own padding.
+const MIN_INPUT_HEIGHT = 38;
+
 function esc(value) {
 	return frappe.utils.escape_html(value == null ? "" : String(value));
 }
@@ -20,6 +24,9 @@ export class Composer {
 		this.conversation = null;
 		this.note_mode = false;
 		this.window_open = true;
+		// True when the thread belongs to someone else and we are not a
+		// manager — the server would refuse the send anyway.
+		this.locked = false;
 		this.templates = null;
 		this.quick_replies = null;
 		this.make();
@@ -27,6 +34,7 @@ export class Composer {
 
 	make() {
 		this.$container.html(`
+			<div class="wa-composer-locked" hidden></div>
 			<div class="wa-composer" hidden>
 				<div class="wa-quick-popover" hidden></div>
 				<div class="wa-composer-bar">
@@ -40,6 +48,7 @@ export class Composer {
 			<div class="wa-template-picker" hidden></div>
 		`);
 		this.$composer = this.$container.find(".wa-composer");
+		this.$locked = this.$container.find(".wa-composer-locked");
 		this.$input = this.$container.find(".wa-input");
 		this.$popover = this.$container.find(".wa-quick-popover");
 		this.$picker = this.$container.find(".wa-template-picker");
@@ -66,16 +75,51 @@ export class Composer {
 
 	autosize() {
 		const el = this.$input[0];
+		// A hidden textarea reports `scrollHeight` 0, which pinned the box to
+		// `height: 0px` until the first keystroke.
+		if (!el || el.offsetParent === null) {
+			return;
+		}
 		el.style.height = "auto";
-		el.style.height = Math.min(el.scrollHeight, 160) + "px";
+		el.style.height = Math.min(Math.max(el.scrollHeight, MIN_INPUT_HEIGHT), 160) + "px";
 	}
 
 	set_conversation(conv) {
+		const same = !!(conv && this.conversation && conv.name === this.conversation.name);
 		this.conversation = conv;
-		this.$input.val("");
-		this.autosize();
-		this.hide_popover();
+		if (!same) {
+			// Switching threads clears the draft. A repaint of the *same*
+			// thread — a claim, a status change — must not cost the agent what
+			// they typed, and the inbox now repaints on every conversation
+			// event so the lock can appear live.
+			this.$input.val("");
+			this.hide_popover();
+		}
+		this.apply_lock();
 		this.set_window(conv ? !!conv.window_open : true);
+	}
+
+	/** Who may type here. The server enforces this (`_require_assignee` /
+	 *  `_auto_claim` in `whatsapp_api_messages`); the box must not pretend
+	 *  otherwise and let an agent write a message that will be refused. */
+	apply_lock() {
+		const conv = this.conversation;
+		const assigned = (conv && conv.assigned_to) || "";
+		const claimed_by_other = !!assigned && assigned !== this.inbox.meta.me;
+		this.locked = claimed_by_other && !this.inbox.meta.is_manager;
+		if (!claimed_by_other) {
+			this.$locked.attr("hidden", true).empty();
+			return;
+		}
+		// Managers keep the composer, but see the same line: replying here
+		// takes the thread off its owner's desk.
+		this.$locked
+			.text(
+				__("Claimed by {0} — only they can reply", [
+					conv.assigned_to_name || assigned,
+				])
+			)
+			.removeAttr("hidden");
 	}
 
 	/** Window open → free text; closed → the template picker takes the slot. */
@@ -86,9 +130,19 @@ export class Composer {
 			this.$picker.attr("hidden", true);
 			return;
 		}
+		if (this.locked) {
+			// The notice sits outside the composer, so it is all that is left —
+			// notes included: an agent who cannot reply has no business writing
+			// on someone else's thread from here either.
+			this.$composer.attr("hidden", true);
+			this.$picker.attr("hidden", true);
+			return;
+		}
 		if (this.window_open || this.note_mode) {
 			this.$composer.removeAttr("hidden");
 			this.$picker.attr("hidden", true);
+			// Only now is the textarea measurable.
+			this.autosize();
 		} else {
 			this.$composer.attr("hidden", true);
 			this.render_template_picker();

@@ -43,9 +43,9 @@ def unlink_crm(conversation, doctype=None):
 
 
 @frappe.whitelist()
-def search_crm(query, limit=10):
+def search_crm(query, limit=10, doctype=None):
     _require_inbox_access()
-    return whatsapp_crm.search_crm(query, limit=cint(limit) or 10)
+    return whatsapp_crm.search_crm(query, limit=cint(limit) or 10, doctype=doctype or None)
 
 
 @frappe.whitelist()

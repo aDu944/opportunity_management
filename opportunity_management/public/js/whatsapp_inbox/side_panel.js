@@ -8,9 +8,12 @@
  */
 
 import * as api from "./api.js";
+import { avatar_html } from "./avatar.js";
 import { day_label, duration_label } from "./time.js";
 
 const CRM_DOCTYPES = ["Contact", "Lead", "Customer", "Opportunity"];
+const SEARCH_DEBOUNCE_MS = 300;
+const MIN_SEARCH_CHARS = 2;
 
 function esc(value) {
 	return frappe.utils.escape_html(value == null ? "" : String(value));
@@ -83,7 +86,10 @@ export class SidePanel {
 
 		this.$body.html(`
 			<div class="wa-card">
-				<div class="wa-card-title" dir="auto">${esc(conv.display_name || conv.phone)}</div>
+				<div class="wa-card-head">
+					${avatar_html(conv)}
+					<div class="wa-card-title" dir="auto">${esc(conv.display_name || conv.phone)}</div>
+				</div>
 				<div class="wa-kv"><span>${esc(__("Phone"))}</span><span>${esc(conv.phone)}</span></div>
 				<div class="wa-kv"><span>${esc(__("WhatsApp profile name"))}</span><span dir="auto">${esc(
 			conv.profile_name || "—"
@@ -145,7 +151,9 @@ export class SidePanel {
 				$(`<button class="btn btn-xs btn-default">${esc(__("Unlink"))}</button>`)
 					.on("click", () => this.unlink(doctype))
 					.appendTo($actions);
-			} else if (doctype !== "Opportunity") {
+			} else {
+				// Opportunity is linkable too — the conversation has the field,
+				// and `link_conversation_to_crm` has always accepted it.
 				$(`<button class="btn btn-xs btn-default">${esc(__("Link"))}</button>`)
 					.on("click", () => this.link_dialog(doctype))
 					.appendTo($actions);
@@ -161,43 +169,70 @@ export class SidePanel {
 		}
 	}
 
+	/** Live search. The old sheet only looked when the primary button was
+	 *  pressed, which read as "Link does nothing at all". */
 	link_dialog(doctype) {
 		const conv = this.conversation;
 		const dialog = new frappe.ui.Dialog({
 			title: __("Link {0}", [__(doctype)]),
 			fields: [
-				{ fieldtype: "Data", fieldname: "query", label: __("Search"), reqd: 1 },
+				{ fieldtype: "Data", fieldname: "query", label: __("Search") },
 				{ fieldtype: "HTML", fieldname: "hits" },
 			],
-			primary_action_label: __("Search"),
-			primary_action: (values) => {
-				api.search_crm(values.query)
-					.then((hits) => {
-						const rows = (hits || []).filter((h) => h.doctype === doctype);
-						const $wrap = dialog.fields_dict.hits.$wrapper.empty();
-						if (!rows.length) {
-							$wrap.html(`<div class="wa-empty">${esc(__("No matches"))}</div>`);
-							return;
-						}
-						rows.forEach((hit) => {
-							$(`<div class="wa-hit" dir="auto">${esc(hit.label)}<span class="wa-hit-id">${esc(
-								hit.name
-							)}</span></div>`)
-								.on("click", () => {
-									api.link_crm(conv.name, doctype, hit.name)
-										.then((row) => {
-											dialog.hide();
-											this.inbox.on_conversation_changed(row, true);
-										})
-										.catch((err) => this.inbox.report(err));
-								})
-								.appendTo($wrap);
-						});
-					})
-					.catch((err) => this.inbox.report(err));
-			},
+		});
+		const $hits = dialog.fields_dict.hits.$wrapper;
+		const hint = (text) => $hits.html(`<div class="wa-empty">${esc(text)}</div>`);
+		hint(__("Type at least {0} characters", [MIN_SEARCH_CHARS]));
+
+		let timer = null;
+		let ticket = 0;
+		const search = () => {
+			const query = (dialog.get_value("query") || "").trim();
+			if (query.length < MIN_SEARCH_CHARS) {
+				hint(__("Type at least {0} characters", [MIN_SEARCH_CHARS]));
+				return;
+			}
+			const mine = ++ticket;
+			api.search_crm(query, doctype)
+				.then((hits) => {
+					// A slow earlier keystroke must not repaint over a later one.
+					if (mine === ticket) {
+						this.paint_hits(dialog, $hits, conv, doctype, hits);
+					}
+				})
+				.catch((err) => hint(err.message));
+		};
+		dialog.fields_dict.query.$input.on("input keyup change", () => {
+			clearTimeout(timer);
+			timer = setTimeout(search, SEARCH_DEBOUNCE_MS);
 		});
 		dialog.show();
+		dialog.fields_dict.query.$input.focus();
+	}
+
+	/** `conv` is the conversation the sheet was opened for — not whatever is
+	 *  selected by the time a hit is clicked. */
+	paint_hits(dialog, $hits, conv, doctype, hits) {
+		const rows = (hits || []).filter((h) => h.doctype === doctype);
+		$hits.empty();
+		if (!rows.length) {
+			$hits.html(`<div class="wa-empty">${esc(__("No matches"))}</div>`);
+			return;
+		}
+		rows.forEach((hit) => {
+			$(`<div class="wa-hit" dir="auto">${esc(hit.label)}<span class="wa-hit-id">${esc(
+				hit.name
+			)}</span></div>`)
+				.on("click", () => {
+					api.link_crm(conv.name, doctype, hit.name)
+						.then((row) => {
+							dialog.hide();
+							this.inbox.on_conversation_changed(row, true);
+						})
+						.catch((err) => this.inbox.report(err));
+				})
+				.appendTo($hits);
+		});
 	}
 
 	unlink(doctype) {

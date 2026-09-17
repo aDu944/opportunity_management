@@ -297,7 +297,10 @@ doctype_js = {
     "Lead": "public/js/whatsapp_crm_form.js",
     "Customer": "public/js/whatsapp_crm_form.js",
 }
-app_include_css = ["/assets/opportunity_management/css/whatsapp_inbox.css"]
+app_include_css = [
+    "/assets/opportunity_management/css/whatsapp_inbox.css",
+    "/assets/opportunity_management/css/whatsapp_inbox_panes.css",
+]
 
 # ============================================================================
 # Installation/Setup Hooks

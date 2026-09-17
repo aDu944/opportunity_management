@@ -276,25 +276,51 @@ def fill_whatsapp_profile_contact(conv):
         )
 
 
-def search_crm(query, limit=10):
-    """Type-ahead over Contact / Lead / Customer for the link sheet."""
+# (doctype, searched fields, label field). `name` is always searched; the
+# label field is the one a human recognises, falling back to the id.
+SEARCH_SOURCES = (
+    ("Contact", ["name", "first_name", "last_name", "company_name"], None),
+    ("Lead", ["name", "lead_name", "company_name"], "lead_name"),
+    ("Customer", ["name", "customer_name"], "customer_name"),
+    ("Opportunity", ["name", "title", "party_name", "customer_name"], "title"),
+)
+
+
+def _search_label(doctype, row, label_field):
+    if doctype == "Contact":
+        return _contact_display(row["name"])
+    if doctype == "Opportunity":
+        # `title` is blank on plenty of opportunities; the party name is what
+        # the agent typed to find it.
+        return row.get("title") or row.get("customer_name") or row["name"]
+    return (row.get(label_field) if label_field else None) or row["name"]
+
+
+def search_crm(query, limit=10, doctype=None):
+    """Type-ahead over Contact / Lead / Customer / Opportunity for the link sheet.
+
+    `doctype` narrows the search to one of them — the side panel's Link sheet
+    only ever offers rows of the doctype whose button was pressed, and asking
+    for four when three are thrown away is three wasted queries.
+    """
     query = (query or "").strip()
     if len(query) < 2:
         return []
     like = "%" + query + "%"
+    sources = SEARCH_SOURCES
+    if doctype:
+        sources = tuple(s for s in SEARCH_SOURCES if s[0] == doctype)
+        if not sources:
+            frappe.throw(frappe._("Unsupported CRM doctype: {0}").format(doctype))
     # `frappe.get_all` bypasses permissions by design. That is deliberate
     # here: agents need to find the Contact/Lead/Customer to link a chat to,
     # but they are not given CRM read roles. The endpoint itself is gated by
     # `_require_inbox_access()`, and only id + label are returned.
     hits = []
-    for doctype, fields, label_field in (
-        ("Contact", ["name", "first_name", "last_name", "company_name"], None),
-        ("Lead", ["name", "lead_name", "company_name"], "lead_name"),
-        ("Customer", ["name", "customer_name"], "customer_name"),
-    ):
+    for source, fields, label_field in sources:
         try:
             rows = frappe.get_all(
-                doctype,
+                source,
                 or_filters=[[f, "like", like] for f in fields if f != "name"]
                 + [["name", "like", like]],
                 fields=fields,
@@ -303,10 +329,11 @@ def search_crm(query, limit=10):
         except Exception:
             rows = []
         for row in rows:
-            label = (
-                _contact_display(row["name"])
-                if doctype == "Contact"
-                else (row.get(label_field) or row["name"])
+            hits.append(
+                {
+                    "doctype": source,
+                    "name": row["name"],
+                    "label": _search_label(source, row, label_field),
+                }
             )
-            hits.append({"doctype": doctype, "name": row["name"], "label": label})
-    return hits[: limit * 3]
+    return hits[: limit * len(sources)]

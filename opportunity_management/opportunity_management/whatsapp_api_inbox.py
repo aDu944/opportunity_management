@@ -321,6 +321,12 @@ def claim(conversation):
 def unassign(conversation):
     _require_inbox_access()
     conv = _get_conv(conversation, for_update=True)
+    if not conv.assigned_to:
+        # Already in the queue. No note, no realtime event: a no-op unassign is
+        # what the Desk header's Autocomplete used to fire on every rebuild, and
+        # the note + publish it wrote fed the rebuild loop that left ~10,000
+        # "Returned to the unassigned queue" rows behind.
+        return S.conv_row(conv)
     _require_assignee(conv)
     values = {"assigned_to": None, "assigned_at": None, "assigned_by": None}
     for field, value in values.items():
@@ -340,6 +346,10 @@ def assign(conversation, user):
         frappe.throw(_("User {0} not found").format(user))
 
     conv = _get_conv(conversation, for_update=True)
+    if conv.assigned_to == user:
+        # Re-assigning to the current owner changes nothing — writing a note and
+        # publishing would only bounce the client's header back at it.
+        return S.conv_row(conv)
     now = now_datetime()
     values = {"assigned_to": user, "assigned_at": now, "assigned_by": frappe.session.user}
     for field, value in values.items():
@@ -368,6 +378,9 @@ def set_status(conversation, status):
         frappe.throw(_("Invalid status {0}").format(status))
     conv = _get_conv(conversation)
     _require_assignee(conv)
+    if conv.status == status:
+        # Same status: nothing to record, nothing to publish.
+        return S.conv_row(conv)
 
     values = {"status": status}
     if status == "Resolved":

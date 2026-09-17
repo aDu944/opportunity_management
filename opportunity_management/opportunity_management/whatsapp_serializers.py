@@ -99,6 +99,63 @@ def _tags_for(conversations):
     return out
 
 
+# Meta's Cloud API never exposes the customer's own WhatsApp profile photo,
+# so the only picture we can show is the one on the CRM record the thread is
+# linked to. Order matches `find_crm_by_phone`: Contact is the richest link.
+_AVATAR_SOURCES = (("Contact", "contact"), ("Lead", "lead"), ("Customer", "customer"))
+
+
+def _avatar_for(conv, images=None):
+    """`image` of the linked Contact / Lead / Customer, or None.
+
+    `images` is the `{(doctype, name): image}` map `_avatar_map()` builds for a
+    whole page; without it each linked doc costs one `get_value`.
+    """
+    for doctype, field in _AVATAR_SOURCES:
+        name = _g(conv, field)
+        if not name:
+            continue
+        if images is not None:
+            image = images.get((doctype, name))
+        else:
+            try:
+                image = frappe.db.get_value(doctype, name, "image")
+            except Exception:
+                image = None
+        if image:
+            return image
+    return None
+
+
+def _avatar_map(rows):
+    """One query per CRM doctype for a page, instead of one per linked record."""
+    wanted = {doctype: set() for doctype, _field in _AVATAR_SOURCES}
+    for row in rows:
+        for doctype, field in _AVATAR_SOURCES:
+            name = _g(row, field)
+            if name:
+                wanted[doctype].add(name)
+    images = {}
+    for doctype, names in wanted.items():
+        if not names:
+            continue
+        try:
+            found = frappe.get_all(
+                doctype,
+                filters={"name": ["in", sorted(names)]},
+                fields=["name", "image"],
+                limit_page_length=0,
+            )
+        except Exception:
+            # `image` is standard on all three, but a customised site could
+            # have dropped it — a missing avatar must not fail the list.
+            continue
+        for row in found:
+            if row.get("image"):
+                images[(doctype, row["name"])] = row["image"]
+    return images
+
+
 def _guess_mime(file_url):
     if not file_url:
         return ""
@@ -108,9 +165,9 @@ def _guess_mime(file_url):
 
 # ── ConvRow ──────────────────────────────────────────────────────────────────
 
-def conv_row(conv, tags=None, assignee_name=None, now=None):
-    """Serialize one conversation. `tags` / `assignee_name` are injectable so
-    `conv_rows()` can resolve a whole page in two queries."""
+def conv_row(conv, tags=None, assignee_name=None, now=None, images=None):
+    """Serialize one conversation. `tags` / `assignee_name` / `images` are
+    injectable so `conv_rows()` can resolve a whole page in a few queries."""
     if isinstance(conv, str):
         conv = frappe.get_doc("WhatsApp Conversation", conv)
 
@@ -144,6 +201,9 @@ def conv_row(conv, tags=None, assignee_name=None, now=None):
         "customer": _g(conv, "customer") or None,
         "opportunity": _g(conv, "opportunity") or None,
         "customer_language": _g(conv, "customer_language", "") or "",
+        # There is no WhatsApp profile photo to be had (plan §1.6); this is the
+        # linked CRM record's image, or None when nothing is linked.
+        "avatar_url": _avatar_for(conv, images=images),
         "notes_count": int(_g(conv, "notes_count", 0) or 0),
         # Maintained by `whatsapp_hooks` on the first agent reply. Null, not 0,
         # while the customer is still waiting — the two mean different things.
@@ -159,6 +219,7 @@ def conv_rows(rows):
     names = [_g(r, "name") for r in rows]
     tag_map = _tags_for(names)
     name_map = _full_names([_g(r, "assigned_to") for r in rows])
+    images = _avatar_map(rows)
     now = now_datetime()
     return [
         conv_row(
@@ -166,6 +227,7 @@ def conv_rows(rows):
             tags=tag_map.get(_g(r, "name"), []),
             assignee_name=name_map.get(_g(r, "assigned_to"), ""),
             now=now,
+            images=images,
         )
         for r in rows
     ]

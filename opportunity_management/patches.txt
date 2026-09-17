@@ -4,3 +4,4 @@ opportunity_management.patches.expense_category_to_child_table
 
 [post_model_sync]
 opportunity_management.patches.backfill_whatsapp_conversations
+opportunity_management.patches.cleanup_unassign_note_storm

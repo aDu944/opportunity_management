@@ -2,9 +2,10 @@
  * Bundle entry for the Desk WhatsApp inbox (plan §2).
  *
  * `page/whatsapp_inbox/whatsapp_inbox.js` pulls this in with
- * `frappe.require("whatsapp_inbox.bundle.js")`, so the eight modules below
- * ship as one asset that is only fetched when the page is actually opened —
- * unlike `app_include_js`, which would load them on every Desk boot.
+ * `frappe.require("whatsapp_inbox.bundle.js")`, so the modules below (plus the
+ * shared `avatar.js` they import) ship as one asset that is only fetched when
+ * the page is actually opened — unlike `app_include_js`, which would load them
+ * on every Desk boot.
  */
 
 import * as api from "./whatsapp_inbox/api.js";
