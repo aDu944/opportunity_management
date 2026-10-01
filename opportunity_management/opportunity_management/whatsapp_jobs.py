@@ -20,6 +20,7 @@ from frappe.utils import add_to_date, cint, get_datetime, now_datetime
 from opportunity_management.opportunity_management.whatsapp_utils import (
     get_inbox_settings,
     is_business_hours,
+    reply_language,
     setting,
 )
 
@@ -84,7 +85,9 @@ def send_auto_reply(conversation, kind=None):
         frappe.db.commit()
         return
 
-    lang = (conv.customer_language or settings.get("default_language") or "en").lower()
+    # A captionless photo leaves customer_language empty; reply_language then
+    # guesses from the country code before falling back to default_language.
+    lang = reply_language(conv.customer_language, conv.phone, settings)
     suffix = "ar" if lang == "ar" else "en"
 
     parts = []

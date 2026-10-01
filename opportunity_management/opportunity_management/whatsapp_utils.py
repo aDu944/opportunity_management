@@ -4,7 +4,8 @@ Low-level helpers for the WhatsApp team inbox.
 Everything here is deliberately import-cheap and side-effect free at module
 scope so `test_whatsapp_utils.py` can import it with a *stubbed* `frappe`
 module and exercise the pure functions (`normalize_phone`,
-`detect_language`, `is_business_hours`, `normalize_body`) without a bench.
+`detect_language`, `reply_language`, `is_business_hours`, `normalize_body`)
+without a bench.
 That is the reason every `frappe.*` call below lives inside a function body
 and why `from frappe.utils import …` is always a local import.
 
@@ -147,6 +148,25 @@ def detect_language(text) -> str:
     return ""
 
 
+def reply_language(conv_language, phone, settings) -> str:
+    """Language for a canned auto-reply: "ar" or "en".
+
+    A first message that is a captionless photo has no detectable script, so
+    `customer_language` is still empty. Rather than fall straight to
+    `default_language`, guess Arabic for numbers in the home country
+    (`default_country_code`, 964). The guess is NOT written back to
+    `customer_language` — that stays "detected from script" so a later text
+    can still set it.
+    """
+    lang = str(conv_language or "").strip().lower()
+    if lang:
+        return lang
+    cc = re.sub(r"\D", "", str(_g(settings, "default_country_code", "") or ""))
+    if cc and normalize_phone(phone, default_cc=cc).startswith(cc):
+        return "ar"
+    return str(_g(settings, "default_language", "") or "en").strip().lower() or "en"
+
+
 def _to_seconds(value):
     """Frappe Time fields come back as timedelta; Desk JSON defaults come back
     as "HH:MM:SS" strings. Normalize both to seconds-since-midnight."""
@@ -167,6 +187,22 @@ def _to_seconds(value):
     while len(nums) < 3:
         nums.append(0)
     return nums[0] * 3600 + nums[1] * 60 + nums[2]
+
+
+# A start/end pair closer than this is not a real window. Frappe fills every
+# `Time` field of a freshly instantiated Single with `nowtime()`, so an
+# untouched Inbox Settings comes back as e.g. 17:26:35.827006 → 17:26:35.827074.
+MIN_WINDOW_SECONDS = 60
+
+
+def business_window_unset(start, end) -> bool:
+    """True when the business-hours pair is empty or the `nowtime()` artefact
+    (start and end within MIN_WINDOW_SECONDS of each other)."""
+    start_s = _to_seconds(start)
+    end_s = _to_seconds(end)
+    if start_s is None or end_s is None:
+        return True
+    return abs(start_s - end_s) < MIN_WINDOW_SECONDS
 
 
 def is_business_hours(now=None, settings=None) -> bool:
@@ -191,13 +227,17 @@ def is_business_hours(now=None, settings=None) -> bool:
         if allowed and now.strftime("%a").lower()[:3] not in allowed:
             return False
 
-    start = _to_seconds(_g(settings, "business_hours_start"))
-    end = _to_seconds(_g(settings, "business_hours_end"))
-    if start is None or end is None or start == end:
-        # No window configured → treat the day as fully staffed rather than
-        # spamming every customer with an out-of-hours auto-reply.
+    raw_start = _g(settings, "business_hours_start")
+    raw_end = _g(settings, "business_hours_end")
+    if business_window_unset(raw_start, raw_end):
+        # No real window configured (empty, start == end, or the near-equal
+        # `nowtime()` artefact) → treat the day as fully staffed rather than
+        # spamming every customer with an out-of-hours auto-reply, and never
+        # produce a zero-length window.
         return True
 
+    start = _to_seconds(raw_start)
+    end = _to_seconds(raw_end)
     current = now.hour * 3600 + now.minute * 60 + now.second
     if start < end:
         return start <= current < end

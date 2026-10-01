@@ -14,7 +14,10 @@ migrate paths can never drift. Everything here is safe to re-run.
 
 import frappe
 
-from opportunity_management.opportunity_management.whatsapp_utils import clear_settings_cache
+from opportunity_management.opportunity_management.whatsapp_utils import (
+    business_window_unset,
+    clear_settings_cache,
+)
 
 
 # `custom_` prefix per Frappe convention. `create_custom_fields(update=True)`
@@ -177,7 +180,9 @@ def seed_inbox_defaults(working_days: str = None):
     """Fill the Inbox Settings singleton and seed starter tags / quick replies.
 
     Only writes fields that are still empty, so re-running a migrate never
-    stomps what the manager configured.
+    stomps what the manager configured. The one exception is the business
+    hour pair, which is also reset when it is the `nowtime()` artefact (see
+    `whatsapp_utils.business_window_unset`) — that is never a manager's choice.
     """
     settings = frappe.get_single("WhatsApp Inbox Settings")
     defaults = {
@@ -214,6 +219,16 @@ def seed_inbox_defaults(working_days: str = None):
         "auto_read_receipt": 0,
     }
     dirty = False
+    # The hour pair is "unset" when empty OR when it is the `nowtime()` value
+    # Frappe stamps into every Time field of a fresh Single (start ≈ end) —
+    # the plain emptiness check below never caught that, so 09:00/17:00 never
+    # landed. Both are written together so a real window is never half-reset.
+    if business_window_unset(
+        settings.get("business_hours_start"), settings.get("business_hours_end")
+    ):
+        settings.set("business_hours_start", defaults["business_hours_start"])
+        settings.set("business_hours_end", defaults["business_hours_end"])
+        dirty = True
     for field, value in defaults.items():
         if settings.get(field) in (None, ""):
             settings.set(field, value)

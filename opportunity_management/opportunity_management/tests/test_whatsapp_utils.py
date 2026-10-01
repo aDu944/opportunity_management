@@ -186,6 +186,71 @@ class TestIsBusinessHours(unittest.TestCase):
         self.assertTrue(wu.is_business_hours(_on("Wed", 10), settings=settings))
         self.assertFalse(wu.is_business_hours(_on("Wed", 18), settings=settings))
 
+    def test_weekday_evening_is_out_of_hours(self):
+        self.assertFalse(wu.is_business_hours(_on("Wed", 21, 45), settings=_WORK_WEEK))
+        self.assertTrue(wu.is_business_hours(_on("Wed", 10), settings=_WORK_WEEK))
+
+    def test_nowtime_artefact_is_always_open(self):
+        # Frappe stamps `nowtime()` into a fresh Single's Time fields; a pair
+        # microseconds apart is no window at all, never a zero-length one.
+        garbage = {
+            "business_days": "Sun,Mon,Tue,Wed,Thu",
+            "business_hours_start": "17:26:35.827006",
+            "business_hours_end": "17:26:35.827074",
+        }
+        self.assertTrue(wu.is_business_hours(_on("Wed", 21, 45), settings=garbage))
+        self.assertTrue(wu.is_business_hours(_on("Wed", 17, 26, 35), settings=garbage))
+        near = dict(garbage, business_hours_end=timedelta(hours=17, minutes=27, seconds=20))
+        self.assertTrue(wu.is_business_hours(_on("Wed", 3), settings=near))
+
+
+class TestBusinessWindowUnset(unittest.TestCase):
+    def test_unset_pairs(self):
+        for start, end in (
+            (None, None),
+            ("", "17:00:00"),
+            ("09:00:00", None),
+            ("17:26:35.827006", "17:26:35.827074"),
+            ("10:00:00", "10:00:59"),
+            (timedelta(hours=9), timedelta(hours=9, seconds=30)),
+        ):
+            with self.subTest(start=start, end=end):
+                self.assertTrue(wu.business_window_unset(start, end))
+
+    def test_real_windows(self):
+        for start, end in (
+            ("09:00:00", "17:00:00"),
+            ("18:00:00", "02:00:00"),
+            ("10:00:00", "10:01:00"),
+            (timedelta(hours=9), timedelta(hours=17)),
+        ):
+            with self.subTest(start=start, end=end):
+                self.assertFalse(wu.business_window_unset(start, end))
+
+
+class TestReplyLanguage(unittest.TestCase):
+    SETTINGS = {"default_country_code": "964", "default_language": "en"}
+
+    def test_detected_language_wins(self):
+        self.assertEqual(wu.reply_language("en", "9647701234567", self.SETTINGS), "en")
+        self.assertEqual(wu.reply_language("AR", "14155552671", self.SETTINGS), "ar")
+
+    def test_home_country_guesses_arabic(self):
+        for phone in ("9647701234567", "+964 770 123 4567", "07701234567"):
+            with self.subTest(phone=phone):
+                self.assertEqual(wu.reply_language("", phone, self.SETTINGS), "ar")
+        self.assertEqual(wu.reply_language(None, "9647701234567", self.SETTINGS), "ar")
+
+    def test_foreign_number_uses_default_language(self):
+        self.assertEqual(wu.reply_language("", "14155552671", self.SETTINGS), "en")
+        settings = dict(self.SETTINGS, default_language="ar")
+        self.assertEqual(wu.reply_language("", "14155552671", settings), "ar")
+
+    def test_no_country_code_configured(self):
+        settings = {"default_country_code": "", "default_language": ""}
+        self.assertEqual(wu.reply_language("", "9647701234567", settings), "en")
+        self.assertEqual(wu.reply_language("", "", {}), "en")
+
 
 class TestNormalizeBody(unittest.TestCase):
     def test_plain_text(self):

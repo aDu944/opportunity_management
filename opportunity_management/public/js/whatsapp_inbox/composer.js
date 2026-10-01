@@ -1,6 +1,7 @@
 /**
  * Bottom of the centre pane — free-text composer, note mode, attachments,
- * the `/` quick-reply popover and the template picker.
+ * the emoji picker (`emoji.js`), the `/` quick-reply popover and the template
+ * picker.
  *
  * The picker is not a separate screen: when the 24h window is closed the same
  * host swaps its contents, because "what can I send right now" is one piece of
@@ -8,6 +9,7 @@
  */
 
 import * as api from "./api.js";
+import { EmojiPopover } from "./emoji.js";
 
 // Matches `.wa-input { min-height }` in whatsapp_inbox.css — one row of text
 // plus the control's own padding.
@@ -39,6 +41,7 @@ export class Composer {
 				<div class="wa-quick-popover" hidden></div>
 				<div class="wa-composer-bar">
 					<button class="btn btn-xs btn-default wa-attach" title="${esc(__("Attach"))}">📎</button>
+					<button class="btn btn-xs btn-default wa-emoji-toggle" title="${esc(__("Emoji"))}">😊</button>
 					<button class="btn btn-xs btn-default wa-note-toggle">${esc(__("Note"))}</button>
 					<textarea class="form-control wa-input" rows="1" dir="auto"
 						placeholder="${esc(__("Type a message"))}"></textarea>
@@ -57,9 +60,20 @@ export class Composer {
 		this.$container.find(".wa-attach").on("click", () => this.attach());
 		this.$container.find(".wa-note-toggle").on("click", () => this.toggle_note());
 
+		// Lives inside `.wa-composer`, so it is hidden with it whenever the
+		// thread is locked or the template picker has the slot.
+		const $emoji_btn = this.$container.find(".wa-emoji-toggle");
+		this.emoji = new EmojiPopover({
+			$host: this.$composer,
+			$button: $emoji_btn,
+			on_pick: (emoji) => this.insert_at_caret(emoji),
+		});
+		$emoji_btn.on("click", () => this.emoji.toggle());
+
 		this.$input.on("keydown", (e) => {
 			if (e.key === "Escape") {
 				this.hide_popover();
+				this.emoji.close();
 				return;
 			}
 			if (e.key === "Enter" && !e.shiftKey) {
@@ -84,6 +98,23 @@ export class Composer {
 		el.style.height = Math.min(Math.max(el.scrollHeight, MIN_INPUT_HEIGHT), 160) + "px";
 	}
 
+	/** Replace the selection with `text` and leave the caret after it. */
+	insert_at_caret(text) {
+		const el = this.$input[0];
+		if (!el || el.disabled) {
+			return;
+		}
+		const value = el.value || "";
+		const start = typeof el.selectionStart === "number" ? el.selectionStart : value.length;
+		const end = typeof el.selectionEnd === "number" ? el.selectionEnd : start;
+		el.value = value.slice(0, start) + text + value.slice(end);
+		const caret = start + text.length;
+		el.focus();
+		el.setSelectionRange(caret, caret);
+		// Same path as typing: autosize + the `/` quick-reply check.
+		this.$input.trigger("input");
+	}
+
 	set_conversation(conv) {
 		const same = !!(conv && this.conversation && conv.name === this.conversation.name);
 		this.conversation = conv;
@@ -94,6 +125,7 @@ export class Composer {
 			// event so the lock can appear live.
 			this.$input.val("");
 			this.hide_popover();
+			this.emoji.close();
 		}
 		this.apply_lock();
 		this.set_window(conv ? !!conv.window_open : true);
@@ -125,6 +157,11 @@ export class Composer {
 	/** Window open → free text; closed → the template picker takes the slot. */
 	set_window(is_open) {
 		this.window_open = !!is_open;
+		if (!this.conversation || this.locked || !(this.window_open || this.note_mode)) {
+			// Every branch below except the free-text one hides the composer;
+			// an open picker must not keep its document listeners behind it.
+			this.emoji.close();
+		}
 		if (!this.conversation) {
 			this.$composer.attr("hidden", true);
 			this.$picker.attr("hidden", true);
@@ -169,6 +206,7 @@ export class Composer {
 		if (!text || !this.conversation) {
 			return;
 		}
+		this.emoji.close();
 		const conversation = this.conversation.name;
 		const request = this.note_mode
 			? api.add_note({ conversation, text })
