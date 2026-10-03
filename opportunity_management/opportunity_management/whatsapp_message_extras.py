@@ -109,3 +109,21 @@ def add_reply_action(data):
     except Exception:
         pass
     return data
+
+
+# WhatsApp pushes get their own sound. The app bundles `wa_message.caf` (iOS)
+# and `res/raw/wa_message.wav` + the `alkhora_ess_whatsapp` channel (Android).
+# Older builds lack both and fall back safely: iOS plays the default sound for
+# a missing file, Android uses the manifest default channel for an unknown id.
+WA_PUSH_SOUND = {
+    "_sound_ios": "wa_message.caf",
+    "_sound_android": "wa_message",
+    "_android_channel": "alkhora_ess_whatsapp",
+}
+
+
+def add_wa_sound(data):
+    """Mark a WhatsApp push for the WhatsApp sound/channel. The private keys
+    are lifted into the android/apns blocks by `fcm_utils.send_fcm`."""
+    data.update(WA_PUSH_SOUND)
+    return data

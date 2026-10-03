@@ -209,6 +209,40 @@ def _describe_token(token: str) -> str:
     return f"<no Employee holds this token> token={prefix}…"
 
 
+# Private per-push options a caller may put in `data`. `send_fcm` pops them
+# (so they never reach the client as data) and applies them to the message:
+#   _apns_category   → apns aps.category      (WhatsApp Reply action, WA_REPLY)
+#   _sound_ios       → apns aps.sound         (e.g. "wa_message.caf")
+#   _sound_android   → android notification.sound       (e.g. "wa_message")
+#   _android_channel → android notification.channel_id  (e.g. "alkhora_ess_whatsapp")
+# Without any of them the message is exactly the default one.
+_PRIVATE_KEYS = ("_apns_category", "_sound_ios", "_sound_android", "_android_channel")
+
+
+def split_private_keys(data):
+    """Return `(data_copy_without_private_keys, private_keys)`. The caller's
+    dict is never mutated (one dict is reused across a fan-out)."""
+    data = dict(data or {})
+    private = {k: data.pop(k) for k in _PRIVATE_KEYS if k in data}
+    return data, private
+
+
+def apply_private_keys(message: dict, private: dict) -> dict:
+    """Apply popped private keys to an FCM v1 `message` dict in place (and
+    return it). Empty / missing values leave the defaults untouched."""
+    aps = message["apns"]["payload"]["aps"]
+    android = message["android"]["notification"]
+    if private.get("_sound_ios"):
+        aps["sound"] = str(private["_sound_ios"])
+    if private.get("_apns_category"):
+        aps["category"] = str(private["_apns_category"])
+    if private.get("_sound_android"):
+        android["sound"] = str(private["_sound_android"])
+    if private.get("_android_channel"):
+        android["channel_id"] = str(private["_android_channel"])
+    return message
+
+
 def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
     """Send an FCM notification to a single device token. Returns True on success.
 
@@ -236,10 +270,9 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
         return False
 
     badge = _unread_badge_for_token(token)
-    # Optional private key: an iOS notification category (e.g. the WhatsApp
-    # Reply action, `WA_REPLY`) — lifted into `aps`, never sent as data.
-    data = dict(data or {})
-    category = data.pop("_apns_category", None)
+    # Optional private keys (see `_PRIVATE_KEYS`) — lifted into the
+    # android/apns blocks below, never sent as data.
+    data, private = split_private_keys(data)
     payload = {
         "message": {
             "token": token,
@@ -266,8 +299,7 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
             },
         }
     }
-    if category:
-        payload["message"]["apns"]["payload"]["aps"]["category"] = str(category)
+    apply_private_keys(payload["message"], private)
 
     try:
         from google.oauth2 import service_account

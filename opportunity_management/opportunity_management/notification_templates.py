@@ -442,19 +442,20 @@ def whatsapp_inbound(conv, msg):
     if not text:
         text = "(رسالة بدون نص • no text)"
 
-    from opportunity_management.opportunity_management.whatsapp_message_extras import add_reply_action
+    from opportunity_management.opportunity_management.whatsapp_message_extras import add_reply_action, add_wa_sound
 
-    # `reply`/`WA_REPLY` category only when enable_notification_reply is on.
+    # `reply`/`WA_REPLY` category only when enable_notification_reply is on;
+    # the WhatsApp sound/channel always.
     return (
         "💬 رسالة واتساب • WhatsApp",
         f"{who}\n{text}",
-        add_reply_action({
+        add_wa_sound(add_reply_action({
             "type": "whatsapp_message",
             "screen": "whatsapp",
             "doctype": "WhatsApp Conversation",
             "name": conv.get("name"),
             "kind": "whatsapp",
-        }),
+        })),
     )
 
 
@@ -474,6 +475,8 @@ def whatsapp_assigned(conv, by):
     if by:
         by_name = frappe.db.get_value("User", by, "full_name") or by
 
+    from opportunity_management.opportunity_management.whatsapp_message_extras import add_wa_sound
+
     body = (
         f"تم إسناد محادثة واتساب مع {who} إليك\n"
         f"WhatsApp conversation with {who} assigned to you"
@@ -484,11 +487,11 @@ def whatsapp_assigned(conv, by):
     return (
         "📥 محادثة مُسندة • WhatsApp Assigned",
         body,
-        {
+        add_wa_sound({
             "type": "whatsapp_assigned",
             "screen": "whatsapp",
             "doctype": "WhatsApp Conversation",
             "name": conv.get("name"),
             "kind": "whatsapp",
-        },
+        }),
     )
