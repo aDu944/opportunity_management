@@ -129,8 +129,8 @@ def effective_reengage_template(settings) -> str:
 FOLLOWUP_CATEGORY = "UTILITY"
 FOLLOWUP_DEFAULT = "follow_up-ar"
 
-# (template_name, sample_values, {language: body}). One Meta name per row;
-# Meta accepts the same name once per language.
+# (base name, sample_values, {language: body}). See `_meta_name` for how the
+# per-language template name is derived.
 FOLLOWUP_TEMPLATES = (
     (
         "follow_up",
@@ -157,6 +157,13 @@ FOLLOWUP_TEMPLATES = (
         },
     ),
 )
+
+
+def _meta_name(template_name, language):
+    """Upstream's `template_name` column is UNIQUE, so one name cannot carry
+    two languages in ERPNext. Arabic keeps the bare name (those rows were
+    submitted first); every other language gets a suffix: `follow_up_en`."""
+    return template_name if language == "ar" else f"{template_name}_{language.replace('-', '_')}"
 
 
 def _doc_name(template_name, language):
@@ -245,8 +252,9 @@ def create_followup_templates(dry_run=0):
     if not dry_run:
         _fix_misnamed()
     results = []
-    for template_name, sample_values, bodies in FOLLOWUP_TEMPLATES:
+    for base_name, sample_values, bodies in FOLLOWUP_TEMPLATES:
         for language, body in bodies.items():
+            template_name = _meta_name(base_name, language)
             name = _doc_name(template_name, language)
             result = {"name": name, "template_name": template_name, "language": language}
             if frappe.db.exists(DOCTYPE, name):

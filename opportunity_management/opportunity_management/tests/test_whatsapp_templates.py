@@ -93,7 +93,7 @@ class TestFollowupSet(unittest.TestCase):
         for template_name, samples, bodies in wt.FOLLOWUP_TEMPLATES:
             self.assertEqual(set(bodies), {"ar", "en"})
             for lang, body in bodies.items():
-                names.append(wt._doc_name(template_name, lang))
+                names.append(wt._doc_name(wt._meta_name(template_name, lang), lang))
                 # One sample value per distinct {{n}} placeholder.
                 count = len({p for p in range(1, 10) if "{{%d}}" % p in body})
                 self.assertEqual(count, len(samples.split(",")), (template_name, lang))
