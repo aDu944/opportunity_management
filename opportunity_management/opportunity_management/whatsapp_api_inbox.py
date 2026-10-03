@@ -15,6 +15,9 @@ from opportunity_management.opportunity_management import whatsapp_serializers a
 from opportunity_management.opportunity_management.whatsapp_identity import (
     normalize_wa_identifier,
 )
+from opportunity_management.opportunity_management.whatsapp_templates import (
+    effective_reengage_template,
+)
 from opportunity_management.opportunity_management.whatsapp_utils import (
     WINDOW_SECONDS,
     get_inbox_settings,
@@ -64,7 +67,8 @@ def get_inbox_meta():
             "business_hours_end": str(settings.get("business_hours_end") or ""),
             "timezone": settings.get("timezone") or "",
             "default_language": settings.get("default_language") or "en",
-            "default_reengage_template": settings.get("default_reengage_template") or "",
+            # "" when the setting points at a hidden (OTP / sample) or deleted template.
+            "default_reengage_template": effective_reengage_template(settings),
             "auto_read_receipt": cint(settings.get("auto_read_receipt")),
         },
     }

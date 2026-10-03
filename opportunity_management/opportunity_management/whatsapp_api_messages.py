@@ -18,6 +18,11 @@ from frappe.utils import cint, now_datetime
 from opportunity_management.opportunity_management import whatsapp_hooks
 from opportunity_management.opportunity_management import whatsapp_serializers as S
 from opportunity_management.opportunity_management.whatsapp_identity import display_label
+from opportunity_management.opportunity_management.whatsapp_templates import (
+    effective_reengage_template,
+    is_hidden_template,
+    load_template,
+)
 from opportunity_management.opportunity_management.whatsapp_utils import (
     WINDOW_CLOSED_ERROR_CODE,
     count_template_params,
@@ -221,8 +226,12 @@ def send_template(conversation, template, params=None, header_media=None):
     conv = _get_conv(conversation)
     _auto_claim(conv)
 
-    if not template or not frappe.db.exists("WhatsApp Templates", template):
+    template_row = load_template(template)
+    if not template_row:
         frappe.throw(_("Template {0} not found").format(template))
+    # OTP / sample templates belong to the web shop and Meta, not the inbox.
+    if is_hidden_template(template_row):
+        frappe.throw(_("This template cannot be sent from the inbox"))
 
     if isinstance(params, str):
         try:
@@ -364,9 +373,12 @@ def render_quick_reply(name, conversation=None):
 @frappe.whitelist()
 def get_templates():
     """Approved templates only — anything else is rejected by Meta at send
-    time, and offering it in the picker just produces a failed send."""
+    time, and offering it in the picker just produces a failed send. OTP and
+    sample templates are dropped too (`frappe.get_all` skips the permission
+    hooks that hide them in Desk). Each language of a Meta name is its own
+    row, told apart by `language_code`."""
     _require_inbox_access()
-    default_template = get_inbox_settings().get("default_reengage_template") or ""
+    default_template = effective_reengage_template(get_inbox_settings())
     rows = frappe.get_all(
         "WhatsApp Templates",
         fields=[
@@ -379,6 +391,8 @@ def get_templates():
     out = []
     for row in rows:
         if (row.get("status") or "").strip().upper() != "APPROVED":
+            continue
+        if is_hidden_template(row):
             continue
         body = strip_html(row.get("template"))
         out.append(
@@ -393,5 +407,7 @@ def get_templates():
                 "default": 1 if row["name"] == default_template else 0,
             }
         )
-    out.sort(key=lambda t: (-t["default"], t["template_name"].lower()))
+    # language_code keeps an ar/en pair of the same Meta name adjacent and
+    # in a stable order.
+    out.sort(key=lambda t: (-t["default"], t["template_name"].lower(), t["language_code"]))
     return out

@@ -120,7 +120,11 @@ function start_dialog(frm, templates) {
 			fieldname: "template",
 			label: __("Template"),
 			reqd: 1,
-			options: templates.map((t) => ({ label: t.template_name, value: t.name })),
+			options: templates.map((t) => ({
+				// One Meta name has an Arabic and an English row — say which.
+				label: t.language_code ? `${t.template_name} (${t.language_code})` : t.template_name,
+				value: t.name,
+			})),
 			default: templates[0].name,
 			// `sync_template` is a hoisted declaration below; it runs on change,
 			// long after this object is built.

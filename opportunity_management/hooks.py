@@ -152,6 +152,20 @@ override_whitelisted_methods = {
 }
 
 # ============================================================================
+# Permission Hooks
+# ============================================================================
+# "Sync from Meta" imports the web shop's OTP (AUTHENTICATION) templates and
+# Meta's hello_world sample. Hide them from every list / search / Link field
+# and refuse them on direct access — deleting one in Desk would DELETE it
+# from Meta (frappe_whatsapp on_trash). See whatsapp_templates.py.
+permission_query_conditions = {
+    "WhatsApp Templates": "opportunity_management.opportunity_management.whatsapp_templates.template_query_conditions",
+}
+has_permission = {
+    "WhatsApp Templates": "opportunity_management.opportunity_management.whatsapp_templates.template_has_permission",
+}
+
+# ============================================================================
 # Scheduled Tasks (Option B: Fancy color-coded reminder emails)
 # ============================================================================
 # Daily scheduler for reminder emails at 7, 3, 1, 0 days before closing
