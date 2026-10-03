@@ -16,8 +16,11 @@ from frappe import _
 from frappe.utils import cint, now_datetime
 
 from opportunity_management.opportunity_management import whatsapp_hooks
+from opportunity_management.opportunity_management import whatsapp_reactions as R
 from opportunity_management.opportunity_management import whatsapp_serializers as S
-from opportunity_management.opportunity_management.whatsapp_identity import display_label
+from opportunity_management.opportunity_management.whatsapp_identity import display_label, has_phone
+from opportunity_management.opportunity_management.whatsapp_media import optional_message_fields
+from opportunity_management.opportunity_management.whatsapp_template_picker import order_templates
 from opportunity_management.opportunity_management.whatsapp_templates import (
     effective_reengage_template,
     is_hidden_template,
@@ -27,6 +30,7 @@ from opportunity_management.opportunity_management.whatsapp_utils import (
     WINDOW_CLOSED_ERROR_CODE,
     count_template_params,
     get_inbox_settings,
+    reply_language,
     strip_html,
 )
 from opportunity_management.opportunity_management.whatsapp_api_common import (
@@ -58,10 +62,12 @@ def get_messages(conversation, before=None, after=None, limit=None):
         "attach", "custom_media_private", "status", "message_id",
         "reply_to_message_id", "custom_sent_by", "custom_is_auto", "custom_read",
         "use_template", "template",
-    ]
+    ] + optional_message_fields()
     note_fields = ["name", "creation", "note_type", "text", "author", "attach"]
 
-    msg_filters = {"custom_conversation": conversation}
+    # Reaction rows are not thread items; they decorate their target's
+    # `reactions` (whatsapp_reactions).
+    msg_filters = {"custom_conversation": conversation, "content_type": ["!=", R.REACTION]}
     note_filters = {"conversation": conversation}
 
     if after:
@@ -97,7 +103,11 @@ def get_messages(conversation, before=None, after=None, limit=None):
         items = items[-limit:] if len(items) > limit else items
     else:
         items = items[:limit]
-    return {"items": items, "has_more": has_more}
+    R.attach_reactions(items, conversation)
+    # Polling clients only ask for rows after their cursor, so a new reaction
+    # on an older message would never reach them without this list.
+    updates = R.reaction_updates_since(conversation, after) if after else []
+    return {"items": items, "has_more": has_more, "reaction_updates": updates}
 
 
 # ── sending ──────────────────────────────────────────────────────────────────
@@ -371,14 +381,26 @@ def render_quick_reply(name, conversation=None):
 
 
 @frappe.whitelist()
-def get_templates():
+def get_templates(conversation=None):
     """Approved templates only — anything else is rejected by Meta at send
     time, and offering it in the picker just produces a failed send. OTP and
     sample templates are dropped too (`frappe.get_all` skips the permission
     hooks that hide them in Desk). Each language of a Meta name is its own
-    row, told apart by `language_code`."""
+    row, told apart by `language_code` (and the two-letter `language`).
+
+    With `conversation`, the `default` flag moves to the best template in the
+    customer's language and that language sorts first (whatsapp_template_picker).
+    """
     _require_inbox_access()
-    default_template = effective_reengage_template(get_inbox_settings())
+    settings = get_inbox_settings()
+    default_template = effective_reengage_template(settings)
+    customer_lang = None
+    if conversation:
+        conv = _get_conv(conversation)
+        # Same guess as the auto-reply: a BSUID's digits are no country code.
+        customer_lang = reply_language(
+            conv.customer_language, conv.phone if has_phone(conv.phone) else "", settings
+        )
     rows = frappe.get_all(
         "WhatsApp Templates",
         fields=[
@@ -407,7 +429,4 @@ def get_templates():
                 "default": 1 if row["name"] == default_template else 0,
             }
         )
-    # language_code keeps an ar/en pair of the same Meta name adjacent and
-    # in a stable order.
-    out.sort(key=lambda t: (-t["default"], t["template_name"].lower(), t["language_code"]))
-    return out
+    return order_templates(out, default_template, customer_lang)

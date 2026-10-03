@@ -1,7 +1,7 @@
 /**
  * Bottom of the centre pane — free-text composer, note mode, attachments,
  * the emoji picker (`emoji.js`), the `/` quick-reply popover and the template
- * picker.
+ * picker (`template_picker.js`).
  *
  * The picker is not a separate screen: when the 24h window is closed the same
  * host swaps its contents, because "what can I send right now" is one piece of
@@ -10,6 +10,7 @@
 
 import * as api from "./api.js";
 import { EmojiPopover } from "./emoji.js";
+import { TemplatePicker } from "./template_picker.js";
 
 // Matches `.wa-input { min-height }` in whatsapp_inbox.css — one row of text
 // plus the control's own padding.
@@ -29,7 +30,6 @@ export class Composer {
 		// True when the thread belongs to someone else and we are not a
 		// manager — the server would refuse the send anyway.
 		this.locked = false;
-		this.templates = null;
 		this.quick_replies = null;
 		this.make();
 	}
@@ -55,6 +55,7 @@ export class Composer {
 		this.$input = this.$container.find(".wa-input");
 		this.$popover = this.$container.find(".wa-quick-popover");
 		this.$picker = this.$container.find(".wa-template-picker");
+		this.picker = new TemplatePicker({ composer: this, $picker: this.$picker });
 
 		this.$container.find(".wa-send").on("click", () => this.send());
 		this.$container.find(".wa-attach").on("click", () => this.attach());
@@ -157,6 +158,10 @@ export class Composer {
 	/** Window open → free text; closed → the template picker takes the slot. */
 	set_window(is_open) {
 		this.window_open = !!is_open;
+		// Reactions are free-form sends: same window + lock rules as typing.
+		if (this.inbox.thread) {
+			this.inbox.thread.set_can_react(!!this.conversation && this.window_open && !this.locked);
+		}
 		if (!this.conversation || this.locked || !(this.window_open || this.note_mode)) {
 			// Every branch below except the free-text one hides the composer;
 			// an open picker must not keep its document listeners behind it.
@@ -182,7 +187,7 @@ export class Composer {
 			this.autosize();
 		} else {
 			this.$composer.attr("hidden", true);
-			this.render_template_picker();
+			this.picker.render();
 		}
 	}
 
@@ -347,114 +352,5 @@ export class Composer {
 				this.hide_popover();
 			})
 			.catch((err) => this.inbox.report(err));
-	}
-
-	// ── template picker ──────────────────────────────────────────────────
-
-	render_template_picker() {
-		this.$picker.removeAttr("hidden");
-		if (!this.templates) {
-			this.$picker.html(`<div class="wa-empty">${esc(__("Loading templates…"))}</div>`);
-			api.get_templates()
-				.then((rows) => {
-					this.templates = rows || [];
-					this.render_template_picker();
-				})
-				.catch((err) => {
-					this.$picker.html(`<div class="wa-empty">${esc(err.message)}</div>`);
-				});
-			return;
-		}
-		if (!this.templates.length) {
-			this.$picker.html(
-				`<div class="wa-empty">${esc(
-					__("No approved template is available. Submit one to Meta first.")
-				)}</div>`
-			);
-			return;
-		}
-
-		this.$picker.html(`
-			<div class="wa-picker-head">${esc(__("The 24h window is closed — send an approved template"))}</div>
-			<div class="wa-picker-select"></div>
-			<div class="wa-picker-params"></div>
-			<div class="wa-picker-preview" dir="auto"></div>
-			<div class="wa-picker-actions">
-				<button class="btn btn-xs btn-primary wa-send-template">${esc(__("Send template"))}</button>
-			</div>
-		`);
-
-		const options = this.templates.map((t) => ({
-			value: t.name,
-			label: t.template_name + (t.language_code ? " (" + t.language_code + ")" : ""),
-		}));
-		this.template_control = frappe.ui.form.make_control({
-			df: {
-				fieldtype: "Select",
-				fieldname: "wa_template",
-				options: options,
-				change: () => this.render_template_params(),
-			},
-			parent: this.$picker.find(".wa-picker-select"),
-			render_input: true,
-			only_input: true,
-		});
-		this.template_control.set_value(options[0].value);
-		this.render_template_params();
-		this.$picker.find(".wa-send-template").on("click", () => this.send_template());
-	}
-
-	current_template() {
-		const name = this.template_control && this.template_control.get_value();
-		return (this.templates || []).find((t) => t.name === name);
-	}
-
-	render_template_params() {
-		const template = this.current_template();
-		const $params = this.$picker.find(".wa-picker-params").empty();
-		this.param_controls = [];
-		if (!template) {
-			return;
-		}
-		for (let i = 0; i < (template.param_count || 0); i++) {
-			const control = frappe.ui.form.make_control({
-				df: {
-					fieldtype: "Data",
-					fieldname: "wa_param_" + i,
-					placeholder: __("Parameter {0}", [i + 1]),
-					change: () => this.render_template_preview(),
-				},
-				parent: $(`<div class="wa-param"></div>`).appendTo($params),
-				render_input: true,
-				only_input: true,
-			});
-			this.param_controls.push(control);
-		}
-		this.render_template_preview();
-	}
-
-	render_template_preview() {
-		const template = this.current_template();
-		if (!template) {
-			return;
-		}
-		let body = template.body || "";
-		(this.param_controls || []).forEach((control, index) => {
-			const value = control.get_value() || "{{" + (index + 1) + "}}";
-			body = body.split("{{" + (index + 1) + "}}").join(value);
-		});
-		this.$picker.find(".wa-picker-preview").text(body);
-	}
-
-	send_template() {
-		const template = this.current_template();
-		if (!template || !this.conversation) {
-			return;
-		}
-		const conversation = this.conversation.name;
-		const params = (this.param_controls || []).map((c) => c.get_value() || "");
-		api.send_template({ conversation, template: template.name, params: JSON.stringify(params) })
-			.then((item) => this.inbox.on_item_sent(conversation, item))
-			.catch((err) => this.handle_send_error(err));
 	}
 }

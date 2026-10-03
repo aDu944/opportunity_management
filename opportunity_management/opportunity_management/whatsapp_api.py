@@ -4,7 +4,7 @@ The whitelisted contract for the WhatsApp team inbox (plan §1.7).
 **This module is a facade.** Clients call
 `/api/method/opportunity_management.opportunity_management.whatsapp_api.<name>`
 and must keep doing so; the implementations live in
-`whatsapp_api_inbox`, `whatsapp_api_messages` and `whatsapp_api_crm`, with
+`whatsapp_api_inbox`, `whatsapp_api_messages`, `whatsapp_api_reactions` and `whatsapp_api_crm`, with
 shared access checks and helpers in `whatsapp_api_common`.
 
 Re-exporting is safe with Frappe's dispatcher: `frappe.handler.execute_cmd`
@@ -56,6 +56,10 @@ from opportunity_management.opportunity_management.whatsapp_api_messages import 
     send_template,
 )
 
+from opportunity_management.opportunity_management.whatsapp_api_reactions import (  # noqa: F401
+    react,
+)
+
 from opportunity_management.opportunity_management.whatsapp_api_crm import (  # noqa: F401
     create_lead_from_conversation,
     get_inbox_stats,
@@ -65,7 +69,7 @@ from opportunity_management.opportunity_management.whatsapp_api_crm import (  # 
     unlink_crm,
 )
 
-# The 25 endpoint names of plan §1.7 + §5. Anything not listed here is not
+# The endpoint names of plan §1.7 + §5, plus `react`. Anything not listed here is not
 # part of the contract.
 __all__ = [
     # conversations
@@ -90,6 +94,7 @@ __all__ = [
     "get_quick_replies",
     "render_quick_reply",
     "get_templates",
+    "react",
     # CRM
     "link_crm",
     "unlink_crm",

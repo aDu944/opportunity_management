@@ -237,6 +237,7 @@ def _coerce_unsupported(data):
                 sticker.setdefault("caption", "")
                 message["type"] = "image"
                 message["image"] = sticker
+                _remember_sticker(message.get("id"))
                 continue
             if mtype == "location":
                 body = _location_text(message.get("location") or {})
@@ -246,6 +247,24 @@ def _coerce_unsupported(data):
                 body = f"[unsupported message type: {mtype}]"
             message["type"] = "text"
             message["text"] = {"body": body}
+
+
+def _remember_sticker(message_id):
+    """Once coerced, a sticker is indistinguishable from a photo; record its
+    wamid for `whatsapp_hooks` to set `custom_is_sticker`. Best-effort."""
+    if not message_id:
+        return
+    try:
+        from opportunity_management.opportunity_management.whatsapp_identity import (
+            STICKER_IDS_FLAG,
+        )
+
+        ids = frappe.flags.get(STICKER_IDS_FLAG)
+        if not isinstance(ids, set):
+            ids = frappe.flags[STICKER_IDS_FLAG] = set()
+        ids.add(message_id)
+    except Exception:
+        pass
 
 
 def _location_text(location) -> str:

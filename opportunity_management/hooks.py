@@ -150,7 +150,6 @@ doc_events = {
 override_whitelisted_methods = {
     "frappe_whatsapp.utils.webhook.webhook": "opportunity_management.opportunity_management.whatsapp_webhook.webhook",
 }
-
 # ============================================================================
 # Permission Hooks
 # ============================================================================
@@ -207,6 +206,11 @@ scheduler_events = {
             # and no-op when those are off.
             "opportunity_management.opportunity_management.whatsapp_jobs.privatize_sent_outbound_media",
             "opportunity_management.opportunity_management.whatsapp_jobs.auto_resolve_stale_conversations",
+            # Inbound media the on_update hook missed (and the pre-fix
+            # backlog) → private; Ogg voice notes → playable M4A copy
+            # (no-op until ffmpeg is installed).
+            "opportunity_management.opportunity_management.whatsapp_jobs.privatize_pending_inbound_media",
+            "opportunity_management.opportunity_management.whatsapp_audio.transcode_pending_voice",
         ],
     }
 }
@@ -272,7 +276,10 @@ fixtures = [
                 "custom_sent_by",
                 "custom_is_auto",
                 "custom_media_private",
-                "custom_body_text"
+                "custom_body_text",
+                "custom_is_sticker",
+                "custom_audio_url",
+                "custom_audio_duration"
             ]]
         ]
     },

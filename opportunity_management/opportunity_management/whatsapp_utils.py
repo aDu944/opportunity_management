@@ -341,7 +341,7 @@ def normalize_body(msg_doc, max_length: int = 1000) -> str:
       * template sends → the template body with `body_param` substituted
       * everything else → HTML-stripped `message`
     """
-    content_type = (_g(msg_doc, "content_type", "") or "").strip().lower()
+    content_type = "sticker" if _g(msg_doc, "custom_is_sticker") else (_g(msg_doc, "content_type", "") or "").strip().lower()
     raw_message = _g(msg_doc, "message", "") or ""
     text = strip_html(raw_message)
 

@@ -164,11 +164,18 @@ def _avatar_map(rows):
     return images
 
 
+# What the server's mime table may lack. `.ogg` is a WhatsApp voice note;
+# upstream can also build a name like `x.ogg; codecs=opus` from the mime.
+_MIME_FALLBACK = {".webp": "image/webp", ".ogg": "audio/ogg", ".oga": "audio/ogg",
+                  ".opus": "audio/ogg", ".m4a": "audio/mp4"}
+
+
 def _guess_mime(file_url):
     if not file_url:
         return ""
-    guessed = mimetypes.guess_type(os.path.basename(str(file_url).split("?")[0]))[0]
-    return guessed or ""
+    base = os.path.basename(str(file_url).split("?")[0].split(";")[0].strip())
+    guessed = mimetypes.guess_type(base)[0]
+    return guessed or _MIME_FALLBACK.get(os.path.splitext(base)[1].lower(), "")
 
 
 # ── ConvRow ──────────────────────────────────────────────────────────────────
@@ -276,7 +283,11 @@ _THREAD_ITEM_BLANK = {
     "note_type": "",
     "author": None,
     "author_name": "",
+    # Legacy: see whatsapp_reactions.set_item_reactions.
     "reaction": "",
+    "is_sticker": False,
+    "audio_url": None,
+    "audio_duration": None,
     "read": 1,
 }
 
@@ -316,9 +327,16 @@ def message_item(row, reply_texts=None, sender_names=None):
             "is_template": 1 if (_g(row, "use_template", 0) or _g(row, "template")) else 0,
             "template_name": _g(row, "template", "") or "",
             "reaction": strip_html(_g(row, "message", "")) if content_type == "reaction" else "",
+            # Filled per page by whatsapp_reactions.attach_reactions.
+            "reactions": [],
+            "is_sticker": bool(_g(row, "custom_is_sticker", 0)),
             "read": 1 if _g(row, "custom_read", 0) else 0,
         }
     )
+    if content_type == "audio":
+        # `media_url` stays the original; this is the AAC copy iOS can play.
+        item["audio_url"] = _g(row, "custom_audio_url") or None
+        item["audio_duration"] = _int_or_none(_g(row, "custom_audio_duration")) or None
     if content_type in MEDIA_LABELS and not item["text"]:
         item["text"] = MEDIA_LABELS[content_type]
     return item
@@ -342,6 +360,7 @@ def note_item(row, author_names=None):
             "media_url": attach,
             "media_mime": _guess_mime(attach),
             "media_private": 1 if attach and "/private/" in str(attach) else 0,
+            "reactions": [],
         }
     )
     return item

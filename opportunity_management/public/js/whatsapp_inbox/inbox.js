@@ -233,6 +233,15 @@ export class WhatsAppInbox {
 			return;
 		}
 
+		// A reaction is not a message: no preview, no unread, no append —
+		// only the target bubble's chips change.
+		if (payload.event === "reaction") {
+			if (is_open) {
+				this.thread.patch_reactions(payload.message_id, payload.reactions);
+			}
+			return;
+		}
+
 		if (payload.event === "status") {
 			if (is_open) {
 				this.thread.patch_status(payload.message_id, payload.status);

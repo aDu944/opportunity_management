@@ -12,6 +12,7 @@ from frappe.utils import add_to_date, cint, now_datetime
 
 from opportunity_management.opportunity_management import whatsapp_hooks
 from opportunity_management.opportunity_management import whatsapp_serializers as S
+from opportunity_management.opportunity_management.whatsapp_audio import ffmpeg_path
 from opportunity_management.opportunity_management.whatsapp_identity import (
     normalize_wa_identifier,
 )
@@ -61,6 +62,8 @@ def get_inbox_meta():
         "me": frappe.session.user,
         "agents": agents,
         "tags": tags,
+        # ffmpeg present → Ogg voice notes get a playable `audio_url`.
+        "voice_transcoding": bool(ffmpeg_path()),
         "settings": {
             "business_days": settings.get("business_days") or "",
             "business_hours_start": str(settings.get("business_hours_start") or ""),

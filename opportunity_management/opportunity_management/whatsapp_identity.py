@@ -32,6 +32,10 @@ UNKNOWN_CUSTOMER_LABEL = "WhatsApp user"
 # not persist `profile.username` / `user_id` anywhere).
 SENDER_CONTACTS_FLAG = "whatsapp_sender_contacts"
 
+# `frappe.flags` key for the wamids the webhook wrapper rewrote from
+# `sticker` to `image` (a set), so the hook can flag `custom_is_sticker`.
+STICKER_IDS_FLAG = "whatsapp_sticker_ids"
+
 
 def is_bsuid(value) -> bool:
     """True for a business-scoped user ID (`IQ.1858675848823706`, `US.ENT.123`)."""

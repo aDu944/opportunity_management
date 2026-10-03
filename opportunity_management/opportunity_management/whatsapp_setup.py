@@ -78,6 +78,36 @@ WHATSAPP_MESSAGE_CUSTOM_FIELDS = {
             "no_copy": 1,
             "description": "Normalized display text computed once at insert (whatsapp_utils.normalize_body).",
         },
+        {
+            # An inbound sticker is stored with content_type "image" (the
+            # webhook wrapper coerces it; upstream's Select has no sticker
+            # option). This flag is what the preview label and the thread
+            # UI key on.
+            "fieldname": "custom_is_sticker",
+            "label": "Is Sticker",
+            "fieldtype": "Check",
+            "default": "0",
+            "insert_after": "custom_body_text",
+            "read_only": 1,
+            "no_copy": 1,
+        },
+        {
+            "fieldname": "custom_audio_url",
+            "label": "Playable Audio",
+            "fieldtype": "Data",
+            "insert_after": "custom_is_sticker",
+            "read_only": 1,
+            "no_copy": 1,
+            "description": "AAC/M4A copy of an Ogg/Opus voice note (whatsapp_audio) — iOS and Safari cannot play Ogg.",
+        },
+        {
+            "fieldname": "custom_audio_duration",
+            "label": "Audio Duration (s)",
+            "fieldtype": "Int",
+            "insert_after": "custom_audio_url",
+            "read_only": 1,
+            "no_copy": 1,
+        },
     ]
 }
 

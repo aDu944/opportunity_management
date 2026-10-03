@@ -4,11 +4,15 @@
  * Bubbles are pinned by class (`.wa-in` left, `.wa-out` right) rather than by
  * flex direction, so an Arabic Desk (`dir="rtl"` on the app root) does not
  * mirror inbound and outbound. Each text node carries `dir="auto"`.
+ *
+ * Stickers render as a bare image (no bubble surface); reactions live in
+ * `reactions.js` and are patched into a bubble in place by `data-message-id`.
  */
 
 import * as api from "./api.js";
 import { day_label, duration_label, hhmm, same_day, window_closes_at } from "./time.js";
 import { ThreadHeader } from "./thread_header.js";
+import { Reactions, react_button_html, reactions_html } from "./reactions.js";
 
 const THREAD_LIMIT = 40;
 
@@ -34,6 +38,19 @@ function tick_html(status) {
 	return "";
 }
 
+const OGG_RE = /\.(ogg|oga|opus)(;|\?|$)/i;
+
+/** Voice notes: the server's AAC copy (`audio_url`) plays everywhere; the
+ *  Ogg/Opus original does not on Safari, so say a copy is on its way. */
+function audio_html(item) {
+	const src = item.audio_url || item.media_url;
+	const pending =
+		!item.audio_url && OGG_RE.test(String(item.media_url || ""))
+			? `<div class="wa-audio-note">${esc(__("Preparing a playable copy…"))}</div>`
+			: "";
+	return `<audio class="wa-audio" controls preload="none" src="${esc(src)}"></audio>${pending}`;
+}
+
 function media_html(item) {
 	if (!item.media_url) {
 		return "";
@@ -41,6 +58,9 @@ function media_html(item) {
 	const url = esc(item.media_url);
 	const mime = (item.media_mime || "").toLowerCase();
 	const kind = (item.content_type || "").toLowerCase();
+	if (kind === "audio" || (mime.startsWith("audio/") && kind !== "document")) {
+		return audio_html(item);
+	}
 	if (mime.startsWith("image/") || kind === "image" || kind === "sticker") {
 		return `<a href="${url}" target="_blank" rel="noopener"><img class="wa-media" src="${url}" alt="${esc(
 			__("Image")
@@ -48,9 +68,6 @@ function media_html(item) {
 	}
 	if (mime.startsWith("video/") || kind === "video") {
 		return `<video class="wa-media" controls preload="metadata" src="${url}"></video>`;
-	}
-	if (mime.startsWith("audio/") || kind === "audio") {
-		return `<audio class="wa-audio" controls preload="none" src="${url}"></audio>`;
 	}
 	const filename = decodeURIComponent(String(item.media_url).split("/").pop() || "");
 	return `<a class="wa-doc" href="${url}" target="_blank" rel="noopener"><span class="wa-doc-icon">📎</span><span class="wa-doc-name" dir="auto">${esc(
@@ -84,6 +101,11 @@ export class Thread {
 		this.$messages = this.$container.find(".wa-messages");
 		this.$composer_host = this.$container.find(".wa-composer-host");
 		this.header = new ThreadHeader({ container: this.$header, thread: this });
+		this.reactions = new Reactions({
+			thread: this,
+			$messages: this.$messages,
+			$host: this.$container,
+		});
 
 		this.$messages.on("click", ".wa-load-older", () => this.load_older());
 	}
@@ -92,6 +114,7 @@ export class Thread {
 		this.conversation = null;
 		this.items = [];
 		this.$header.empty();
+		this.reactions.reset();
 		this.$banner.attr("hidden", true);
 		this.$messages.html(`<div class="wa-empty">${esc(__("Pick a conversation"))}</div>`);
 		this.stop_countdown();
@@ -174,6 +197,14 @@ export class Thread {
 		}
 	}
 
+	/** Called by the composer whenever the window or the lock changes. */
+	set_can_react(flag) {
+		this.$messages.toggleClass("wa-can-react", !!flag);
+		if (!flag) {
+			this.reactions.reset();
+		}
+	}
+
 	// ── messages ─────────────────────────────────────────────────────────
 
 	load_messages() {
@@ -185,6 +216,7 @@ export class Thread {
 				this.items = (res && res.items) || [];
 				this.has_more = !!(res && res.has_more);
 				this.render_all();
+				this.apply_reaction_updates(res);
 				this.scroll_to_bottom();
 			})
 			.catch((err) => {
@@ -244,7 +276,18 @@ export class Thread {
 	}
 
 	append_item(item) {
-		if (!item || this.items.some((i) => i.id === item.id)) {
+		if (!item) {
+			return;
+		}
+		const index = this.items.findIndex((i) => i.id === item.id);
+		if (index !== -1) {
+			// A `message` event for an item we already show is an update
+			// (e.g. its media just landed) — replace it in place.
+			this.items[index] = item;
+			const $old = this.$messages.find(`.wa-bubble[data-id="${CSS.escape(String(item.id))}"]`);
+			if ($old.length) {
+				$old.replaceWith(this.item_html(item));
+			}
 			return;
 		}
 		const previous = this.items[this.items.length - 1];
@@ -286,20 +329,56 @@ export class Thread {
 			caption = `<div class="wa-auto">${esc(item.sender_name)}</div>`;
 		}
 		const ticks = item.direction === "out" ? tick_html(item.status) : "";
+		const attrs = `data-id="${esc(item.id)}" data-message-id="${esc(item.message_id || "")}"`;
+		const meta = `<div class="wa-meta">
+					<span class="wa-time">${esc(hhmm(item.creation))}</span>
+					<span class="wa-ticks">${ticks}</span>
+				</div>`;
+
+		if (item.is_sticker && item.media_url) {
+			const url = esc(item.media_url);
+			return `
+			<div class="wa-bubble wa-sticker ${side}" ${attrs}>
+				${react_button_html(item)}
+				<a href="${url}" target="_blank" rel="noopener"><img class="wa-sticker-img" src="${url}" alt="${esc(
+				__("Sticker")
+			)}"></a>
+				${reactions_html(item)}
+				${meta}
+			</div>`;
+		}
 
 		return `
-			<div class="wa-bubble ${side}" data-id="${esc(item.id)}" data-message-id="${esc(
-			item.message_id || ""
-		)}">
+			<div class="wa-bubble ${side}" ${attrs}>
+				${react_button_html(item)}
 				${caption}
 				${quote}
 				${media_html(item)}
 				<div class="wa-text" dir="auto">${esc(item.text || item.caption || "")}</div>
-				<div class="wa-meta">
-					<span class="wa-time">${esc(hhmm(item.creation))}</span>
-					<span class="wa-ticks">${ticks}</span>
-				</div>
+				${reactions_html(item)}
+				${meta}
 			</div>`;
+	}
+
+	/** Realtime `reaction` event / `reaction_updates` — repaint one bubble's chips. */
+	patch_reactions(message_id, reactions) {
+		if (!message_id) {
+			return;
+		}
+		const item = this.items.find((i) => i.message_id === message_id);
+		if (item) {
+			item.reactions = reactions || [];
+			item.reaction = item.reactions.length ? item.reactions[0].emoji : "";
+		}
+		this.$messages
+			.find(`.wa-bubble[data-message-id="${CSS.escape(message_id)}"] .wa-reactions`)
+			.replaceWith(reactions_html({ reactions: reactions || [] }));
+	}
+
+	apply_reaction_updates(res) {
+		((res && res.reaction_updates) || []).forEach((u) =>
+			this.patch_reactions(u.message_id, u.reactions)
+		);
 	}
 
 	/** Realtime `status` event — repaint one bubble's tick. */

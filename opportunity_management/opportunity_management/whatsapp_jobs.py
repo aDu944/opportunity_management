@@ -188,6 +188,22 @@ def privatize_sent_outbound_media():
         frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: privatize_sent_outbound_media")
 
 
+def privatize_pending_inbound_media():
+    """Inbound media still on a public `/files/` URL — up to 50 per run.
+
+    The on_update hook (`whatsapp_media.on_attach_landed`) is the primary
+    path; this sweeps the rows from before it existed and any it missed.
+    Same `privatize_inbound_media` gate. Never touches Outgoing rows.
+    """
+    try:
+        from opportunity_management.opportunity_management.whatsapp_media import privatize_pending
+
+        if privatize_pending(limit=50):
+            frappe.db.commit()
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: privatize_pending_inbound_media")
+
+
 def _privatize_outbound_row(row):
     file_name = frappe.db.get_value("File", {"file_url": row["attach"]}, "name")
     if not file_name:

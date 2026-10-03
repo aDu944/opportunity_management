@@ -27,6 +27,7 @@ from opportunity_management.opportunity_management import whatsapp_jobs
 from opportunity_management.opportunity_management import whatsapp_serializers as S
 from opportunity_management.opportunity_management.whatsapp_identity import (
     SENDER_CONTACTS_FLAG,
+    STICKER_IDS_FLAG,
     clean_username,
     is_bsuid,
     lookup_sender,
@@ -76,13 +77,17 @@ def on_message_after_insert(doc, method=None):
         except Exception:
             sender = {}
 
+    # A reaction is its own WhatsApp Message row but not a message: see
+    # `_thread_reaction`. An emoji says nothing about the customer's language.
+    reaction = (doc.get("content_type") or "") == "reaction"
+
     conv = None
     try:
         conv = upsert_conversation(
             phone,
             doc.get("whatsapp_account"),
             profile_name=doc.get("profile_name"),
-            language=detect_language(doc.get("message")) if incoming else None,
+            language=detect_language(doc.get("message")) if incoming and not reaction else None,
             username=sender.get("username"),
             user_id=sender.get("user_id"),
         )
@@ -92,19 +97,31 @@ def on_message_after_insert(doc, method=None):
     if not conv:
         return
 
+    if reaction:
+        _thread_reaction(conv, doc)
+        return
+
+    sticker = False
+    if incoming:
+        try:
+            # The webhook wrapper presented the sticker to upstream as an image.
+            sticker = doc.get("message_id") in (frappe.flags.get(STICKER_IDS_FLAG) or ())
+            if sticker:
+                doc.custom_is_sticker = 1
+        except Exception:
+            sticker = False
+
     body_text = ""
     try:
         body_text = normalize_body(doc)
-        frappe.db.set_value(
-            "WhatsApp Message",
-            doc.name,
-            {
-                "custom_conversation": conv.name,
-                "custom_body_text": body_text,
-                "custom_read": 0 if incoming else 1,
-            },
-            update_modified=False,
-        )
+        values = {
+            "custom_conversation": conv.name,
+            "custom_body_text": body_text,
+            "custom_read": 0 if incoming else 1,
+        }
+        if sticker:
+            values["custom_is_sticker"] = 1
+        frappe.db.set_value("WhatsApp Message", doc.name, values, update_modified=False)
         doc.custom_conversation = conv.name
         doc.custom_body_text = body_text
     except Exception:
@@ -159,7 +176,24 @@ def on_message_on_update(doc, method=None):
     so `on_update` fires for every sent/delivered/read/failed tick. We only
     republish the tick — nothing is written, which keeps this cheap and
     keeps `doc.save()` from recursing.
+
+    It is also where inbound media first has an `attach`: upstream inserts
+    the row, then saves the File, then sets `attach` and calls `save()`.
+    `whatsapp_media.on_attach_landed` handles that moment (set_value only).
     """
+    try:
+        if (
+            (doc.get("type") or "") == "Incoming"
+            and doc.get("custom_conversation")
+            and doc.get("attach")
+            and doc.has_value_changed("attach")
+        ):
+            from opportunity_management.opportunity_management import whatsapp_media
+
+            whatsapp_media.on_attach_landed(doc)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: attach landing failed")
+
     try:
         if not doc.get("custom_conversation"):
             return
@@ -264,6 +298,32 @@ def upsert_conversation(
                 frappe.get_traceback(), "WhatsApp inbox: new-conversation publish failed"
             )
     return conv
+
+
+def _thread_reaction(conv, doc):
+    """A reaction row (either direction) joins the thread but is not a
+    message: no preview / last-message / unread / status / first-response
+    change, no push, no auto-reply. Meta's rule is that a reaction does not
+    open the customer-service window either, so `last_inbound_at` stays put.
+    Clients get a `reaction` event to patch the target bubble instead."""
+    try:
+        frappe.db.set_value(
+            "WhatsApp Message",
+            doc.name,
+            {"custom_conversation": conv.name, "custom_read": 1},
+            update_modified=False,
+        )
+        doc.custom_conversation = conv.name
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: reaction stamping failed")
+        return
+    try:
+        if doc.get("reply_to_message_id"):
+            from opportunity_management.opportunity_management import whatsapp_reactions
+
+            whatsapp_reactions.publish_reaction(conv, doc.reply_to_message_id)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: reaction publish failed")
 
 
 def _apply_message_to_conversation(conv, doc, incoming, body_text):

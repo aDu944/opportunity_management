@@ -95,7 +95,11 @@ export const remove_tag = (conversation, tag) => call("remove_tag", { conversati
 export const get_quick_replies = () => call("get_quick_replies");
 export const render_quick_reply = (name, conversation) =>
 	call("render_quick_reply", { name, conversation });
-export const get_templates = () => call("get_templates");
+// With a conversation, the server preselects (`default`) the best template
+// for the customer's language and sorts that language first.
+export const get_templates = (conversation) =>
+	call("get_templates", conversation ? { conversation } : {});
+export const react = (args) => call("react", args);
 export const link_crm = (conversation, doctype, name) =>
 	call("link_crm", { conversation, doctype, name });
 export const unlink_crm = (conversation, doctype) => call("unlink_crm", { conversation, doctype });

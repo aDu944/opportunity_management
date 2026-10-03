@@ -94,13 +94,40 @@ function display_name_of(frm) {
 	return [doc.first_name, doc.last_name].filter(Boolean).join(" ") || doc.name;
 }
 
+function language_label(code) {
+	if (code === "ar") {
+		return "العربية";
+	}
+	if (code === "en") {
+		return "English";
+	}
+	return code || "—";
+}
+
+function template_options(templates, language) {
+	return templates
+		.filter((t) => (t.language || "") === language)
+		.map((t) => ({
+			// One Meta name has an Arabic and an English row — say which.
+			label: t.language_code ? `${t.template_name} (${t.language_code})` : t.template_name,
+			value: t.name,
+		}));
+}
+
 function start_dialog(frm, templates) {
 	const phones = candidate_phones(frm);
 	const by_name = {};
+	const languages = [];
 	templates.forEach((t) => {
 		by_name[t.name] = t;
+		if (languages.indexOf(t.language || "") === -1) {
+			languages.push(t.language || "");
+		}
 	});
 	const max_params = templates.reduce((m, t) => Math.max(m, t.param_count || 0), 0);
+	// The server flagged the best template for this customer's language.
+	const preselected = templates.find((t) => t.default) || templates[0] || {};
+	const initial_language = preselected.language || "";
 
 	const fields = [
 		{
@@ -117,15 +144,21 @@ function start_dialog(frm, templates) {
 	if (templates.length) {
 		fields.push({
 			fieldtype: "Select",
+			fieldname: "language",
+			label: __("Language"),
+			options: languages.map((code) => ({ label: language_label(code), value: code })),
+			default: initial_language,
+			// Only worth a control when there is a choice to make.
+			hidden: languages.length > 1 ? 0 : 1,
+			change: () => switch_language(),
+		});
+		fields.push({
+			fieldtype: "Select",
 			fieldname: "template",
 			label: __("Template"),
 			reqd: 1,
-			options: templates.map((t) => ({
-				// One Meta name has an Arabic and an English row — say which.
-				label: t.language_code ? `${t.template_name} (${t.language_code})` : t.template_name,
-				value: t.name,
-			})),
-			default: templates[0].name,
+			options: template_options(templates, initial_language),
+			default: preselected.name,
 			// `sync_template` is a hoisted declaration below; it runs on change,
 			// long after this object is built.
 			change: () => sync_template(),
@@ -155,6 +188,17 @@ function start_dialog(frm, templates) {
 		primary_action_label: templates.length ? __("Send") : __("Open in Inbox"),
 		primary_action: (values) => submit(values),
 	});
+
+	/** Filter the list to one language and select its first row. */
+	function switch_language() {
+		const language = dialog.get_value("language") || "";
+		const options = template_options(templates, language);
+		if (!options.length || (by_name[dialog.get_value("template")] || {}).language === language) {
+			return;
+		}
+		dialog.set_df_property("template", "options", options);
+		dialog.set_value("template", options[0].value);
+	}
 
 	function sync_template() {
 		const template = by_name[dialog.get_value("template")] || {};
@@ -213,8 +257,10 @@ function start_dialog(frm, templates) {
 	dialog.show();
 }
 
-function open_start_dialog(frm) {
-	call("get_templates")
+function open_start_dialog(frm, conversation) {
+	// An existing thread with this record tells the server the customer's
+	// language; without one the default is the configured template.
+	call("get_templates", conversation ? { conversation: conversation } : {})
 		.then((templates) => start_dialog(frm, (templates || []).filter(Boolean)))
 		// The error is already on screen; not being able to read the template
 		// list is not the same as there being none, so we do not fake an empty one.
@@ -264,9 +310,10 @@ function load_conversations(frm) {
 			// The call succeeding *is* the access check — the endpoint calls
 			// `_require_inbox_access()` first — so the button appears only for
 			// users who could actually use it.
+			const rows = (r && r.message) || [];
 			frm.add_custom_button(
 				__("Start conversation"),
-				() => open_start_dialog(frm),
+				() => open_start_dialog(frm, rows.length ? rows[0].name : null),
 				__("WhatsApp")
 			);
 		},
