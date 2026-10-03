@@ -239,6 +239,10 @@ def _coerce_unsupported(data):
                 message["image"] = sticker
                 _remember_sticker(message.get("id"))
                 continue
+            if mtype in ("location", "contacts"):
+                # Upstream still gets text, but the hook turns the row back
+                # into a card from this stash (whatsapp_message_extras).
+                _remember_card(message)
             if mtype == "location":
                 body = _location_text(message.get("location") or {})
             elif mtype == "contacts":
@@ -263,6 +267,15 @@ def _remember_sticker(message_id):
         if not isinstance(ids, set):
             ids = frappe.flags[STICKER_IDS_FLAG] = set()
         ids.add(message_id)
+    except Exception:
+        pass
+
+
+def _remember_card(message):
+    try:
+        from opportunity_management.opportunity_management.whatsapp_message_extras import remember_card
+
+        remember_card(message)
     except Exception:
         pass
 

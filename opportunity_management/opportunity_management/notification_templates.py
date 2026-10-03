@@ -442,16 +442,19 @@ def whatsapp_inbound(conv, msg):
     if not text:
         text = "(رسالة بدون نص • no text)"
 
+    from opportunity_management.opportunity_management.whatsapp_message_extras import add_reply_action
+
+    # `reply`/`WA_REPLY` category only when enable_notification_reply is on.
     return (
         "💬 رسالة واتساب • WhatsApp",
         f"{who}\n{text}",
-        {
+        add_reply_action({
             "type": "whatsapp_message",
             "screen": "whatsapp",
             "doctype": "WhatsApp Conversation",
             "name": conv.get("name"),
             "kind": "whatsapp",
-        },
+        }),
     )
 
 

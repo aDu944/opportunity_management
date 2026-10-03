@@ -150,6 +150,13 @@ doc_events = {
 override_whitelisted_methods = {
     "frappe_whatsapp.utils.webhook.webhook": "opportunity_management.opportunity_management.whatsapp_webhook.webhook",
 }
+
+# Upstream cannot send location / contact cards or flag a voice note. The
+# subclass overrides ONLY `send_outgoing`, and only for rows the inbox built
+# with a `custom_payload` marker; everything else is `super()` untouched.
+override_doctype_class = {
+    "WhatsApp Message": "opportunity_management.opportunity_management.whatsapp_message_override.WhatsAppMessage",
+}
 # ============================================================================
 # Permission Hooks
 # ============================================================================
@@ -279,7 +286,13 @@ fixtures = [
                 "custom_body_text",
                 "custom_is_sticker",
                 "custom_audio_url",
-                "custom_audio_duration"
+                "custom_audio_duration",
+                "custom_payload",
+                "custom_is_voice",
+                "custom_sent_at",
+                "custom_delivered_at",
+                "custom_read_at",
+                "custom_error"
             ]]
         ]
     },

@@ -108,6 +108,59 @@ WHATSAPP_MESSAGE_CUSTOM_FIELDS = {
             "read_only": 1,
             "no_copy": 1,
         },
+        # ── round 3 (whatsapp_payloads / whatsapp_message_extras) ──
+        {
+            # {"kind": "location" | "contact" | "voice", …}: what the
+            # override sends for those kinds, and how a row is presented.
+            "fieldname": "custom_payload",
+            "label": "Inbox Payload",
+            "fieldtype": "Long Text",
+            "insert_after": "custom_audio_duration",
+            "read_only": 1,
+            "no_copy": 1,
+        },
+        {
+            "fieldname": "custom_is_voice",
+            "label": "Is Voice Note",
+            "fieldtype": "Check",
+            "default": "0",
+            "insert_after": "custom_payload",
+            "read_only": 1,
+            "no_copy": 1,
+        },
+        {
+            "fieldname": "custom_sent_at",
+            "label": "Sent At",
+            "fieldtype": "Datetime",
+            "insert_after": "custom_is_voice",
+            "read_only": 1,
+            "no_copy": 1,
+        },
+        {
+            "fieldname": "custom_delivered_at",
+            "label": "Delivered At",
+            "fieldtype": "Datetime",
+            "insert_after": "custom_sent_at",
+            "read_only": 1,
+            "no_copy": 1,
+        },
+        {
+            "fieldname": "custom_read_at",
+            "label": "Read At",
+            "fieldtype": "Datetime",
+            "insert_after": "custom_delivered_at",
+            "read_only": 1,
+            "no_copy": 1,
+        },
+        {
+            "fieldname": "custom_error",
+            "label": "Error",
+            "fieldtype": "Small Text",
+            "insert_after": "custom_read_at",
+            "read_only": 1,
+            "no_copy": 1,
+            "description": "Meta's reason for a failed status callback.",
+        },
     ]
 }
 

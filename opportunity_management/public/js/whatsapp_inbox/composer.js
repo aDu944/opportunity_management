@@ -15,6 +15,9 @@ import { TemplatePicker } from "./template_picker.js";
 // Matches `.wa-input { min-height }` in whatsapp_inbox.css — one row of text
 // plus the control's own padding.
 const MIN_INPUT_HEIGHT = 38;
+// The server throttles too (20 s per conversation); Meta shows the indicator
+// for up to 25 s or until we reply.
+const TYPING_INTERVAL_MS = 20000;
 
 function esc(value) {
 	return frappe.utils.escape_html(value == null ? "" : String(value));
@@ -85,6 +88,7 @@ export class Composer {
 		this.$input.on("input", () => {
 			this.autosize();
 			this.maybe_popover();
+			this.maybe_typing();
 		});
 	}
 
@@ -137,6 +141,12 @@ export class Composer {
 	 *  otherwise and let an agent write a message that will be refused. */
 	apply_lock() {
 		const conv = this.conversation;
+		if (conv && conv.is_blocked) {
+			// Nothing reaches a blocked contact; the thread shows the banner.
+			this.locked = true;
+			this.$locked.text(__("This contact is blocked")).removeAttr("hidden");
+			return;
+		}
 		const assigned = (conv && conv.assigned_to) || "";
 		const claimed_by_other = !!assigned && assigned !== this.inbox.meta.me;
 		this.locked = claimed_by_other && !this.inbox.meta.is_manager;
@@ -202,6 +212,26 @@ export class Composer {
 		// A note is always allowed: it never reaches Meta, so the closed window
 		// must not lock the agent out of writing one.
 		this.set_window(this.window_open);
+	}
+
+	/** "typing…" for the customer (when the setting is on): at most once per
+	 *  TYPING_INTERVAL_MS while a non-empty reply is being written. */
+	maybe_typing() {
+		const settings = (this.inbox.meta && this.inbox.meta.settings) || {};
+		const conv = this.conversation;
+		if (!settings.typing_indicator || !conv || this.note_mode || !this.window_open) {
+			return;
+		}
+		if (!(this.$input.val() || "").trim()) {
+			return;
+		}
+		const now = Date.now();
+		if (this.typing_at && this.typing_conv === conv.name && now - this.typing_at < TYPING_INTERVAL_MS) {
+			return;
+		}
+		this.typing_at = now;
+		this.typing_conv = conv.name;
+		api.typing(conv.name).catch(() => {});
 	}
 
 	// ── sending ──────────────────────────────────────────────────────────

@@ -25,7 +25,12 @@ _BUSY_FLAG = "whatsapp_attach_landing"
 
 # Optional columns: added by `whatsapp_setup` during migrate. Read only when
 # present so a deploy that has not migrated yet keeps serving the thread.
-OPTIONAL_MESSAGE_FIELDS = ("custom_is_sticker", "custom_audio_url", "custom_audio_duration")
+OPTIONAL_MESSAGE_FIELDS = (
+    "custom_is_sticker", "custom_audio_url", "custom_audio_duration",
+    # round 3: cards / voice / message info; `buttons` is upstream's (options).
+    "custom_payload", "custom_is_voice", "custom_sent_at", "custom_delivered_at",
+    "custom_read_at", "custom_error", "buttons",
+)
 
 
 def optional_message_fields():
@@ -33,6 +38,48 @@ def optional_message_fields():
         return [f for f in OPTIONAL_MESSAGE_FIELDS if frappe.db.has_column(MSG, f)]
     except Exception:
         return []
+
+
+def check_video_size(content_type, file_url):
+    """Meta caps video at 16 MB (mp4 / 3gpp); refuse before it fails there."""
+    from frappe import _
+
+    from opportunity_management.opportunity_management.whatsapp_payloads import MAX_VIDEO_MB
+
+    if content_type != "video" or not file_url:
+        return
+    size = cint(frappe.db.get_value("File", {"file_url": file_url}, "file_size"))
+    if size > MAX_VIDEO_MB * 1024 * 1024:
+        frappe.throw(
+            _("This video is {0} MB — WhatsApp accepts videos up to {1} MB.").format(
+                round(size / 1048576.0, 1), MAX_VIDEO_MB
+            ),
+            title=_("Video too large"),
+        )
+
+
+def public_copy(file_url, conversation):
+    """A public File with the content of `file_url`, attached to the
+    conversation — Meta fetches outbound media by URL, and a private
+    original (inbound media is privatised) must stay private."""
+    if is_public_file_url(file_url) or str(file_url or "").startswith("http"):
+        return file_url
+    name = frappe.db.get_value("File", {"file_url": file_url}, "name")
+    if not name:
+        frappe.throw(frappe._("File {0} not found").format(file_url))
+    source = frappe.get_doc("File", name)
+    copy = frappe.get_doc(
+        {
+            "doctype": "File",
+            "file_name": source.file_name,
+            "attached_to_doctype": "WhatsApp Conversation",
+            "attached_to_name": conversation,
+            "is_private": 0,
+            "content": source.get_content(),
+        }
+    )
+    copy.save(ignore_permissions=True)
+    return copy.file_url
 
 
 def is_public_file_url(url) -> bool:

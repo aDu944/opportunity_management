@@ -10,9 +10,11 @@ import frappe
 from frappe import _
 from frappe.utils import add_to_date, cint, now_datetime
 
+from opportunity_management.opportunity_management import whatsapp_chat_state as CS
 from opportunity_management.opportunity_management import whatsapp_hooks
 from opportunity_management.opportunity_management import whatsapp_serializers as S
 from opportunity_management.opportunity_management.whatsapp_audio import ffmpeg_path
+from opportunity_management.opportunity_management.whatsapp_payloads import MAX_VIDEO_MB
 from opportunity_management.opportunity_management.whatsapp_identity import (
     normalize_wa_identifier,
 )
@@ -73,6 +75,9 @@ def get_inbox_meta():
             # "" when the setting points at a hidden (OTP / sample) or deleted template.
             "default_reengage_template": effective_reengage_template(settings),
             "auto_read_receipt": cint(settings.get("auto_read_receipt")),
+            "typing_indicator": bool(cint(settings.get("enable_typing_indicator"))),
+            "notification_reply": bool(cint(settings.get("enable_notification_reply"))),
+            "max_video_mb": MAX_VIDEO_MB,
         },
     }
 
@@ -165,16 +170,21 @@ def list_conversations(
         )
 
     where = " AND ".join(clauses) or "1 = 1"
+    # The caller's pinned threads first — in SQL, so OFFSET paging holds.
+    state_select, state_join, order_by, state_params = CS.list_fragments(frappe.session.user)
+    params.update(state_params)
     rows = frappe.db.sql(
         f"""
         SELECT c.name, c.phone, c.display_name, c.whatsapp_account, c.status,
                c.assigned_to, c.last_message_at, c.last_inbound_at,
                c.last_message_preview, c.last_message_direction, c.unread_count,
                c.contact, c.lead, c.customer, c.opportunity, c.customer_language,
-               c.notes_count, c.first_response_seconds, c.wa_username, c.wa_user_id
+               c.notes_count, c.first_response_seconds, c.wa_username, c.wa_user_id,
+               c.is_blocked, {state_select}
         FROM `tabWhatsApp Conversation` c
+        {state_join}
         WHERE {where}
-        ORDER BY c.last_message_at DESC, c.modified DESC
+        ORDER BY {order_by}
         LIMIT %(limit)s OFFSET %(start)s
         """,
         params,

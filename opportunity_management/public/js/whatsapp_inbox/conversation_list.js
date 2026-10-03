@@ -107,6 +107,29 @@ export class ConversationList {
 			this.inbox.open_conversation(name);
 		});
 
+		// Per-user pin / mute (set_chat_state). Pinning re-sorts server-side,
+		// so the list is refetched; muting only repaints the row.
+		this.$body.on("click", ".wa-row-toggle", (e) => {
+			e.stopPropagation();
+			const $btn = $(e.currentTarget);
+			const row = this.get_row($btn.closest(".wa-row").data("name"));
+			if (!row) {
+				return;
+			}
+			const action = $btn.data("action");
+			const args = { conversation: row.name };
+			args[action === "pin" ? "pinned" : "muted"] = row[action === "pin" ? "pinned" : "muted"] ? 0 : 1;
+			api.set_chat_state(args)
+				.then((fresh) => {
+					if (action === "pin") {
+						this.refresh();
+					} else {
+						this.upsert(fresh, { keep_unread: true });
+					}
+				})
+				.catch((err) => this.inbox.report(err));
+		});
+
 		this.render_scopes();
 	}
 
@@ -237,17 +260,29 @@ export class ConversationList {
 					)}"></span>`
 			)
 			.join("");
+		const toggles = `<span class="wa-row-toggles">
+				<button type="button" class="wa-row-toggle ${row.pinned ? "active" : ""}" data-action="pin"
+					title="${esc(row.pinned ? __("Unpin") : __("Pin"))}">📌</button>
+				<button type="button" class="wa-row-toggle ${row.muted ? "active" : ""}" data-action="mute"
+					title="${esc(row.muted ? __("Unmute notifications") : __("Mute notifications"))}">${
+			row.muted ? "🔕" : "🔔"
+		}</button>
+			</span>`;
+		const blocked = row.is_blocked
+			? `<span class="wa-chip wa-chip-muted">${esc(__("Blocked"))}</span>`
+			: "";
 		const assignee = row.assigned_to
 			? `<span class="wa-chip">${esc(row.assigned_to_name || row.assigned_to)}</span>`
 			: `<span class="wa-chip wa-chip-muted">${esc(__("Unassigned"))}</span>`;
 		return `
 			<div class="wa-row ${row.name === this.active ? "active" : ""} ${
 			row.unread_count > 0 ? "unread" : ""
-		}" data-name="${esc(row.name)}">
+		} ${row.pinned ? "pinned" : ""}" data-name="${esc(row.name)}">
 				${avatar_html(row)}
 				<div class="wa-row-main">
 					<div class="wa-row-top">
 						<span class="wa-row-name" dir="auto">${esc(row.display_name || row.handle || "")}</span>
+						${toggles}
 						<span class="wa-row-time">${esc(relative_time(row.last_message_at))}</span>
 					</div>
 					<div class="wa-row-sub">
@@ -260,7 +295,7 @@ export class ConversationList {
 						</span>
 						${unread}
 					</div>
-					<div class="wa-row-foot">${assignee}</div>
+					<div class="wa-row-foot">${assignee} ${blocked}</div>
 				</div>
 			</div>`;
 	}
@@ -319,10 +354,18 @@ export class ConversationList {
 		this.render_scopes();
 	}
 
+	/** Newest activity goes to the top — of the unpinned rows, unless the
+	 *  row itself is pinned (the server sorts the caller's pins first). */
 	prepend(row) {
-		this.rows.unshift(row);
+		const after = row.pinned ? 0 : this.rows.filter((r) => r.pinned).length;
+		this.rows.splice(after, 0, row);
 		this.$body.find(".wa-empty").remove();
-		this.$body.prepend(this.row_html(row));
+		const $rows = this.$body.children(".wa-row");
+		if (after && $rows.length >= after) {
+			$rows.eq(after - 1).after(this.row_html(row));
+		} else {
+			this.$body.prepend(this.row_html(row));
+		}
 		this.render_scopes();
 	}
 

@@ -4,7 +4,8 @@ The whitelisted contract for the WhatsApp team inbox (plan §1.7).
 **This module is a facade.** Clients call
 `/api/method/opportunity_management.opportunity_management.whatsapp_api.<name>`
 and must keep doing so; the implementations live in
-`whatsapp_api_inbox`, `whatsapp_api_messages`, `whatsapp_api_reactions` and `whatsapp_api_crm`, with
+`whatsapp_api_inbox`, `whatsapp_api_messages`, `whatsapp_api_reactions`,
+`whatsapp_api_send`, `whatsapp_api_chat` and `whatsapp_api_crm`, with
 shared access checks and helpers in `whatsapp_api_common`.
 
 Re-exporting is safe with Frappe's dispatcher: `frappe.handler.execute_cmd`
@@ -60,6 +61,23 @@ from opportunity_management.opportunity_management.whatsapp_api_reactions import
     react,
 )
 
+from opportunity_management.opportunity_management.whatsapp_api_send import (  # noqa: F401
+    forward_message,
+    send_contact,
+    send_location,
+    send_options,
+    send_voice,
+)
+
+from opportunity_management.opportunity_management.whatsapp_api_chat import (  # noqa: F401
+    block_contact,
+    get_conversation_media,
+    search_messages,
+    set_chat_state,
+    typing,
+    unblock_contact,
+)
+
 from opportunity_management.opportunity_management.whatsapp_api_crm import (  # noqa: F401
     create_lead_from_conversation,
     get_inbox_stats,
@@ -69,7 +87,8 @@ from opportunity_management.opportunity_management.whatsapp_api_crm import (  # 
     unlink_crm,
 )
 
-# The endpoint names of plan §1.7 + §5, plus `react`. Anything not listed here is not
+# The endpoint names of plan §1.7 + §5, plus `react` and the round-3 additions
+# (wa_round3_contract.md). Anything not listed here is not
 # part of the contract.
 __all__ = [
     # conversations
@@ -95,6 +114,18 @@ __all__ = [
     "render_quick_reply",
     "get_templates",
     "react",
+    # round 3: rich sends, forwarding, typing, search, media, block, pin/mute
+    "send_voice",
+    "send_location",
+    "send_contact",
+    "send_options",
+    "forward_message",
+    "typing",
+    "search_messages",
+    "get_conversation_media",
+    "block_contact",
+    "unblock_contact",
+    "set_chat_state",
     # CRM
     "link_crm",
     "unlink_crm",

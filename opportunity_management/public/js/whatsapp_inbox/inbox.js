@@ -244,7 +244,7 @@ export class WhatsAppInbox {
 
 		if (payload.event === "status") {
 			if (is_open) {
-				this.thread.patch_status(payload.message_id, payload.status);
+				this.thread.patch_status(payload.message_id, payload.status, payload);
 			}
 			this.list.upsert(conv, { keep_unread: true });
 			return;

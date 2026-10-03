@@ -24,6 +24,12 @@ from frappe.utils import add_to_date, cint, get_datetime, now_datetime
 
 from opportunity_management.opportunity_management import whatsapp_crm
 from opportunity_management.opportunity_management import whatsapp_jobs
+from opportunity_management.opportunity_management import whatsapp_message_extras as X
+from opportunity_management.opportunity_management.whatsapp_chat_state import (
+    NO_STATE,
+    muted_users,
+    states_by_user,
+)
 from opportunity_management.opportunity_management import whatsapp_serializers as S
 from opportunity_management.opportunity_management.whatsapp_identity import (
     SENDER_CONTACTS_FLAG,
@@ -128,6 +134,12 @@ def on_message_after_insert(doc, method=None):
         frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: message stamping failed")
 
     try:
+        if incoming:  # location / contacts: back to a card (custom_payload)
+            X.stamp_inbound_card(doc)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: card stamping failed")
+
+    try:
         _apply_message_to_conversation(conv, doc, incoming, body_text)
     except Exception:
         frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: conversation update failed")
@@ -199,12 +211,14 @@ def on_message_on_update(doc, method=None):
             return
         if not doc.has_value_changed("status"):
             return
+        extra = {"message_id": doc.get("message_id"), "status": doc.get("status")}
+        try:
+            # Message info: sent/delivered/read times + Meta's failure reason.
+            extra.update(X.record_status(doc))
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: status stamp failed")
         conv = frappe.get_doc("WhatsApp Conversation", doc.custom_conversation)
-        publish_inbox_event(
-            "status",
-            conv,
-            extra={"message_id": doc.get("message_id"), "status": doc.get("status")},
-        )
+        publish_inbox_event("status", conv, extra=extra)
     except Exception:
         frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: status tick publish failed")
 
@@ -429,9 +443,12 @@ def publish_inbox_event(event, conv, item=None, extra=None):
     recipients = set(inbox_users())
     if conv.get("assigned_to"):
         recipients.add(conv.get("assigned_to"))
+    # pinned / muted are per user: each recipient gets their own flags.
+    states = states_by_user(conv.name)
     for user in recipients:
         try:
-            frappe.publish_realtime("whatsapp_inbox", payload, user=user)
+            row = dict(payload["conversation"], **states.get(user, NO_STATE))
+            frappe.publish_realtime("whatsapp_inbox", dict(payload, conversation=row), user=user)
         except Exception:
             continue
 
@@ -442,7 +459,8 @@ def _push_inbound(conv, doc):
     from opportunity_management.opportunity_management import notification_templates as T
     from opportunity_management.opportunity_management.business_hooks import _send_to_users
 
-    seen = set()
+    # A user who muted this thread gets no push (counts are unaffected).
+    seen = set(muted_users(conv.name))
     if conv.assigned_to:
         title, body, data = T.whatsapp_inbound(conv, doc)
         _send_to_users([conv.assigned_to], title, body, data, dedupe_seen=seen)

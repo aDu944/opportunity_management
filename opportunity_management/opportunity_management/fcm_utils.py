@@ -236,6 +236,10 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
         return False
 
     badge = _unread_badge_for_token(token)
+    # Optional private key: an iOS notification category (e.g. the WhatsApp
+    # Reply action, `WA_REPLY`) — lifted into `aps`, never sent as data.
+    data = dict(data or {})
+    category = data.pop("_apns_category", None)
     payload = {
         "message": {
             "token": token,
@@ -262,6 +266,8 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
             },
         }
     }
+    if category:
+        payload["message"]["apns"]["payload"]["aps"]["category"] = str(category)
 
     try:
         from google.oauth2 import service_account

@@ -16,6 +16,7 @@ import frappe
 from frappe import _
 from frappe.utils import get_datetime, now_datetime
 
+from opportunity_management.opportunity_management.whatsapp_payloads import decorate_item
 from opportunity_management.opportunity_management.whatsapp_identity import (
     clean_username,
     display_label,
@@ -180,11 +181,14 @@ def _guess_mime(file_url):
 
 # ── ConvRow ──────────────────────────────────────────────────────────────────
 
-def conv_row(conv, tags=None, assignee_name=None, now=None, images=None):
-    """Serialize one conversation. `tags` / `assignee_name` / `images` are
-    injectable so `conv_rows()` can resolve a whole page in a few queries."""
+def conv_row(conv, tags=None, assignee_name=None, now=None, images=None, state=None):
+    """Serialize one conversation. `tags` / `assignee_name` / `images` /
+    `state` are injectable so `conv_rows()` can resolve a whole page in a
+    few queries. `state` is the session user's {pinned, muted}."""
     if isinstance(conv, str):
         conv = frappe.get_doc("WhatsApp Conversation", conv)
+    if state is None:
+        state = _own_state(conv)
 
     name = _g(conv, "name")
     assigned_to = _g(conv, "assigned_to") or None
@@ -235,7 +239,25 @@ def conv_row(conv, tags=None, assignee_name=None, now=None, images=None):
         # Maintained by `whatsapp_hooks` on the first agent reply. Null, not 0,
         # while the customer is still waiting — the two mean different things.
         "first_response_seconds": _int_or_none(_g(conv, "first_response_seconds")),
+        "is_blocked": bool(_g(conv, "is_blocked", 0)),
+        # The CALLER's flags (publish_inbox_event re-stamps each recipient's).
+        "pinned": bool(state.get("pinned")),
+        "muted": bool(state.get("muted")),
     }
+
+
+def _own_state(conv):
+    """The session user's pin / mute: from the list query's join columns
+    when present, else one lookup."""
+    if isinstance(conv, dict) and "pinned" in conv:
+        return {"pinned": bool(_int_or_none(conv.get("pinned"))),
+                "muted": bool(_int_or_none(conv.get("muted")))}
+    from opportunity_management.opportunity_management.whatsapp_chat_state import state_for
+
+    try:
+        return state_for(_g(conv, "name"), frappe.session.user)
+    except Exception:
+        return {}
 
 
 def conv_rows(rows):
@@ -248,6 +270,13 @@ def conv_rows(rows):
     name_map = _full_names([_g(r, "assigned_to") for r in rows])
     images = _avatar_map(rows)
     now = now_datetime()
+    if isinstance(rows[0], dict) and "pinned" in rows[0]:
+        state_of = _own_state  # list_conversations joined them in
+    else:
+        from opportunity_management.opportunity_management.whatsapp_chat_state import states_for
+
+        states = states_for(names, frappe.session.user)
+        state_of = lambda r: states.get(_g(r, "name"), {})  # noqa: E731
     return [
         conv_row(
             r,
@@ -255,6 +284,7 @@ def conv_rows(rows):
             assignee_name=name_map.get(_g(r, "assigned_to"), ""),
             now=now,
             images=images,
+            state=state_of(r),
         )
         for r in rows
     ]
@@ -289,11 +319,29 @@ _THREAD_ITEM_BLANK = {
     "audio_url": None,
     "audio_duration": None,
     "read": 1,
+    "unread": False,
+    "media_size": None,
 }
 
 
-def message_item(row, reply_texts=None, sender_names=None):
-    """Serialize a `WhatsApp Message` row (dict or Document) as a ThreadItem."""
+def _media_sizes(urls):
+    """{file_url: file_size} for a page of attachments — one query."""
+    wanted = sorted({u for u in urls if u})
+    if not wanted:
+        return {}
+    try:
+        rows = frappe.get_all(
+            "File", filters={"file_url": ["in", wanted]}, fields=["file_url", "file_size"],
+            limit_page_length=0,
+        )
+    except Exception:
+        return {}
+    return {r["file_url"]: r["file_size"] for r in rows if r.get("file_size")}
+
+
+def message_item(row, reply_texts=None, sender_names=None, sizes=None):
+    """Serialize a `WhatsApp Message` row (dict or Document) as a ThreadItem.
+    `sizes` is `_media_sizes()` for a page; without it one File lookup."""
     item = dict(_THREAD_ITEM_BLANK)
     direction = "in" if (_g(row, "type", "") or "") == "Incoming" else "out"
     attach = _g(row, "attach") or None
@@ -331,8 +379,15 @@ def message_item(row, reply_texts=None, sender_names=None):
             "reactions": [],
             "is_sticker": bool(_g(row, "custom_is_sticker", 0)),
             "read": 1 if _g(row, "custom_read", 0) else 0,
+            "unread": direction == "in" and not _g(row, "custom_read", 0),
         }
     )
+    if attach:
+        item["media_size"] = _int_or_none(
+            (sizes if sizes is not None else _media_sizes([attach])).get(attach)
+        )
+    # location / contact cards, options, voice flag, message-info times.
+    decorate_item(item, lambda field: _g(row, field))
     if content_type == "audio":
         # `media_url` stays the original; this is the AAC copy iOS can play.
         item["audio_url"] = _g(row, "custom_audio_url") or None
@@ -399,7 +454,10 @@ def thread_items(messages=None, notes=None):
     people = [_g(m, "custom_sent_by") for m in messages] + [_g(n, "author") for n in notes]
     names = _full_names(people)
 
-    items = [message_item(m, reply_texts=reply_texts, sender_names=names) for m in messages]
+    sizes = _media_sizes([_g(m, "attach") for m in messages])
+    items = [
+        message_item(m, reply_texts=reply_texts, sender_names=names, sizes=sizes) for m in messages
+    ]
     items += [note_item(n, author_names=names) for n in notes]
     items.sort(key=lambda i: (i.get("creation") or "", str(i.get("id") or "")))
     return items

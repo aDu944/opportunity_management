@@ -100,6 +100,20 @@ export const render_quick_reply = (name, conversation) =>
 export const get_templates = (conversation) =>
 	call("get_templates", conversation ? { conversation } : {});
 export const react = (args) => call("react", args);
+// Round 3 (wa_round3_contract.md).
+export const send_voice = (args) => call("send_voice", args);
+export const send_location = (args) => call("send_location", args);
+export const send_contact = (args) => call("send_contact", args);
+export const send_options = (args) => call("send_options", args);
+export const forward_message = (message, to_conversation) =>
+	call("forward_message", { message, to_conversation });
+export const typing = (conversation) => call("typing", { conversation });
+export const search_messages = (args) => call("search_messages", args);
+export const get_conversation_media = (args) => call("get_conversation_media", args);
+export const block_contact = (conversation) => call("block_contact", { conversation });
+export const unblock_contact = (conversation) => call("unblock_contact", { conversation });
+// `pinned` / `muted`: 0 | 1, or omitted to leave as is.
+export const set_chat_state = (args) => call("set_chat_state", args);
 export const link_crm = (conversation, doctype, name) =>
 	call("link_crm", { conversation, doctype, name });
 export const unlink_crm = (conversation, doctype) => call("unlink_crm", { conversation, doctype });

@@ -19,7 +19,10 @@ from opportunity_management.opportunity_management import whatsapp_hooks
 from opportunity_management.opportunity_management import whatsapp_reactions as R
 from opportunity_management.opportunity_management import whatsapp_serializers as S
 from opportunity_management.opportunity_management.whatsapp_identity import display_label, has_phone
-from opportunity_management.opportunity_management.whatsapp_media import optional_message_fields
+from opportunity_management.opportunity_management.whatsapp_media import (
+    check_video_size,
+    optional_message_fields,
+)
 from opportunity_management.opportunity_management.whatsapp_template_picker import order_templates
 from opportunity_management.opportunity_management.whatsapp_templates import (
     effective_reengage_template,
@@ -38,6 +41,7 @@ from opportunity_management.opportunity_management.whatsapp_api_common import (
     MAX_THREAD_LIMIT,
     _get_conv,
     _note,
+    _refuse_blocked,
     _require_assignee,
     _require_inbox_access,
     MetaSendError,
@@ -45,25 +49,39 @@ from opportunity_management.opportunity_management.whatsapp_api_common import (
 )
 
 
-@frappe.whitelist()
-def get_messages(conversation, before=None, after=None, limit=None):
-    """One page of the merged message + note thread.
+NOTE_FIELDS = ["name", "creation", "note_type", "text", "author", "attach"]
 
-    `after` is what the mobile thread polls with every 5s while mounted —
-    an indexed `custom_conversation, creation` range scan.
-    """
-    _require_inbox_access()
-    _get_conv(conversation)
-    limit = cint(limit) or DEFAULT_THREAD_LIMIT
-    limit = max(1, min(limit, MAX_THREAD_LIMIT))
 
-    msg_fields = [
+def message_fields():
+    """ThreadItem source columns (optional ones only once migrated)."""
+    return [
         "name", "type", "creation", "message", "custom_body_text", "content_type",
         "attach", "custom_media_private", "status", "message_id",
         "reply_to_message_id", "custom_sent_by", "custom_is_auto", "custom_read",
         "use_template", "template",
     ] + optional_message_fields()
-    note_fields = ["name", "creation", "note_type", "text", "author", "attach"]
+
+
+@frappe.whitelist()
+def get_messages(conversation, before=None, after=None, limit=None, around=None):
+    """One page of the merged message + note thread.
+
+    `after` is what the mobile thread polls with every 5s while mounted —
+    an indexed `custom_conversation, creation` range scan. `around` (a
+    creation timestamp, e.g. a search hit) returns a page centred on it —
+    whatsapp_api_chat.messages_around.
+    """
+    _require_inbox_access()
+    _get_conv(conversation)
+    limit = cint(limit) or DEFAULT_THREAD_LIMIT
+    limit = max(1, min(limit, MAX_THREAD_LIMIT))
+    if around and not (before or after):
+        from opportunity_management.opportunity_management.whatsapp_api_chat import messages_around
+
+        return messages_around(conversation, around, limit)
+
+    msg_fields = message_fields()
+    note_fields = NOTE_FIELDS
 
     # Reaction rows are not thread items; they decorate their target's
     # `reactions` (whatsapp_reactions).
@@ -107,7 +125,13 @@ def get_messages(conversation, before=None, after=None, limit=None):
     # Polling clients only ask for rows after their cursor, so a new reaction
     # on an older message would never reach them without this list.
     updates = R.reaction_updates_since(conversation, after) if after else []
-    return {"items": items, "has_more": has_more, "reaction_updates": updates}
+    # `after` pages forward: there its overflow means newer rows exist.
+    return {
+        "items": items,
+        "has_more": has_more,
+        "has_newer": bool(after) and has_more,
+        "reaction_updates": updates,
+    }
 
 
 # ── sending ──────────────────────────────────────────────────────────────────
@@ -180,6 +204,7 @@ def send_message(conversation, text=None, reply_to=None, attachment=None):
     """Free-text (or media) reply. Only valid inside the 24h window."""
     _require_inbox_access()
     conv = _get_conv(conversation)
+    _refuse_blocked(conv)
     _auto_claim(conv)
 
     text = (text or "").strip()
@@ -196,6 +221,7 @@ def send_message(conversation, text=None, reply_to=None, attachment=None):
         )
 
     content_type = _content_type_for(attachment)
+    check_video_size(content_type, attachment)
     payload = {
         "doctype": "WhatsApp Message",
         "type": "Outgoing",
@@ -234,6 +260,7 @@ def send_template(conversation, template, params=None, header_media=None):
     has closed, so this path never checks `window_open`."""
     _require_inbox_access()
     conv = _get_conv(conversation)
+    _refuse_blocked(conv)
     _auto_claim(conv)
 
     template_row = load_template(template)

@@ -140,6 +140,45 @@ export class SidePanel {
 		`);
 		this.render_crm();
 		this.render_opportunities();
+		this.render_block();
+	}
+
+	/** Managers only: block / unblock on WhatsApp (block also resolves). */
+	render_block() {
+		const conv = this.conversation;
+		if (!this.inbox.meta.is_manager || !conv) {
+			return;
+		}
+		const blocked = !!conv.is_blocked;
+		const $card = $(`<div class="wa-card wa-block-card">
+				<div class="wa-card-title">${esc(__("Block"))}</div>
+				<div class="wa-kv"><span>${esc(__("Status"))}</span><span>${esc(
+			blocked ? __("Blocked") : __("Not blocked")
+		)}</span></div>
+			</div>`).appendTo(this.$body);
+		$(`<button class="btn btn-xs ${blocked ? "btn-default" : "btn-danger"}">${esc(
+			blocked ? __("Unblock contact") : __("Block contact")
+		)}</button>`)
+			.on("click", () => {
+				const run = () =>
+					(blocked ? api.unblock_contact(conv.name) : api.block_contact(conv.name))
+						.then((row) => {
+							this.inbox.on_conversation_changed(row, true);
+							this.inbox.thread.render_banner();
+						})
+						.catch((err) => this.inbox.report(err));
+				if (blocked) {
+					run();
+					return;
+				}
+				frappe.confirm(
+					__(
+						"Block this contact on WhatsApp? They cannot message you and the conversation is resolved. WhatsApp only allows blocking someone who wrote in the last 24 hours."
+					),
+					run
+				);
+			})
+			.appendTo($card);
 	}
 
 	render_crm() {

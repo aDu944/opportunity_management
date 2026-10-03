@@ -14,6 +14,7 @@
   "whatsapp_account",
   "column_break_head",
   "status",
+  "is_blocked",
   "assigned_to",
   "assigned_at",
   "assigned_by",
@@ -101,6 +102,15 @@
    "options": "Open\nPending\nResolved",
    "in_list_view": 1,
    "in_standard_filter": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_blocked",
+   "fieldtype": "Check",
+   "label": "Blocked",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "description": "Blocked on WhatsApp by a manager (block_contact). Nothing can be sent while set."
   },
   {
    "fieldname": "assigned_to",
@@ -309,7 +319,7 @@
    "link_fieldname": "conversation"
   }
  ],
- "modified": "2026-10-03 00:00:00.000000",
+ "modified": "2026-10-03 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Opportunity Management",
  "name": "WhatsApp Conversation",

@@ -13,6 +13,7 @@ from opportunity_management.opportunity_management.whatsapp_api_common import (
     MetaSendError,
     WindowClosedError,
     _get_conv,
+    _refuse_blocked,
     _require_assignee,
     _require_inbox_access,
 )
@@ -32,6 +33,7 @@ def react(conversation, message_id, emoji=None):
     """
     _require_inbox_access()
     conv = _get_conv(conversation)
+    _refuse_blocked(conv)
     _require_assignee(conv)
 
     message_id = (message_id or "").strip()

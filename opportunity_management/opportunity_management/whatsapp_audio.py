@@ -82,6 +82,38 @@ def probe_duration(path) -> int:
         return 0
 
 
+def voice_ogg_args(ffmpeg, source, out):
+    """Outbound voice note: WhatsApp renders `audio.voice` only for Ogg/Opus
+    mono, so the recording (AAC .m4a from the app, .webm from Desk) is
+    re-encoded at speech bitrate."""
+    return [
+        ffmpeg, "-nostdin", "-y", "-i", source, "-vn",
+        "-c:a", "libopus", "-b:a", "32k", "-ac", "1", "-ar", "48000", out,
+    ]
+
+
+def to_voice_ogg(source_path):
+    """(ogg bytes, whole seconds) or (None, 0) without ffmpeg / on failure."""
+    ffmpeg = ffmpeg_path()
+    if not ffmpeg or not source_path:
+        return None, 0
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "voice.ogg")
+            subprocess.run(
+                voice_ogg_args(ffmpeg, source_path, out),
+                timeout=FFMPEG_TIMEOUT,
+                capture_output=True,
+                check=True,
+            )
+            duration = probe_duration(out)
+            with open(out, "rb") as handle:
+                return handle.read(), duration
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "WhatsApp voice: Ogg/Opus conversion failed")
+        return None, 0
+
+
 def _source_file(name, attach):
     """The original's File doc — resolved by record, never by building a
     path, so it works whether or not it has been privatised already."""

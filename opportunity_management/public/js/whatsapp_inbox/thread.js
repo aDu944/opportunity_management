@@ -13,6 +13,8 @@ import * as api from "./api.js";
 import { day_label, duration_label, hhmm, same_day, window_closes_at } from "./time.js";
 import { ThreadHeader } from "./thread_header.js";
 import { Reactions, react_button_html, reactions_html } from "./reactions.js";
+import { card_html } from "./cards.js";
+import { MessageInfo } from "./message_info.js";
 
 const THREAD_LIMIT = 40;
 
@@ -107,6 +109,8 @@ export class Thread {
 			$host: this.$container,
 		});
 
+		this.info = new MessageInfo({ thread: this, $messages: this.$messages });
+
 		this.$messages.on("click", ".wa-load-older", () => this.load_older());
 	}
 
@@ -115,6 +119,7 @@ export class Thread {
 		this.items = [];
 		this.$header.empty();
 		this.reactions.reset();
+		this.info.close();
 		this.$banner.attr("hidden", true);
 		this.$messages.html(`<div class="wa-empty">${esc(__("Pick a conversation"))}</div>`);
 		this.stop_countdown();
@@ -152,7 +157,13 @@ export class Thread {
 			return;
 		}
 		this.stop_countdown();
-		if (conv.window_open) {
+		if (conv.is_blocked) {
+			// The composer disables itself (composer.apply_lock).
+			this.$banner
+				.removeAttr("hidden")
+				.attr("class", "wa-banner wa-banner-closed")
+				.text(__("This contact is blocked — nothing can be sent until a manager unblocks them"));
+		} else if (conv.window_open) {
 			this.remaining = Number(conv.window_seconds_remaining) || 0;
 			this.paint_open_banner();
 			// A minute tick is enough for an hours-long countdown; the
@@ -348,13 +359,20 @@ export class Thread {
 			</div>`;
 		}
 
+		// Location / contact cards replace the fallback text; option pills
+		// sit under it.
+		const card = card_html(item);
+		const text = card.replaces_text
+			? ""
+			: `<div class="wa-text" dir="auto">${esc(item.text || item.caption || "")}</div>`;
 		return `
 			<div class="wa-bubble ${side}" ${attrs}>
 				${react_button_html(item)}
 				${caption}
 				${quote}
 				${media_html(item)}
-				<div class="wa-text" dir="auto">${esc(item.text || item.caption || "")}</div>
+				${card.html}
+				${text}
 				${reactions_html(item)}
 				${meta}
 			</div>`;
@@ -381,14 +399,20 @@ export class Thread {
 		);
 	}
 
-	/** Realtime `status` event — repaint one bubble's tick. */
-	patch_status(message_id, status) {
+	/** Realtime `status` event — repaint one bubble's tick. `extra` carries
+	 *  the message-info keys the server stamped (sent_at, …, error). */
+	patch_status(message_id, status, extra) {
 		if (!message_id) {
 			return;
 		}
 		const item = this.items.find((i) => i.message_id === message_id);
 		if (item) {
 			item.status = status;
+			["sent_at", "delivered_at", "read_at", "error"].forEach((key) => {
+				if (extra && extra[key]) {
+					item[key] = extra[key];
+				}
+			});
 		}
 		this.$messages
 			.find(`.wa-bubble[data-message-id="${message_id}"] .wa-ticks`)

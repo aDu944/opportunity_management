@@ -90,6 +90,12 @@ def _require_assignee(conv):
         )
 
 
+def _refuse_blocked(conv):
+    """Nothing goes out to a contact the team blocked (see block_contact)."""
+    if cint(conv.get("is_blocked")):
+        frappe.throw(_("This contact is blocked. Unblock them before sending a message."))
+
+
 def _paging(limit_start=0, limit_page_length=None):
     start = max(cint(limit_start), 0)
     length = cint(limit_page_length) or DEFAULT_PAGE_LENGTH
