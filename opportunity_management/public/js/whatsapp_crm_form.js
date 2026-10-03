@@ -231,8 +231,8 @@ function render_section(frm, rows) {
 		const $row = $(`
 			<div class="wa-crm-conv">
 				<div>
-					<div dir="auto"><b>${esc(row.display_name || row.phone)}</b>
-						<span class="text-muted">${esc(row.phone)}</span></div>
+					<div dir="auto"><b>${esc(row.display_name || row.handle || "")}</b>
+						<span class="text-muted" dir="ltr">${esc(row.handle || "")}</span></div>
 					<div class="text-muted small" dir="auto">${esc(row.last_message_preview || "")}</div>
 				</div>
 				<div>

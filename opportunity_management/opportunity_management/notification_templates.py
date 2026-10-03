@@ -430,7 +430,7 @@ def whatsapp_inbound(conv, msg):
            already the normalized display string: media labels, button
            titles and rendered templates resolved at insert time).
     """
-    who = (conv.get("display_name") or conv.get("phone") or "").strip()
+    who = _wa_who(conv)
     text = (msg.get("custom_body_text") or "").strip()
     if not text:
         from opportunity_management.opportunity_management.whatsapp_utils import (
@@ -455,9 +455,18 @@ def whatsapp_inbound(conv, msg):
     )
 
 
+def _wa_who(conv):
+    """Name for a push body — never a hidden-number customer's raw BSUID."""
+    from opportunity_management.opportunity_management.whatsapp_identity import display_label
+
+    return display_label(
+        conv.get("display_name"), conv.get("phone"), conv.get("wa_username"), "WhatsApp user"
+    ).strip()
+
+
 def whatsapp_assigned(conv, by):
     """A manager handed this thread to someone. `by` is the assigning User id."""
-    who = (conv.get("display_name") or conv.get("phone") or "").strip()
+    who = _wa_who(conv)
     by_name = ""
     if by:
         by_name = frappe.db.get_value("User", by, "full_name") or by

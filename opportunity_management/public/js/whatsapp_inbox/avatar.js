@@ -16,7 +16,8 @@ function esc(value) {
 }
 
 export function initials(row) {
-	const source = ((row && (row.display_name || row.phone)) || "?").trim();
+	// `handle`, never `phone`: for a hidden-number customer `phone` is a BSUID.
+	const source = ((row && (row.display_name || row.handle)) || "?").trim().replace(/^[@+]/, "");
 	const words = source.split(/\s+/).filter(Boolean);
 	if (!words.length) {
 		return "?";

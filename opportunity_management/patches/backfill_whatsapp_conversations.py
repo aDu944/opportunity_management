@@ -45,10 +45,12 @@ def backfill_conversations():
     from opportunity_management.opportunity_management.whatsapp_hooks import (
         upsert_conversation,
     )
+    from opportunity_management.opportunity_management.whatsapp_identity import (
+        normalize_wa_identifier,
+    )
     from opportunity_management.opportunity_management.whatsapp_utils import (
         normalize_body,
         detect_language,
-        normalize_phone,
     )
 
     rows = frappe.db.sql(
@@ -71,7 +73,8 @@ def backfill_conversations():
 
     for index, row in enumerate(rows, start=1):
         incoming = (row.get("type") or "") == "Incoming"
-        phone = normalize_phone(row.get("from") if incoming else row.get("to"))
+        # BSUIDs (hidden-number customers) are kept verbatim.
+        phone = normalize_wa_identifier(row.get("from") if incoming else row.get("to"))
         if not phone:
             continue
 

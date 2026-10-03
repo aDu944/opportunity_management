@@ -1,7 +1,7 @@
 /**
  * Left pane — the conversation queue.
  *
- * Owns the Mine / Unassigned / All / Resolved segmented control, the debounced
+ * Owns the All / Mine / Unassigned / Expired / Resolved segmented control, the debounced
  * search box, the tag filter and the infinite scroll pager. Rows are patched
  * in place by the realtime handler in `inbox.js` (`upsert`), never re-fetched
  * wholesale, so an incoming message does not reset the reader's scroll.
@@ -11,11 +11,14 @@ import * as api from "./api.js";
 import { avatar_html } from "./avatar.js";
 import { relative_time } from "./time.js";
 
-const SCOPES = ["mine", "unassigned", "all", "resolved"];
+// "expired" = not Resolved and the 24h customer-service window has closed
+// (only a template reaches the customer) — server scope of the same name.
+const SCOPES = ["all", "mine", "unassigned", "expired", "resolved"];
 const SCOPE_LABELS = {
+	all: "All",
 	mine: "Mine",
 	unassigned: "Unassigned",
-	all: "All",
+	expired: "Expired",
 	resolved: "Resolved",
 };
 const PAGE_LENGTH = 30;
@@ -60,7 +63,7 @@ export class ConversationList {
 				<div class="wa-scopes" role="tablist"></div>
 				<div class="wa-list-filters">
 					<input type="search" class="form-control input-xs wa-search"
-						placeholder="${esc(__("Search name, phone or message"))}" dir="auto">
+						placeholder="${esc(__("Search name, phone, username or message"))}" dir="auto">
 					<div class="wa-tag-filter"></div>
 				</div>
 			</div>
@@ -244,11 +247,11 @@ export class ConversationList {
 				${avatar_html(row)}
 				<div class="wa-row-main">
 					<div class="wa-row-top">
-						<span class="wa-row-name" dir="auto">${esc(row.display_name || row.phone)}</span>
+						<span class="wa-row-name" dir="auto">${esc(row.display_name || row.handle || "")}</span>
 						<span class="wa-row-time">${esc(relative_time(row.last_message_at))}</span>
 					</div>
 					<div class="wa-row-sub">
-						<span class="wa-row-phone">${esc(row.phone)}</span>
+						<span class="wa-row-phone" dir="ltr">${esc(row.handle || "")}</span>
 						${dots}
 					</div>
 					<div class="wa-row-bottom">
@@ -284,6 +287,14 @@ export class ConversationList {
 		}
 
 		const existing = this.rows[index];
+		if (this.scope === "expired" && (row.status === "Resolved" || row.window_open)) {
+			// The customer wrote back (window reopened) or it was resolved —
+			// an expired-only list must let it go rather than repaint it.
+			this.rows.splice(index, 1);
+			this.$body.find(`.wa-row[data-name="${row.name}"]`).remove();
+			this.render_scopes();
+			return;
+		}
 		if (options.keep_unread) {
 			row = Object.assign({}, row, { unread_count: existing.unread_count });
 		}
@@ -324,6 +335,9 @@ export class ConversationList {
 		}
 		if (this.scope === "unassigned") {
 			return !row.assigned_to && row.status !== "Resolved";
+		}
+		if (this.scope === "expired") {
+			return row.status !== "Resolved" && !row.window_open;
 		}
 		if (this.scope === "resolved") {
 			return row.status === "Resolved";

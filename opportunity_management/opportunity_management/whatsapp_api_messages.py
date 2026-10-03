@@ -17,6 +17,7 @@ from frappe.utils import cint, now_datetime
 
 from opportunity_management.opportunity_management import whatsapp_hooks
 from opportunity_management.opportunity_management import whatsapp_serializers as S
+from opportunity_management.opportunity_management.whatsapp_identity import display_label
 from opportunity_management.opportunity_management.whatsapp_utils import (
     WINDOW_CLOSED_ERROR_CODE,
     count_template_params,
@@ -291,7 +292,9 @@ def add_note(conversation, text, attach=None, mentions=None):
             from opportunity_management.opportunity_management.business_hooks import _send_to_users
 
             conv = frappe.get_doc("WhatsApp Conversation", conversation)
-            who = conv.display_name or conv.phone
+            who = display_label(
+                conv.display_name, conv.phone, conv.get("wa_username"), _("WhatsApp user")
+            )
             _send_to_users(
                 mentions,
                 "📝 ملاحظة واتساب • WhatsApp Note",
@@ -347,7 +350,8 @@ def render_quick_reply(name, conversation=None):
     customer = ""
     if conversation and frappe.db.exists("WhatsApp Conversation", conversation):
         conv = frappe.get_doc("WhatsApp Conversation", conversation)
-        customer = conv.display_name or conv.phone or ""
+        # Never a raw BSUID in a message the customer reads.
+        customer = display_label(conv.display_name, conv.phone, conv.get("wa_username"), "")
         if conv.customer_language:
             lang = conv.customer_language.lower()
 

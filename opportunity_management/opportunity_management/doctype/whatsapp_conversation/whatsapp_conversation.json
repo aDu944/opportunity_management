@@ -9,6 +9,8 @@
  "field_order": [
   "phone",
   "display_name",
+  "wa_username",
+  "wa_user_id",
   "whatsapp_account",
   "column_break_head",
   "status",
@@ -56,13 +58,29 @@
    "in_standard_filter": 1,
    "search_index": 1,
    "reqd": 1,
-   "description": "Normalized digits, no leading +."
+   "description": "Normalized digits, no leading +. For a customer who hides their number (WhatsApp username), the business-scoped user ID instead, e.g. IQ.1858675848823706."
   },
   {
    "fieldname": "display_name",
    "fieldtype": "Data",
    "label": "Display Name",
    "in_list_view": 1
+  },
+  {
+   "fieldname": "wa_username",
+   "fieldtype": "Data",
+   "label": "WhatsApp Username",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "description": "Meta profile username, without the leading @. Kept current — a username can change."
+  },
+  {
+   "fieldname": "wa_user_id",
+   "fieldtype": "Data",
+   "label": "WhatsApp User ID",
+   "read_only": 1,
+   "search_index": 1,
+   "description": "Meta business-scoped user ID (BSUID), e.g. IQ.1858675848823706."
   },
   {
    "fieldname": "whatsapp_account",
@@ -291,7 +309,7 @@
    "link_fieldname": "conversation"
   }
  ],
- "modified": "2026-09-16 00:00:00.000000",
+ "modified": "2026-10-03 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Opportunity Management",
  "name": "WhatsApp Conversation",

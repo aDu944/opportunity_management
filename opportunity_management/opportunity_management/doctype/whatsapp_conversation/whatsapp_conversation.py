@@ -1,5 +1,6 @@
 # Controller for WhatsApp Conversation — the thread object the shared team
-# inbox is built on. One row per (whatsapp_account, normalized phone).
+# inbox is built on. One row per (whatsapp_account, normalized phone — or the
+# business-scoped user ID when the customer hides their number).
 #
 # Deliberately thin, per house style: every mutation lives in
 # `opportunity_management.opportunity_management.whatsapp_hooks` (webhook-side
@@ -27,12 +28,19 @@ class WhatsAppConversation(Document):
         races on, so it must be derived here rather than by the caller —
         a hand-edited Desk row would otherwise be able to break the key.
         """
-        from opportunity_management.opportunity_management.whatsapp_utils import (
-            normalize_phone,
+        from opportunity_management.opportunity_management.whatsapp_identity import (
+            clean_username,
+            is_bsuid,
+            normalize_wa_identifier,
         )
 
-        self.phone = normalize_phone(self.phone) or (self.phone or "").strip()
-        if not self.display_name:
+        # A BSUID (hidden-number customer) is kept verbatim — it is what goes
+        # out in `to`; only real phones are reduced to digits.
+        self.phone = normalize_wa_identifier(self.phone) or (self.phone or "").strip()
+        if is_bsuid(self.phone):
+            self.wa_user_id = self.phone
+        self.wa_username = clean_username(self.wa_username) or None
+        if not self.display_name and not is_bsuid(self.phone):
             self.display_name = self.phone
         self.conversation_key = "{0}:{1}".format(self.whatsapp_account or "", self.phone or "")
 

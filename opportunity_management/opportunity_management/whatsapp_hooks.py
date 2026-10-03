@@ -25,11 +25,17 @@ from frappe.utils import add_to_date, cint, get_datetime, now_datetime
 from opportunity_management.opportunity_management import whatsapp_crm
 from opportunity_management.opportunity_management import whatsapp_jobs
 from opportunity_management.opportunity_management import whatsapp_serializers as S
+from opportunity_management.opportunity_management.whatsapp_identity import (
+    SENDER_CONTACTS_FLAG,
+    clean_username,
+    is_bsuid,
+    lookup_sender,
+    normalize_wa_identifier,
+)
 from opportunity_management.opportunity_management.whatsapp_utils import (
     detect_language,
     inbox_users,
     normalize_body,
-    normalize_phone,
     setting,
 )
 
@@ -53,12 +59,22 @@ def on_message_after_insert(doc, method=None):
     try:
         incoming = (doc.get("type") or "") == "Incoming"
         raw_number = doc.get("from") if incoming else doc.get("to")
-        phone = normalize_phone(raw_number)
+        # A hidden-number customer's BSUID is kept verbatim (see whatsapp_identity).
+        phone = normalize_wa_identifier(raw_number)
         if not phone:
             return
     except Exception:
         frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: phone normalization failed")
         return
+
+    sender = {}
+    if incoming:
+        try:
+            # Stashed by the webhook wrapper; absent for messages inserted any
+            # other way, which simply means no username update this time.
+            sender = lookup_sender(frappe.flags.get(SENDER_CONTACTS_FLAG), raw_number)
+        except Exception:
+            sender = {}
 
     conv = None
     try:
@@ -67,6 +83,8 @@ def on_message_after_insert(doc, method=None):
             doc.get("whatsapp_account"),
             profile_name=doc.get("profile_name"),
             language=detect_language(doc.get("message")) if incoming else None,
+            username=sender.get("username"),
+            user_id=sender.get("user_id"),
         )
     except Exception:
         frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: conversation upsert failed")
@@ -159,8 +177,15 @@ def on_message_on_update(doc, method=None):
 
 # ── conversation upsert ──────────────────────────────────────────────────────
 
-def upsert_conversation(phone, account, profile_name=None, language=None, notify=True):
+def upsert_conversation(
+    phone, account, profile_name=None, language=None, notify=True, username=None, user_id=None
+):
     """Get-or-create the thread for (account, phone).
+
+    `phone` is the customer identifier: normalized digits, or the verbatim
+    BSUID for a customer who hides their number. `username` / `user_id` come
+    from the webhook's `contacts[]` and are written whenever they are new or
+    changed (a username can change; the latest wins).
 
     `conversation_key` is unique, so two webhook workers racing on the first
     message of a new customer both try to insert; the loser catches
@@ -168,19 +193,34 @@ def upsert_conversation(phone, account, profile_name=None, language=None, notify
     patch passes so importing 138 rows of history sends no push and no
     realtime event.
     """
-    phone = normalize_phone(phone)
+    phone = normalize_wa_identifier(phone)
     if not phone:
         return None
     key = "{0}:{1}".format(account or "", phone)
+    username = clean_username(username) or None
+    user_id = (str(user_id).strip() if user_id else "") or (phone if is_bsuid(phone) else None)
 
     name = frappe.db.get_value("WhatsApp Conversation", {"conversation_key": key}, "name")
+    if not name and is_bsuid(phone):
+        # The same customer's earlier thread, keyed on the phone they used to
+        # share — keep the history in one place.
+        filters = {"wa_user_id": phone}
+        if account:
+            filters["whatsapp_account"] = account
+        name = frappe.db.get_value("WhatsApp Conversation", filters, "name")
     if name:
         conv = frappe.get_doc("WhatsApp Conversation", name)
         updates = {}
-        if profile_name and (not conv.display_name or conv.display_name == conv.phone):
+        if profile_name and (
+            not conv.display_name or conv.display_name == conv.phone or is_bsuid(conv.display_name)
+        ):
             updates["display_name"] = profile_name
         if language and not conv.customer_language:
             updates["customer_language"] = language
+        if username and conv.get("wa_username") != username:
+            updates["wa_username"] = username
+        if user_id and conv.get("wa_user_id") != user_id:
+            updates["wa_user_id"] = user_id
         if updates:
             for field, value in updates.items():
                 conv.set(field, value)
@@ -193,7 +233,11 @@ def upsert_conversation(phone, account, profile_name=None, language=None, notify
             {
                 "doctype": "WhatsApp Conversation",
                 "phone": phone,
-                "display_name": profile_name or phone,
+                # Never a raw BSUID as the name — the serializer falls back
+                # to @username / "WhatsApp user" instead.
+                "display_name": profile_name or ("" if is_bsuid(phone) else phone),
+                "wa_username": username,
+                "wa_user_id": user_id,
                 "whatsapp_account": account,
                 "status": "Open",
                 "first_contact_at": now,

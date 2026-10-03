@@ -12,6 +12,10 @@ from frappe.utils import add_days, cint, getdate, nowdate
 from opportunity_management.opportunity_management import whatsapp_crm
 from opportunity_management.opportunity_management import whatsapp_hooks
 from opportunity_management.opportunity_management import whatsapp_serializers as S
+from opportunity_management.opportunity_management.whatsapp_identity import (
+    display_label,
+    has_phone,
+)
 from opportunity_management.opportunity_management.whatsapp_api_common import (
     _get_conv,
     _is_manager,
@@ -58,7 +62,12 @@ def create_lead_from_conversation(
     if conv.lead:
         frappe.throw(_("This conversation is already linked to Lead {0}").format(conv.lead))
 
-    lead_name = (lead_name or conv.display_name or conv.phone or "").strip()
+    # A hidden-number customer has a BSUID, not a phone: never default the
+    # name to it, and leave the Lead's phone fields empty. (ERPNext's Lead has
+    # no plain free-text field for the @username, so it is not copied.)
+    real_phone = conv.phone if has_phone(conv.phone) else None
+    fallback_name = display_label(conv.display_name, conv.phone, conv.get("wa_username"), "")
+    lead_name = (lead_name or fallback_name or "").strip()
     if not lead_name:
         frappe.throw(_("Lead name is required"))
 
@@ -67,8 +76,8 @@ def create_lead_from_conversation(
         "lead_name": lead_name,
         "company_name": (company_name or "").strip() or None,
         "email_id": (email_id or "").strip() or None,
-        "mobile_no": conv.phone,
-        "whatsapp_no": conv.phone,
+        "mobile_no": real_phone,
+        "whatsapp_no": real_phone,
     }
     if source and frappe.db.exists("Lead Source", source):
         payload["source"] = source
@@ -103,6 +112,7 @@ def list_conversations_for_crm(doctype, name):
             "last_message_at", "last_inbound_at", "last_message_preview",
             "last_message_direction", "unread_count", "contact", "lead", "customer",
             "opportunity", "customer_language", "notes_count", "first_response_seconds",
+            "wa_username", "wa_user_id",
         ],
         order_by="last_message_at desc",
         limit_page_length=20,

@@ -6,7 +6,7 @@ POSTing to the URL it already has configured
 (`/api/method/frappe_whatsapp.utils.webhook.webhook`) and we get a seam
 without touching the frappe_whatsapp source.
 
-Three things the upstream handler does not do (verified on v1.0.12):
+Four things the upstream handler does not do (verified on v1.0.12):
 
 1. **No signature check.** Anyone who knows the URL can inject messages.
    We verify `X-Hub-Signature-256` against `frappe.conf.whatsapp_app_secret`.
@@ -17,6 +17,9 @@ Three things the upstream handler does not do (verified on v1.0.12):
 3. **`location` / `contacts` / unknown inbound types raise KeyError**, which
    500s the request and makes Meta retry forever. We rewrite those entries
    into `text` before the original ever sees them.
+
+4. **`contacts[].profile.username` / `user_id` are dropped.** We stash them
+   in `frappe.flags` (`_stash_sender_contacts`) for the after_insert hook.
 
 `webhook.post()` reads `frappe.local.form_dict`, so mutating it in place is
 enough — the original picks up our edits.
@@ -73,6 +76,8 @@ def webhook():
             return "ok"
     except Exception:
         frappe.log_error(frappe.get_traceback(), "WhatsApp webhook: preprocessing failed")
+
+    _stash_sender_contacts(data)
 
     try:
         return _delegate(data)
@@ -274,6 +279,25 @@ def _contacts_text(contacts) -> str:
     return "\n".join(lines) if len(lines) > 1 else "\U0001F464 Contact card"
 
 
+def _stash_sender_contacts(data):
+    """Expose `contacts[]` (username, BSUID, wa_id) to the after_insert hook.
+
+    frappe_whatsapp keeps only `profile.name`; the username and the
+    business-scoped user ID would otherwise be lost. Keyed by both `wa_id`
+    and `user_id` (see `whatsapp_identity.contacts_by_sender`). Best-effort:
+    a failure here must never cost Meta a 200.
+    """
+    try:
+        from opportunity_management.opportunity_management.whatsapp_identity import (
+            SENDER_CONTACTS_FLAG,
+            contacts_by_sender,
+        )
+
+        frappe.flags[SENDER_CONTACTS_FLAG] = contacts_by_sender(data)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "WhatsApp webhook: sender contacts stash failed")
+
+
 def _has_payload(data) -> bool:
     for value in _values(data):
         if value.get("messages") or value.get("statuses"):
@@ -316,6 +340,7 @@ def simulate(fixture="text_inbound"):
     if dropped and not _has_payload(data):
         return {"fixture": fixture, "dropped": dropped, "result": "all duplicates"}
 
+    _stash_sender_contacts(data)
     _original()()
     frappe.db.commit()
     return {"fixture": fixture, "dropped": dropped, "result": "delivered"}

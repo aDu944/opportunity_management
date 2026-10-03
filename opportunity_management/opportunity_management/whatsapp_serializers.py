@@ -13,8 +13,16 @@ import mimetypes
 import os
 
 import frappe
+from frappe import _
 from frappe.utils import get_datetime, now_datetime
 
+from opportunity_management.opportunity_management.whatsapp_identity import (
+    clean_username,
+    display_label,
+    has_phone,
+    is_bsuid,
+    render_handle,
+)
 from opportunity_management.opportunity_management.whatsapp_utils import (
     WINDOW_SECONDS,
     MEDIA_LABELS,
@@ -178,10 +186,22 @@ def conv_row(conv, tags=None, assignee_name=None, now=None, images=None):
     if assignee_name is None and assigned_to:
         assignee_name = _full_names([assigned_to]).get(assigned_to, assigned_to)
 
+    phone = _g(conv, "phone", "") or ""
+    username = clean_username(_g(conv, "wa_username", "")) or None
+    user_id = _g(conv, "wa_user_id", "") or (phone if is_bsuid(phone) else "") or None
+
     return {
         "name": name,
-        "phone": _g(conv, "phone", ""),
-        "display_name": _g(conv, "display_name", "") or _g(conv, "phone", ""),
+        # For `has_phone == False` this is the BSUID — the send address, never
+        # something to show as a number. `handle` is the display line.
+        "phone": phone,
+        "display_name": display_label(
+            _g(conv, "display_name", ""), phone, username, fallback=_("WhatsApp user")
+        ),
+        "username": username,
+        "user_id": user_id,
+        "has_phone": has_phone(phone),
+        "handle": render_handle(phone, username),
         "whatsapp_account": _g(conv, "whatsapp_account", "") or "",
         "status": _g(conv, "status", "Open"),
         "assigned_to": assigned_to,

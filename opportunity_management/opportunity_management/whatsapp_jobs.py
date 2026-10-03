@@ -17,6 +17,7 @@ this module imports nothing from it. Shared settings access lives in
 import frappe
 from frappe.utils import add_to_date, cint, get_datetime, now_datetime
 
+from opportunity_management.opportunity_management.whatsapp_identity import has_phone
 from opportunity_management.opportunity_management.whatsapp_utils import (
     business_hours_label,
     get_inbox_settings,
@@ -91,7 +92,8 @@ def send_auto_reply(conversation, kind=None):
 
     # A captionless photo leaves customer_language empty; reply_language then
     # guesses from the country code before falling back to default_language.
-    lang = reply_language(conv.customer_language, conv.phone, settings)
+    # A BSUID's digits are an opaque id, not a country code — no guess from it.
+    lang = reply_language(conv.customer_language, conv.phone if has_phone(conv.phone) else "", settings)
     suffix = "ar" if lang == "ar" else "en"
 
     parts = []
@@ -124,6 +126,8 @@ def send_auto_reply(conversation, kind=None):
             {
                 "doctype": "WhatsApp Message",
                 "type": "Outgoing",
+                # Exactly as stored: a BSUID passes through untouched and
+                # frappe_whatsapp moves it into Meta's `recipient`.
                 "to": conv.phone,
                 "content_type": "text",
                 "message": text,

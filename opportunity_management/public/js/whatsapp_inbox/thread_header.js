@@ -54,7 +54,7 @@ export class ThreadHeader {
 			conv.assigned_to || "",
 			(conv.tags || []).map((t) => t.tag),
 			conv.display_name || "",
-			conv.phone || "",
+			conv.handle || "",
 			conv.avatar_url || "",
 		]);
 	}
@@ -92,8 +92,8 @@ export class ThreadHeader {
 			<div class="wa-head-main">
 				${avatar_html(conv)}
 				<div class="wa-head-who">
-					<div class="wa-head-name" dir="auto">${esc(conv.display_name || conv.phone)}</div>
-					<div class="wa-head-phone">${esc(conv.phone)}</div>
+					<div class="wa-head-name" dir="auto">${esc(conv.display_name || conv.handle || "")}</div>
+					<div class="wa-head-phone" dir="ltr">${esc(conv.handle || "")}</div>
 				</div>
 			</div>
 			<div class="wa-head-controls">

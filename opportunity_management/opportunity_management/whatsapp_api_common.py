@@ -10,6 +10,8 @@ another sibling just to check a role.
 Nothing in this module is whitelisted.
 """
 
+import json
+
 import frappe
 from frappe import _
 from frappe.utils import cint
@@ -133,3 +135,62 @@ def _crm_label(doctype, name):
         return frappe.db.get_value(doctype, name, field) or name
     except Exception:
         return name
+
+
+def _tag_list(raw):
+    """Normalize the `tags` argument into a deduped list of tag names.
+
+    Desk sends a JSON array (`frappe.call` stringifies arrays); a comma string
+    is accepted too so the endpoint is usable from the API console.
+    """
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        text = raw.strip()
+        if text.startswith("["):
+            try:
+                raw = json.loads(text)
+            except (TypeError, ValueError):
+                raw = text
+        if isinstance(raw, str):
+            raw = text.split(",")
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out = []
+    for item in raw:
+        item = str(item if item is not None else "").strip()
+        if item and item not in out:
+            out.append(item)
+    return out
+
+
+def _resolve_account(whatsapp_account=None):
+    """Which WhatsApp Account an agent-initiated thread belongs to.
+
+    Explicit argument wins; otherwise the default outgoing account; otherwise
+    the single Active one. With several accounts and no default configured we
+    refuse rather than guess — the account decides which number the customer
+    sees the message from.
+    """
+    if whatsapp_account:
+        if not frappe.db.exists("WhatsApp Account", whatsapp_account):
+            frappe.throw(_("WhatsApp Account {0} not found").format(whatsapp_account))
+        return whatsapp_account
+
+    default = frappe.db.get_value("WhatsApp Account", {"is_default_outgoing": 1}, "name")
+    if default:
+        return default
+
+    try:
+        active = frappe.get_all(
+            "WhatsApp Account", filters={"status": "Active"}, pluck="name", limit_page_length=2
+        )
+    except Exception:
+        # Older frappe_whatsapp builds have no `status` field on the account.
+        active = frappe.get_all("WhatsApp Account", pluck="name", limit_page_length=2)
+    if len(active) == 1:
+        return active[0]
+
+    frappe.throw(
+        _("No WhatsApp Account is set as the default outgoing account — pick one in WhatsApp Account.")
+    )

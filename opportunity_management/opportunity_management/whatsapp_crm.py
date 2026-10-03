@@ -1,6 +1,9 @@
 """
 CRM linkage for the WhatsApp team inbox.
 
+A conversation keyed on a BSUID (the customer hides their number behind a
+WhatsApp username) is never auto-matched: there is no phone to compare.
+
 Matching is done on the **last 10 digits** of the number rather than on the
 normalized form, because ERPNext phone fields are typed by humans: the same
 customer appears as `0770 123 4567`, `+964 770 123 4567` and
@@ -13,14 +16,21 @@ carries Dynamic Links to Customer/Lead/Supplier), then Lead, then Customer.
 
 import frappe
 
-from opportunity_management.opportunity_management.whatsapp_utils import normalize_phone
+from opportunity_management.opportunity_management.whatsapp_identity import (
+    is_bsuid,
+    normalize_wa_identifier,
+)
 
 
 SUFFIX_LENGTH = 10
 
 
 def _suffix(phone) -> str:
-    digits = normalize_phone(phone) or ""
+    # A BSUID (hidden-number customer) has no phone to match on — its digits
+    # are an opaque id that would only produce false CRM hits.
+    if is_bsuid(phone):
+        return ""
+    digits = normalize_wa_identifier(phone) or ""
     if not digits:
         return ""
     return digits[-SUFFIX_LENGTH:] if len(digits) >= SUFFIX_LENGTH else digits
@@ -132,6 +142,8 @@ def apply_crm_match(conv, match=None, save=True):
     Only fills blanks — a manual `link_crm` must never be overwritten by the
     fuzzy phone match on the next inbound message.
     """
+    if match is None and is_bsuid(conv.phone):
+        return False
     match = match if match is not None else find_crm_by_phone(conv.phone)
     if not match:
         return False
@@ -141,7 +153,9 @@ def apply_crm_match(conv, match=None, save=True):
         if match.get(field) and not conv.get(field):
             changed[field] = match[field]
     display = (match.get("display_name") or "").strip()
-    if display and (not conv.display_name or conv.display_name == conv.phone):
+    if display and (
+        not conv.display_name or conv.display_name == conv.phone or is_bsuid(conv.display_name)
+    ):
         changed["display_name"] = display
 
     if not changed:

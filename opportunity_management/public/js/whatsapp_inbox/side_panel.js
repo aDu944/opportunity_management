@@ -1,5 +1,5 @@
 /**
- * Right pane — who this number is, what it is linked to, and (for managers)
+ * Right pane — who this customer is, what it is linked to, and (for managers)
  * the inbox analytics tab.
  *
  * CRM linking goes through `link_crm` / `search_crm` rather than a Link
@@ -83,14 +83,27 @@ export class SidePanel {
 		const language = conv.customer_language
 			? conv.customer_language.toUpperCase()
 			: __("Unknown");
+		// A hidden-number customer's `phone` is a BSUID (the send address) —
+		// show the number only when there is one, and the @username if known.
+		const phone_row = conv.has_phone
+			? `<div class="wa-kv"><span>${esc(__("Phone"))}</span><span dir="ltr">${esc(
+					"+" + String(conv.phone || "").replace(/^\+/, "")
+			  )}</span></div>`
+			: "";
+		const username_row = conv.username
+			? `<div class="wa-kv"><span>${esc(__("WhatsApp username"))}</span><span dir="ltr">${esc(
+					"@" + conv.username
+			  )}</span></div>`
+			: "";
 
 		this.$body.html(`
 			<div class="wa-card">
 				<div class="wa-card-head">
 					${avatar_html(conv)}
-					<div class="wa-card-title" dir="auto">${esc(conv.display_name || conv.phone)}</div>
+					<div class="wa-card-title" dir="auto">${esc(conv.display_name || conv.handle || "")}</div>
 				</div>
-				<div class="wa-kv"><span>${esc(__("Phone"))}</span><span>${esc(conv.phone)}</span></div>
+				${phone_row}
+				${username_row}
 				<div class="wa-kv"><span>${esc(__("WhatsApp profile name"))}</span><span dir="auto">${esc(
 			conv.profile_name || "—"
 		)}</span></div>
@@ -251,7 +264,7 @@ export class SidePanel {
 					fieldname: "lead_name",
 					label: __("Lead Name"),
 					reqd: 1,
-					default: conv.display_name || conv.phone,
+					default: conv.display_name || "",
 				},
 				{ fieldtype: "Data", fieldname: "company_name", label: __("Company") },
 				{ fieldtype: "Data", fieldname: "email_id", label: __("Email"), options: "Email" },
