@@ -172,6 +172,10 @@ def _create_one(template_name, language, body, sample_values):
             "template_name": template_name,
             "template": body,
             "language": language,
+            # Upstream only derives language_code in validate — AFTER autoname
+            # (`{template_name}-{language_code}`) has run, so without it every
+            # row is named "follow_up-" and the second language collides.
+            "language_code": language.replace("-", "_"),
             "category": FOLLOWUP_CATEGORY,
             "sample_values": sample_values,
         }
@@ -179,6 +183,24 @@ def _create_one(template_name, language, body, sample_values):
     # after_insert submits to Meta and throws on Meta's rejection.
     doc.insert(ignore_permissions=True)
     return frappe.db.get_value(DOCTYPE, doc.name, "status") or doc.get("status") or ""
+
+
+def _fix_misnamed():
+    """Rename rows an earlier run left as "follow_up-" (see `_create_one`) to
+    their proper `{template_name}-{language_code}`. A rename never calls
+    Meta; the template there already has the right name and language."""
+    for template_name, _samples, _bodies in FOLLOWUP_TEMPLATES:
+        bad = f"{template_name}-"
+        code = frappe.db.get_value(DOCTYPE, bad, "language_code")
+        if not code:
+            continue
+        good = f"{template_name}-{code}"
+        if frappe.db.exists(DOCTYPE, good):
+            print(f"{bad}: left as is — {good} already exists")
+            continue
+        frappe.rename_doc(DOCTYPE, bad, good, force=True, show_alert=False)
+        frappe.db.commit()
+        print(f"{bad}: renamed to {good}")
 
 
 def _maybe_set_default(dry_run, planned=()):
@@ -220,6 +242,8 @@ def create_followup_templates(dry_run=0):
     rejection only rolls back that one row. Never deletes anything.
     """
     dry_run = str(dry_run).strip().lower() in ("1", "true", "yes")
+    if not dry_run:
+        _fix_misnamed()
     results = []
     for template_name, sample_values, bodies in FOLLOWUP_TEMPLATES:
         for language, body in bodies.items():
