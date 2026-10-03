@@ -18,11 +18,15 @@ import frappe
 from frappe.utils import add_to_date, cint, get_datetime, now_datetime
 
 from opportunity_management.opportunity_management.whatsapp_utils import (
+    business_hours_label,
     get_inbox_settings,
     is_business_hours,
     reply_language,
     setting,
 )
+
+# Placeholder managers may put in the welcome / out-of-hours texts.
+BUSINESS_HOURS_PLACEHOLDER = "{{business_hours}}"
 
 # Terminal Meta statuses (plus the app-side spellings frappe_whatsapp writes).
 _TERMINAL_STATUSES = ("sent", "delivered", "read", "failed", "Success", "Failed", "marked as read")
@@ -96,6 +100,10 @@ def send_auto_reply(conversation, kind=None):
     if send_ooh:
         parts.append((settings.get(f"out_of_hours_text_{suffix}") or "").strip())
     text = "\n\n".join(p for p in parts if p)
+    if BUSINESS_HOURS_PLACEHOLDER in text:
+        # Rendered from the configured window so the reply never goes stale
+        # when a manager edits the hours, and is always 12-hour clock.
+        text = text.replace(BUSINESS_HOURS_PLACEHOLDER, business_hours_label(settings, suffix))
     if not text:
         frappe.db.commit()
         return

@@ -56,6 +56,7 @@ export class WhatsAppInbox {
 		api.get_inbox_meta()
 			.then((meta) => {
 				this.meta = Object.assign(this.meta, meta || {});
+				this.add_manager_actions();
 				this.list.render_tag_filter(this.meta.tags);
 				this.side.render_tabs();
 				return this.list.refresh();
@@ -70,6 +71,18 @@ export class WhatsAppInbox {
 			})
 			.catch((err) => this.report(err));
 		this.subscribe();
+	}
+
+	/** Managers get a shortcut to WhatsApp Inbox Settings. Only known once
+	 *  `get_inbox_meta` resolves, and guarded so it is never added twice. */
+	add_manager_actions() {
+		if (!this.meta.is_manager || this.settings_button_added) {
+			return;
+		}
+		this.settings_button_added = true;
+		this.page.add_button(__("Settings"), () =>
+			frappe.set_route("Form", "WhatsApp Inbox Settings")
+		);
 	}
 
 	refresh_all() {

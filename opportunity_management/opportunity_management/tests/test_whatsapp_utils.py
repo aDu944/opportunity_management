@@ -204,6 +204,93 @@ class TestIsBusinessHours(unittest.TestCase):
         self.assertTrue(wu.is_business_hours(_on("Wed", 3), settings=near))
 
 
+_SAT_THU = {
+    "business_days": "Sat,Sun,Mon,Tue,Wed,Thu",
+    "business_hours_start": "09:00:00",
+    "business_hours_end": "16:00:00",
+}
+
+
+class TestSatThuWindow(unittest.TestCase):
+    def test_weekday_after_four_is_out_of_hours(self):
+        self.assertFalse(wu.is_business_hours(_on("Wed", 16, 30), settings=_SAT_THU))
+        self.assertTrue(wu.is_business_hours(_on("Wed", 15, 59, 59), settings=_SAT_THU))
+
+    def test_saturday_morning_is_in_hours(self):
+        self.assertTrue(wu.is_business_hours(_on("Sat", 10), settings=_SAT_THU))
+        self.assertFalse(wu.is_business_hours(_on("Fri", 10), settings=_SAT_THU))
+
+
+class TestBusinessHoursLabel(unittest.TestCase):
+    def test_contiguous_run_en(self):
+        self.assertEqual(wu.business_hours_label(_SAT_THU, "en"), "Sat–Thu, 9:00 AM – 4:00 PM")
+
+    def test_contiguous_run_ar(self):
+        self.assertEqual(
+            wu.business_hours_label(_SAT_THU, "ar"), "السبت–الخميس، 9:00 ص – 4:00 م"
+        )
+
+    def test_day_order_starts_saturday_regardless_of_input_order(self):
+        settings = dict(_SAT_THU, business_days="Thu, wed,TUE,Mon,Sun,Sat")
+        self.assertEqual(wu.business_hours_label(settings, "en"), "Sat–Thu, 9:00 AM – 4:00 PM")
+
+    def test_non_contiguous_days(self):
+        settings = dict(_SAT_THU, business_days="Sun,Tue,Thu")
+        self.assertEqual(wu.business_hours_label(settings, "en"), "Sun, Tue, Thu, 9:00 AM – 4:00 PM")
+        self.assertEqual(
+            wu.business_hours_label(settings, "ar"),
+            "الأحد، الثلاثاء، الخميس، 9:00 ص – 4:00 م",
+        )
+
+    def test_mixed_runs(self):
+        settings = dict(_SAT_THU, business_days="Sat,Sun,Mon,Wed,Thu")
+        self.assertEqual(wu.business_hours_label(settings, "en"), "Sat–Mon, Wed–Thu, 9:00 AM – 4:00 PM")
+
+    def test_single_day(self):
+        settings = dict(_SAT_THU, business_days="Fri")
+        self.assertEqual(wu.business_hours_label(settings, "en"), "Fri, 9:00 AM – 4:00 PM")
+        self.assertEqual(wu.business_hours_label(settings, "ar"), "الجمعة، 9:00 ص – 4:00 م")
+
+    def test_noon_midnight_and_minutes(self):
+        settings = {
+            "business_days": "Sat",
+            "business_hours_start": "12:00:00",
+            "business_hours_end": "00:30:00",
+        }
+        self.assertEqual(wu.business_hours_label(settings, "en"), "Sat, 12:00 PM – 12:30 AM")
+        self.assertEqual(wu.business_hours_label(settings, "ar"), "السبت، 12:00 م – 12:30 ص")
+
+    def test_afternoon_and_timedelta(self):
+        settings = {
+            "business_days": "Mon",
+            "business_hours_start": timedelta(hours=13, minutes=5),
+            "business_hours_end": timedelta(hours=23, minutes=45),
+        }
+        self.assertEqual(wu.business_hours_label(settings, "en"), "Mon, 1:05 PM – 11:45 PM")
+
+    def test_unset_window_or_days(self):
+        garbage = dict(_SAT_THU, business_hours_start="17:26:35", business_hours_end="17:26:35")
+        self.assertEqual(wu.business_hours_label(garbage, "en"), "Sat–Thu")
+        no_days = dict(_SAT_THU, business_days="")
+        self.assertEqual(wu.business_hours_label(no_days, "en"), "9:00 AM – 4:00 PM")
+
+    def test_unknown_language_falls_back_to_english(self):
+        self.assertEqual(wu.business_hours_label(_SAT_THU, None), "Sat–Thu, 9:00 AM – 4:00 PM")
+        self.assertEqual(wu.business_hours_label(_SAT_THU, "AR"), "السبت–الخميس، 9:00 ص – 4:00 م")
+
+    def test_clock_12h(self):
+        for value, en, ar in (
+            ("00:00:00", "12:00 AM", "12:00 ص"),
+            ("09:00:00", "9:00 AM", "9:00 ص"),
+            ("12:00:00", "12:00 PM", "12:00 م"),
+            ("16:00:00", "4:00 PM", "4:00 م"),
+            ("23:59:00", "11:59 PM", "11:59 م"),
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(wu.clock_12h(value, "en"), en)
+                self.assertEqual(wu.clock_12h(value, "ar"), ar)
+
+
 class TestBusinessWindowUnset(unittest.TestCase):
     def test_unset_pairs(self):
         for start, end in (

@@ -84,11 +84,11 @@
    "label": "Business Hours"
   },
   {
-   "default": "Sun,Mon,Tue,Wed,Thu",
+   "default": "Sat,Sun,Mon,Tue,Wed,Thu",
    "fieldname": "business_days",
    "fieldtype": "Data",
    "label": "Business Days",
-   "description": "Comma-separated 3-letter days. Seeded from ESS Mobile Settings working_days but kept separate on purpose."
+   "description": "Comma-separated 3-letter days, e.g. Sat,Sun,Mon,Tue,Wed,Thu. Kept separate from the ESS attendance working days on purpose."
   },
   {
    "default": "09:00:00",
@@ -101,7 +101,7 @@
    "fieldtype": "Column Break"
   },
   {
-   "default": "17:00:00",
+   "default": "16:00:00",
    "fieldname": "business_hours_end",
    "fieldtype": "Time",
    "label": "Business Hours End"
@@ -156,13 +156,15 @@
    "depends_on": "enable_out_of_hours",
    "fieldname": "out_of_hours_text_en",
    "fieldtype": "Small Text",
-   "label": "Out Of Hours Text (EN)"
+   "label": "Out Of Hours Text (EN)",
+   "description": "Use {{business_hours}} to insert the window configured above, e.g. \"Sat–Thu, 9:00 AM – 4:00 PM\"."
   },
   {
    "depends_on": "enable_out_of_hours",
    "fieldname": "out_of_hours_text_ar",
    "fieldtype": "Small Text",
-   "label": "Out Of Hours Text (AR)"
+   "label": "Out Of Hours Text (AR)",
+   "description": "Use {{business_hours}} to insert the window configured above in Arabic, e.g. \"السبت–الخميس، 9:00 ص – 4:00 م\"."
   },
   {
    "default": "12",
@@ -232,7 +234,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-09-16 00:00:00.000000",
+ "modified": "2026-10-03 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Opportunity Management",
  "name": "WhatsApp Inbox Settings",

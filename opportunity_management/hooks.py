@@ -179,9 +179,11 @@ scheduler_events = {
             "opportunity_management.opportunity_management.api.process_scheduled_broadcasts",
             "opportunity_management.opportunity_management.api.send_daily_checkin_reminders",
             "opportunity_management.opportunity_management.api.auto_checkout_pending_employees",
-            # 15 min / 5 min before check-in window closes.
+            # 15 min / 5 min before, and at, the hour regular check-in closes
+            # (ESS Mobile Settings checkin_reminder_deadline_hour, default 10).
             "opportunity_management.opportunity_management.attendance_reminders.send_checkin_closing_15min_warning",
             "opportunity_management.opportunity_management.attendance_reminders.send_checkin_closing_5min_warning",
+            "opportunity_management.opportunity_management.attendance_reminders.send_checkin_closed_notice",
             # Hourly 4/5/6/7 PM — remind checked-in-but-not-out employees.
             "opportunity_management.opportunity_management.attendance_reminders.send_checkout_reminder_hourly",
             # 5 min before auto-checkout — final warning before we clock people out.

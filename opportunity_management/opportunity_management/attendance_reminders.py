@@ -10,6 +10,8 @@ Timing (Baghdad time / Asia/Baghdad):
 
   09:45   check-in closes in 15 minutes  — non-checked-in employees
   09:55   check-in closes in 5 minutes   — non-checked-in employees
+  10:00   regular check-in is closed     — non-checked-in employees (late
+          check-in still possible until the late cutoff, using leave)
   16:00   don't forget to check out      — checked-in-but-not-out employees
   17:00   don't forget to check out      — checked-in-but-not-out employees
   18:00   don't forget to check out      — checked-in-but-not-out employees
@@ -17,11 +19,17 @@ Timing (Baghdad time / Asia/Baghdad):
   19:55   auto-checkout in 5 minutes     — checked-in-but-not-out employees
   20:00   auto-checkout runs             — existing api.auto_checkout_pending_employees
 
-The 15/5-minute check-in warnings and the 5-minute auto-checkout warning
-are derived from ESS Mobile Settings (`checkin_window_end_hour`,
-`auto_checkout_hour`) so they track automatically if HR changes those
-hours. The 4/5/6/7 PM checkout reminders are hardcoded to the anchor
-times the user asked for.
+The three check-in pushes are anchored to ESS Mobile Settings
+`checkin_reminder_deadline_hour` (default 10) — the hour REGULAR check-in
+closes. They deliberately do NOT use `checkin_window_end_hour`: that one is
+the hard window ess_hooks enforces on every Employee Checkin and stays at
+the late cutoff (12 on the live site) so late check-ins with a half-day
+leave deduction can still be recorded. Anchoring the reminders to it made
+them fire at 11:45 / 11:55 instead of 09:45 / 09:55.
+
+The 5-minute auto-checkout warning follows `auto_checkout_hour`. The
+4/5/6/7 PM checkout reminders are hardcoded to the anchor times the user
+asked for. All clock times shown to employees are 12-hour (AM/PM, ص/م).
 """
 
 import frappe
@@ -74,6 +82,34 @@ def _fire_once_per_day(slot_key: str) -> bool:
     frappe.db.set_global(global_key, today_str)
     frappe.db.commit()
     return True
+
+
+def _deadline_hour(s) -> int:
+    """Hour regular check-in closes (reminder anchor). Empty/0/garbage → 10."""
+    try:
+        h = int(s.get("checkin_reminder_deadline_hour") or 0)
+    except (TypeError, ValueError):
+        h = 0
+    return h if 1 <= h <= 23 else 10
+
+
+def _late_cutoff_hour(s) -> int:
+    """Hour after which no check-in of any kind is accepted (default noon)."""
+    try:
+        h = int(s.get("late_checkin_cutoff_hour") or 0)
+    except (TypeError, ValueError):
+        h = 0
+    return h if 1 <= h <= 23 else 12
+
+
+def _clock_12h(hour: int, minute: int = 0) -> tuple:
+    """(EN, AR) 12-hour labels, e.g. ("12:00 PM", "12:00 م")."""
+    h12 = hour % 12 or 12
+    am = hour % 24 < 12
+    return (
+        f"{h12}:{minute:02d} {'AM' if am else 'PM'}",
+        f"{h12}:{minute:02d} {'ص' if am else 'م'}",
+    )
 
 
 def _employees_missing_checkin():
@@ -148,14 +184,14 @@ def _send_bulk(rows, title: str, body: str, kind: str) -> int:
 # ── Public scheduler entrypoints ───────────────────────────────────────────────
 
 def send_checkin_closing_15min_warning():
-    """15 minutes before check-in window closes → warn non-checked-in employees.
+    """15 minutes before regular check-in closes → warn non-checked-in employees.
 
-    Target time = (checkin_window_end_hour - 0h15m) in Baghdad local time.
+    Target time = (checkin_reminder_deadline_hour - 0h15m) in Baghdad local time.
     """
     s = _settings()
     if not s or not _is_working_day(s):
         return
-    end_h = int(s.get("checkin_window_end_hour") or 10)
+    end_h = _deadline_hour(s)
     # 15 min before end_h → end_h-1 at :45
     target_h = end_h - 1
     target_m = 45
@@ -174,11 +210,11 @@ def send_checkin_closing_15min_warning():
 
 
 def send_checkin_closing_5min_warning():
-    """5 minutes before check-in window closes → last warning."""
+    """5 minutes before regular check-in closes → last warning."""
     s = _settings()
     if not s or not _is_working_day(s):
         return
-    end_h = int(s.get("checkin_window_end_hour") or 10)
+    end_h = _deadline_hour(s)
     target_h = end_h - 1
     target_m = 55
     if not _in_poll_window(target_h, target_m):
@@ -192,6 +228,34 @@ def send_checkin_closing_5min_warning():
         body="سيغلق تسجيل الحضور بعد ٥ دقائق فقط!\n"
              "Check-in closes in 5 minutes!",
         kind="checkin_closing_5",
+    )
+
+
+def send_checkin_closed_notice():
+    """At the deadline hour → tell non-checked-in employees that regular
+    check-in is closed but a late check-in (which uses leave) is still
+    possible until the late cutoff."""
+    s = _settings()
+    if not s or not _is_working_day(s):
+        return
+    end_h = _deadline_hour(s)
+    if not _in_poll_window(end_h, 0):
+        return
+    cutoff_h = _late_cutoff_hour(s)
+    if cutoff_h <= end_h:
+        return  # no late window → the 5-minute warning was the last word
+    if not _fire_once_per_day("checkin_closed"):
+        return
+    cutoff_en, cutoff_ar = _clock_12h(cutoff_h)
+    rows = _employees_missing_checkin()
+    _send_bulk(
+        rows,
+        title="⏰ Regular check-in is closed",
+        body=f"انتهى وقت تسجيل الحضور العادي. يمكنك تسجيل حضور متأخر حتى {cutoff_ar} "
+             f"وسيُخصم من رصيد إجازتك.\n"
+             f"Regular check-in is closed. You can still check in late until "
+             f"{cutoff_en} — it will use leave.",
+        kind="checkin_closed",
     )
 
 

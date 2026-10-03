@@ -41,7 +41,9 @@ export class ConversationList {
 	constructor(opts) {
 		this.$container = opts.container;
 		this.inbox = opts.inbox;
-		this.scope = "mine";
+		// Open on the whole queue: with a small team most threads are
+		// unassigned, and an empty "Mine" tab looked like a dead inbox.
+		this.scope = "all";
 		this.search = "";
 		this.tags = [];
 		this.rows = [];

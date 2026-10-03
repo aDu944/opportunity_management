@@ -154,6 +154,20 @@ def ensure_whatsapp_roles_and_perms():
         frappe.get_doc(row).insert(ignore_permissions=True)
 
 
+# Business week: Saturday–Thursday, 9:00 AM – 4:00 PM (Baghdad). Not derived
+# from ESS working_days — the inbox is staffed on its own schedule.
+DEFAULT_BUSINESS_DAYS = "Sat,Sun,Mon,Tue,Wed,Thu"
+DEFAULT_HOURS_START = "09:00:00"
+DEFAULT_HOURS_END = "16:00:00"
+OUT_OF_HOURS_TEXT_EN = (
+    "Thanks for your message. Our office is closed right now — we will reply "
+    "during business hours ({{business_hours}})."
+)
+OUT_OF_HOURS_TEXT_AR = (
+    "شكراً لرسالتك. مكتبنا مغلق حالياً — "
+    "سنرد عليك خلال ساعات العمل ({{business_hours}})."
+)
+
 _DEFAULT_TAGS = (
     ("Sales", "#25D366"),
     ("Support", "#1565C0"),
@@ -164,8 +178,8 @@ _DEFAULT_QUICK_REPLIES = (
     {
         "title": "Business hours",
         "shortcut": "/hours",
-        "text_en": "Hello {{customer}}, our team is available Sunday to Thursday, 9:00 to 17:00 Baghdad time.",
-        "text_ar": "مرحباً {{customer}}، فريقنا متاح من الأحد إلى الخميس، من 9:00 إلى 17:00 بتوقيت بغداد.",
+        "text_en": "Hello {{customer}}, our team is available Saturday to Thursday, 9:00 AM to 4:00 PM Baghdad time.",
+        "text_ar": "مرحباً {{customer}}، فريقنا متاح من السبت إلى الخميس، من 9:00 ص إلى 4:00 م بتوقيت بغداد.",
     },
     {
         "title": "One moment",
@@ -189,9 +203,9 @@ def seed_inbox_defaults(working_days: str = None):
         "default_country_code": "964",
         "default_language": "en",
         "agent_roles": "WhatsApp Agent,WhatsApp Manager",
-        "business_days": working_days or _ess_working_days() or "Sun,Mon,Tue,Wed,Thu",
-        "business_hours_start": "09:00:00",
-        "business_hours_end": "17:00:00",
+        "business_days": working_days or DEFAULT_BUSINESS_DAYS,
+        "business_hours_start": DEFAULT_HOURS_START,
+        "business_hours_end": DEFAULT_HOURS_END,
         "timezone": "Asia/Baghdad",
         "enable_welcome": 1,
         "welcome_text_en": (
@@ -202,14 +216,10 @@ def seed_inbox_defaults(working_days: str = None):
             "سيرد عليك أحد أعضاء فريقنا قريباً."
         ),
         "enable_out_of_hours": 1,
-        "out_of_hours_text_en": (
-            "Thanks for your message. Our office is closed right now — we will reply "
-            "during business hours (Sun-Thu, 9:00-17:00)."
-        ),
-        "out_of_hours_text_ar": (
-            "شكراً لرسالتك. مكتبنا مغلق حالياً — "
-            "سنرد عليك خلال ساعات العمل (الأحد-الخميس، 9:00-17:00)."
-        ),
+        # {{business_hours}} is rendered from the fields above at send time
+        # (whatsapp_utils.business_hours_label), so the text never goes stale.
+        "out_of_hours_text_en": OUT_OF_HOURS_TEXT_EN,
+        "out_of_hours_text_ar": OUT_OF_HOURS_TEXT_AR,
         "out_of_hours_throttle_hours": 12,
         "notify_team_on_unassigned": 1,
         "team_alert_throttle_minutes": 10,
@@ -256,10 +266,3 @@ def seed_inbox_defaults(working_days: str = None):
         frappe.get_doc(doc).insert(ignore_permissions=True)
 
     clear_settings_cache()
-
-
-def _ess_working_days() -> str:
-    try:
-        return frappe.db.get_single_value("ESS Mobile Settings", "working_days") or ""
-    except Exception:
-        return ""

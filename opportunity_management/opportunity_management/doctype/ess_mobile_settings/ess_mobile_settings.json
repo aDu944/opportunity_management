@@ -44,6 +44,7 @@
   "attendance_tab",
   "checkin_window_start_hour",
   "checkin_window_end_hour",
+  "checkin_reminder_deadline_hour",
   "expected_checkin_hour",
   "late_checkin_threshold_minutes",
   "late_checkin_cutoff_hour",
@@ -319,6 +320,13 @@
    "fieldtype": "Int",
    "label": "Check-in Window End Hour (24h)",
    "default": "10"
+  },
+  {
+   "fieldname": "checkin_reminder_deadline_hour",
+   "fieldtype": "Int",
+   "label": "Check-in Reminder Deadline Hour (24h)",
+   "default": "10",
+   "description": "Hour (0-23, Baghdad) at which regular check-in closes. Employees who have not checked in get a push 15 minutes before it, 5 minutes before it, and a \"regular check-in is closed\" notice at it. Independent of the Check-in Window End Hour, which also covers late check-ins (half-day leave) and can stay later, e.g. 12. Default 10."
   },
   {
    "fieldname": "expected_checkin_hour",
@@ -658,7 +666,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-28 10:30:00.000000",
+ "modified": "2026-10-03 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Opportunity Management",
  "name": "ESS Mobile Settings",

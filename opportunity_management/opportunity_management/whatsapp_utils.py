@@ -4,8 +4,8 @@ Low-level helpers for the WhatsApp team inbox.
 Everything here is deliberately import-cheap and side-effect free at module
 scope so `test_whatsapp_utils.py` can import it with a *stubbed* `frappe`
 module and exercise the pure functions (`normalize_phone`,
-`detect_language`, `reply_language`, `is_business_hours`, `normalize_body`)
-without a bench.
+`detect_language`, `reply_language`, `is_business_hours`,
+`business_hours_label`, `normalize_body`) without a bench.
 That is the reason every `frappe.*` call below lives inside a function body
 and why `from frappe.utils import …` is always a local import.
 
@@ -245,6 +245,43 @@ def is_business_hours(now=None, settings=None) -> bool:
     return current >= start or current < end
 
 
+# Business days in display order — the week starts on Saturday here.
+_WEEK_ORDER = ("sat", "sun", "mon", "tue", "wed", "thu", "fri")
+_DAY_NAMES = {"en": ("Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"),
+              "ar": ("السبت", "الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة")}
+
+
+def clock_12h(value, lang="en") -> str:
+    """Time / timedelta / "HH:MM:SS" → "9:00 AM" or "9:00 ص" (never 24h)."""
+    secs = _to_seconds(value)
+    if secs is None:
+        return ""
+    hour, minute = divmod((secs // 60) % 1440, 60)
+    suffix = ("ص", "م") if lang == "ar" else ("AM", "PM")
+    return f"{hour % 12 or 12}:{minute:02d} {suffix[hour >= 12]}"
+
+
+def business_hours_label(settings, lang="en") -> str:
+    """E.g. "Sat–Thu, 9:00 AM – 4:00 PM" / "السبت–الخميس، 9:00 ص – 4:00 م". Runs of
+    days (week from Saturday) collapse to First–Last, others comma-separated."""
+    lang = "ar" if str(lang or "").strip().lower().startswith("ar") else "en"
+    names = dict(zip(_WEEK_ORDER, _DAY_NAMES[lang]))
+    comma = "، " if lang == "ar" else ", "
+    days = {d.strip().lower()[:3] for d in str(_g(settings, "business_days", "") or "").split(",")}
+    runs, run = [], []
+    for day in _WEEK_ORDER + ("",):  # the "" sentinel flushes the last run
+        if day in days:
+            run.append(day)
+        elif run:
+            runs.append("–".join(dict.fromkeys((names[run[0]], names[run[-1]]))))
+            run = []
+    parts = [comma.join(runs)] if runs else []
+    start, end = _g(settings, "business_hours_start"), _g(settings, "business_hours_end")
+    if not business_window_unset(start, end):
+        parts.append(f"{clock_12h(start, lang)} – {clock_12h(end, lang)}")
+    return comma.join(parts)
+
+
 def render_template_body(body, params) -> str:
     """Substitute Meta's positional {{1}}, {{2}}… placeholders."""
     text = str(body or "")
@@ -384,16 +421,21 @@ def inbox_roles():
 
 
 def inbox_users():
-    """Enabled Users holding any inbox role. Deduped, Administrator excluded."""
+    """Enabled Users holding any inbox role; deduped, Administrator excluded.
+    While NO enabled user holds one, fall back to System Managers (who can
+    already work the inbox, see `_require_inbox_access`) — an empty list sends every
+    inbound push / Desk event to nobody. The first real agent ends the fallback."""
     from opportunity_management.opportunity_management.business_hooks import _users_with_role
 
-    users = []
-    seen = set()
-    for role in inbox_roles():
-        for email in _users_with_role(role):
-            if email and email not in seen:
-                seen.add(email)
-                users.append(email)
+    users, seen = [], {"Administrator", "Guest"}
+    for roles in (inbox_roles(), ["System Manager"]):
+        for role in roles:
+            for email in _users_with_role(role):
+                if email and email not in seen:
+                    seen.add(email)
+                    users.append(email)
+        if users:
+            break
     return users
 
 

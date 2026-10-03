@@ -20,16 +20,27 @@ Three things the upstream handler does not do (verified on v1.0.12):
 
 `webhook.post()` reads `frappe.local.form_dict`, so mutating it in place is
 enough — the original picks up our edits.
+
+It also retries the delegation on write conflicts. Meta posts `sent` and
+`delivered` for the same message milliseconds apart; two gunicorn workers
+load the same `WhatsApp Message`, one saves, and the other's
+`doc.save()` raises TimestampMismatchError — that status tick used to be
+lost (and logged, hundreds of times). See `_delegate`.
 """
 
 import hashlib
 import hmac
 import json
+import time
 
 import frappe
 
 _SIGNATURE_HEADER = "X-Hub-Signature-256"
 _MISSING_SECRET_FLAG = "_whatsapp_missing_secret_logged"
+
+# One try plus this many retries when the delegated handler hits a write
+# conflict (see `_delegate`).
+_DELEGATION_RETRIES = 2
 
 
 @frappe.whitelist(allow_guest=True)
@@ -53,8 +64,8 @@ def webhook():
     except Exception:
         frappe.log_error(frappe.get_traceback(), "WhatsApp webhook: signature check failed")
 
+    data = frappe.local.form_dict
     try:
-        data = frappe.local.form_dict
         dropped = _dedupe_messages(data)
         _coerce_unsupported(data)
         if dropped and not _has_payload(data):
@@ -64,13 +75,50 @@ def webhook():
         frappe.log_error(frappe.get_traceback(), "WhatsApp webhook: preprocessing failed")
 
     try:
-        return _original()()
+        return _delegate(data)
     except Exception:
         # Return 200 regardless: the raw payload is already persisted in
         # `WhatsApp Notification Log` by the original handler, and a non-200
         # makes Meta retry the same delivery for hours.
         frappe.log_error(frappe.get_traceback(), "WhatsApp webhook: delegation failed")
         return "ok"
+
+
+def _retryable_errors():
+    """Write-conflict exceptions worth a rollback + retry. Looked up lazily
+    (and defensively) so an older Frappe without one of them still imports."""
+    names = ("TimestampMismatchError", "QueryDeadlockError")
+    found = tuple(getattr(frappe, n, None) or getattr(frappe.exceptions, n, None) for n in names)
+    return tuple(cls for cls in found if isinstance(cls, type)) or (frappe.TimestampMismatchError,)
+
+
+def _delegate(data):
+    """Run the upstream handler, retrying write conflicts.
+
+    Two Meta status callbacks for one message land on two workers at once;
+    the loser's `doc.save()` raises TimestampMismatchError (or the pair
+    deadlocks). Rolling back and re-running reloads the doc, so the second
+    save succeeds and the status tick is kept. Only the last failure
+    propagates (and is logged by the caller).
+
+    The rollback undoes whatever the failed attempt wrote, including any
+    inbound `WhatsApp Message` it inserted, so `_dedupe_messages` is re-run
+    against the database before every retry: a message committed meanwhile
+    (by a parallel Meta retry, or by an upstream mid-request commit) is
+    dropped, and one that was rolled back is inserted exactly once.
+    """
+    retryable = _retryable_errors()
+    for attempt in range(_DELEGATION_RETRIES + 1):
+        if attempt:
+            frappe.db.rollback()
+            time.sleep(0.05 * attempt)
+            if _dedupe_messages(data) and not _has_payload(data):
+                return "ok"
+        try:
+            return _original()()
+        except retryable:
+            if attempt >= _DELEGATION_RETRIES:
+                raise
 
 
 def _original():

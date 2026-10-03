@@ -58,12 +58,22 @@ function pad(n) {
 	return n < 10 ? "0" + n : String(n);
 }
 
+/** 12-hour clock, never 24-hour: "9:05 AM" / "4:00 PM", or "9:05 ص" /
+ *  "4:00 م" on an Arabic Desk. No leading zero on the hour. */
+function clock_12h(date) {
+	const hours = date.getHours();
+	const pm = hours >= 12;
+	const arabic = frappe.boot && frappe.boot.lang === "ar";
+	const suffix = arabic ? (pm ? "م" : "ص") : pm ? "PM" : "AM";
+	return (hours % 12 || 12) + ":" + pad(date.getMinutes()) + " " + suffix;
+}
+
 export function hhmm(value) {
 	const date = to_date(value);
 	if (!date) {
 		return "";
 	}
-	return pad(date.getHours()) + ":" + pad(date.getMinutes());
+	return clock_12h(date);
 }
 
 function start_of_day(date) {
@@ -89,7 +99,7 @@ export function same_day(a, b) {
 	return start_of_day(da) === start_of_day(db);
 }
 
-/** Conversation-row timestamp: today HH:mm / Yesterday / weekday / d MMM. */
+/** Conversation-row timestamp: today h:mm AM/PM / Yesterday / weekday / d MMM. */
 export function relative_time(value) {
 	const date = to_date(value);
 	if (!date) {
@@ -145,5 +155,5 @@ export function duration_label(seconds) {
 /** Wall-clock time the window closes, given the seconds the server reported. */
 export function window_closes_at(seconds) {
 	const at = new Date(Date.now() + Math.max(0, Number(seconds) || 0) * 1000);
-	return pad(at.getHours()) + ":" + pad(at.getMinutes());
+	return clock_12h(at);
 }
