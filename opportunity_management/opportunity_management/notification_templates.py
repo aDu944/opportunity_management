@@ -468,8 +468,8 @@ def _wa_who(conv):
     ).strip()
 
 
-def whatsapp_assigned(conv, by):
-    """A manager handed this thread to someone. `by` is the assigning User id."""
+def whatsapp_assigned(conv, by, transfer=False):
+    """A manager assigned this thread, or (`transfer`) its owner handed it on. `by` is that User id."""
     who = _wa_who(conv)
     by_name = ""
     if by:
@@ -477,15 +477,13 @@ def whatsapp_assigned(conv, by):
 
     from opportunity_management.opportunity_management.whatsapp_message_extras import add_wa_sound
 
-    body = (
-        f"تم إسناد محادثة واتساب مع {who} إليك\n"
-        f"WhatsApp conversation with {who} assigned to you"
-    )
+    ar, en = ("تحويل", "transferred") if transfer else ("إسناد", "assigned")
+    body = f"تم {ar} محادثة واتساب مع {who} إليك\nWhatsApp conversation with {who} {en} to you"
     if by_name:
         body += f"\n— بواسطة {by_name} • by {by_name}"
 
     return (
-        "📥 محادثة مُسندة • WhatsApp Assigned",
+        "🔁 محادثة محوّلة • WhatsApp Transferred" if transfer else "📥 محادثة مُسندة • WhatsApp Assigned",
         body,
         add_wa_sound({
             "type": "whatsapp_assigned",

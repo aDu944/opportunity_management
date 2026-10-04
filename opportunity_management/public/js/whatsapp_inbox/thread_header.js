@@ -163,7 +163,7 @@ export class ThreadHeader {
 	/** Pickup is everyone's job, and ownership is explicit:
 	 *
 	 *    unassigned      → Claim (managers get the picker as well)
-	 *    assigned to me  → "You" + Release
+	 *    assigned to me  → "You" + Release + the picker ("Transfer to…" for an agent)
 	 *    assigned to X   → X, and for a manager the picker + Take over
 	 */
 	make_assignee_control() {
@@ -189,7 +189,10 @@ export class ThreadHeader {
 				this.button($parent, __("Take over"), "btn-default", () => this.assign(me));
 			}
 		}
-		if (!is_manager) {
+		// An agent may hand on a thread they own (the server's `assign` allows
+		// the current assignee); everything else stays a manager's call.
+		const transfer_only = !is_manager && assigned === me;
+		if (!is_manager && !transfer_only) {
 			return;
 		}
 		// Autocomplete, not a Link on User: a WhatsApp Manager who is not a
@@ -201,11 +204,13 @@ export class ThreadHeader {
 			df: {
 				fieldtype: "Autocomplete",
 				fieldname: "wa_assignee",
-				options: (this.inbox.meta.agents || []).map((a) => ({
-					label: a.full_name || a.user,
-					value: a.user,
-				})),
-				placeholder: __("Assign to…"),
+				options: (this.inbox.meta.agents || [])
+					.filter((a) => !transfer_only || a.user !== me)
+					.map((a) => ({
+						label: a.full_name || a.user,
+						value: a.user,
+					})),
+				placeholder: transfer_only ? __("Transfer to…") : __("Assign to…"),
 				change: () => {
 					if (this._setting_assignee) {
 						return;
@@ -226,7 +231,8 @@ export class ThreadHeader {
 			render_input: true,
 			only_input: true,
 		});
-		if (assigned) {
+		// The transfer picker starts blank — "me" is not one of its options.
+		if (assigned && !transfer_only) {
 			this._setting_assignee = true;
 			this.assignee_control.set_value(assigned);
 			this._setting_assignee = false;

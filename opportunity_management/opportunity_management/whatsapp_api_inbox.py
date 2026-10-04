@@ -10,6 +10,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_to_date, cint, now_datetime
 
+from opportunity_management.opportunity_management import whatsapp_assign_rules as AR
 from opportunity_management.opportunity_management import whatsapp_chat_state as CS
 from opportunity_management.opportunity_management import whatsapp_hooks
 from opportunity_management.opportunity_management import whatsapp_serializers as S
@@ -250,6 +251,8 @@ def get_conversation(name):
             "window_open": conv.window_open(),
             "window_seconds_remaining": conv.window_seconds_remaining(),
             "can_assign": _is_manager(),
+            # Manager, or the owner handing on their own thread (`assign`).
+            "can_transfer": AR.may_transfer(_is_manager(), frappe.session.user, conv.assigned_to),
             "is_mine": conv.assigned_to == frappe.session.user,
             "contact_name": _crm_label("Contact", conv.contact),
             "lead_name": _crm_label("Lead", conv.lead),
@@ -310,32 +313,52 @@ def unassign(conversation):
     return S.conv_row(conv)
 
 
+def _full_name(user):
+    return frappe.db.get_value("User", user, "full_name") or user
+
+
 @frappe.whitelist()
 def assign(conversation, user):
+    """Hand a thread to an inbox agent: a manager (any thread), or the current
+    owner transferring their own. Rule: `whatsapp_assign_rules.may_assign`."""
     _require_inbox_access()
-    if not _is_manager():
-        frappe.throw(_("Only a WhatsApp Manager can assign conversations"), frappe.PermissionError)
-    if not user or not frappe.db.exists("User", user):
-        frappe.throw(_("User {0} not found").format(user))
-
+    me = frappe.session.user
+    user = (user or "").strip()
     conv = _get_conv(conversation, for_update=True)
-    if conv.assigned_to == user:
+    ok, verdict = AR.may_assign(_is_manager(), me, conv.assigned_to, user, roster=set(inbox_users()))
+    if not ok:
+        if verdict == AR.TARGET_NOT_AGENT:
+            frappe.throw(_("{0} is not an active WhatsApp inbox agent").format(user))
+        if verdict == AR.NO_TARGET:
+            frappe.throw(_("Choose someone to assign this conversation to"))
+        # NotAssigneeError (417), not PermissionError: a 403 makes the mobile
+        # client treat the session as dead and log in again.
+        frappe.throw(
+            _("Only the conversation's owner or a WhatsApp Manager can transfer it"),
+            exc=NotAssigneeError,
+        )
+    if verdict == AR.NOOP:
         # Re-assigning to the current owner changes nothing — writing a note and
         # publishing would only bounce the client's header back at it.
         return S.conv_row(conv)
     now = now_datetime()
-    values = {"assigned_to": user, "assigned_at": now, "assigned_by": frappe.session.user}
+    values = {"assigned_to": user, "assigned_at": now, "assigned_by": me}
     for field, value in values.items():
         conv.set(field, value)
     frappe.db.set_value("WhatsApp Conversation", conv.name, values, update_modified=False)
-    _note(conv.name, _("Assigned to {0} by {1}").format(user, frappe.session.user))
+    if verdict == AR.TRANSFER:
+        _note(conv.name, _("Transferred to {0} by {1}").format(_full_name(user), _full_name(me)))
+    elif verdict == AR.CLAIM:
+        _note(conv.name, _("Claimed by {0}").format(_full_name(me)))
+    else:
+        _note(conv.name, _("Assigned to {0} by {1}").format(_full_name(user), _full_name(me)))
 
     try:
         from opportunity_management.opportunity_management import notification_templates as T
         from opportunity_management.opportunity_management.business_hooks import _send_to_users
 
-        if user != frappe.session.user:
-            title, body, data = T.whatsapp_assigned(conv, frappe.session.user)
+        if user != me:
+            title, body, data = T.whatsapp_assigned(conv, me, transfer=verdict == AR.TRANSFER)
             _send_to_users([user], title, body, data)
     except Exception:
         frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: assignment push failed")
