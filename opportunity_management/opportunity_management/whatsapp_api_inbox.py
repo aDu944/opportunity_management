@@ -27,6 +27,10 @@ from opportunity_management.opportunity_management.whatsapp_utils import (
     get_inbox_settings,
     inbox_users,
 )
+# Moved for size; re-exported so `whatsapp_api` keeps importing it from here.
+from opportunity_management.opportunity_management.whatsapp_api_counts import (  # noqa: F401
+    get_unread_count,
+)
 from opportunity_management.opportunity_management.whatsapp_api_common import (
     _crm_label,
     _get_conv,
@@ -466,28 +470,3 @@ def mark_read(conversation):
         frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: read publish failed")
 
     return {"unread_count": 0}
-
-
-@frappe.whitelist()
-def get_unread_count():
-    """Badge source: **conversations**, not messages. The unassigned queue is
-    everyone's job, so it counts for every agent. Unread-based only — there is
-    deliberately no `expired` count (an expired thread is not unread work)."""
-    _require_inbox_access()
-    row = frappe.db.sql(
-        """
-        SELECT
-            SUM(CASE WHEN assigned_to = %(me)s AND COALESCE(unread_count, 0) > 0
-                     THEN 1 ELSE 0 END) AS mine,
-            SUM(CASE WHEN (assigned_to IS NULL OR assigned_to = '')
-                      AND COALESCE(unread_count, 0) > 0
-                     THEN 1 ELSE 0 END) AS unassigned
-        FROM `tabWhatsApp Conversation`
-        WHERE status != 'Resolved'
-        """,
-        {"me": frappe.session.user},
-        as_dict=True,
-    )
-    mine = cint(row[0].get("mine")) if row else 0
-    unassigned = cint(row[0].get("unassigned")) if row else 0
-    return {"mine": mine, "unassigned": unassigned, "total": mine + unassigned}
