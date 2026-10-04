@@ -20,6 +20,9 @@ Four things the upstream handler does not do (verified on v1.0.12):
 
 4. **`contacts[].profile.username` / `user_id` are dropped.** We stash them
    in `frappe.flags` (`_stash_sender_contacts`) for the after_insert hook.
+5. **Statuses for messages it never stored crash it** (`get_doc` with
+   name None). The number is shared with other senders, so those are
+   normal; `_drop_foreign_statuses` removes them first.
 
 `webhook.post()` reads `frappe.local.form_dict`, so mutating it in place is
 enough — the original picks up our edits.
@@ -76,6 +79,14 @@ def webhook():
             return "ok"
     except Exception:
         frappe.log_error(frappe.get_traceback(), "WhatsApp webhook: preprocessing failed")
+
+    try:
+        # Once, before the first delegation attempt (the retry loop in
+        # `_delegate` only re-runs the message dedupe).
+        if _drop_foreign_statuses(data) and not _has_payload(data):
+            return "ok"
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "WhatsApp webhook: status filter failed")
 
     _stash_sender_contacts(data)
 
@@ -207,6 +218,82 @@ def _dedupe_messages(data) -> int:
             if not kept:
                 value.pop("messages", None)
     return dropped
+
+
+def status_ids(data) -> set:
+    """Every `statuses[].id` in the payload."""
+    ids = set()
+    for value in _values(data):
+        for status in value.get("statuses") or []:
+            if isinstance(status, dict) and status.get("id"):
+                ids.add(status["id"])
+    return ids
+
+
+def filter_statuses(data, known_ids) -> int:
+    """Remove status entries whose `id` is not in `known_ids` (in place).
+
+    Returns how many were removed; an emptied `statuses` key is popped. A
+    payload without statuses is not touched at all.
+    """
+    dropped = 0
+    for value in _values(data):
+        statuses = value.get("statuses")
+        if not isinstance(statuses, list) or not statuses:
+            continue
+        kept = [s for s in statuses if isinstance(s, dict) and s.get("id") in known_ids]
+        if len(kept) != len(statuses):
+            dropped += len(statuses) - len(kept)
+            value["statuses"] = kept
+            if not kept:
+                value.pop("statuses", None)
+    return dropped
+
+
+# Waits (seconds) for a status that raced the commit of our own outgoing row.
+_STATUS_WAITS = (0.15, 0.35)
+
+
+def _known_message_ids(ids) -> set:
+    if not ids:
+        return set()
+    return set(
+        frappe.get_all(
+            "WhatsApp Message", filters={"message_id": ["in", list(ids)]}, pluck="message_id"
+        )
+    )
+
+
+def _drop_foreign_statuses(data) -> int:
+    """Drop status callbacks for messages ERPNext has no row for.
+
+    The number is shared with the web shop (OTP templates) and the PBX
+    client; Meta sends their statuses here too, and upstream's
+    `update_message_status` crashes on them (`get_doc(..., None)`). Our own
+    `sent` can also beat the commit of the request that inserted the row,
+    so unknown ids get `_STATUS_WAITS` before they are dropped.
+
+    Each re-check first ends the transaction so it is not answered from
+    the request's repeatable-read snapshot. That is a COMMIT, not a
+    rollback: by this point the request may already have written Error
+    Log rows (`_verify_signature` logs the missing secret on every request
+    while it is unset; the preprocessing failure logs), which a rollback
+    would silently discard. Nothing else has been written yet, so the
+    commit only persists those logs early. Dropped statuses are not logged.
+    """
+    ids = status_ids(data)
+    if not ids:
+        return 0
+    unknown = ids - _known_message_ids(ids)
+    for wait in _STATUS_WAITS:
+        if not unknown:
+            break
+        time.sleep(wait)
+        frappe.db.commit()
+        unknown -= _known_message_ids(unknown)
+    if not unknown:
+        return 0
+    return filter_statuses(data, ids - unknown)
 
 
 _SUPPORTED_TYPES = {

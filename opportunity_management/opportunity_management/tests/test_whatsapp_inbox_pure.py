@@ -5,6 +5,7 @@ voice-note work:
     whatsapp_template_picker.pick_default / order_templates
     whatsapp_reactions.latest_reactions
     whatsapp_audio.needs_transcode
+    whatsapp_audio.failure_action / cron_should_try / stderr_tail / m4a_args
 
     python3 opportunity_management/opportunity_management/tests/test_whatsapp_inbox_pure.py
 
@@ -165,6 +166,47 @@ class TestNeedsTranscode(unittest.TestCase):
         for url, expected in cases:
             with self.subTest(url=url):
                 self.assertEqual(audio.needs_transcode(url), expected)
+
+
+class TestTranscodeBackoff(unittest.TestCase):
+    def test_missing_source_is_always_a_plain_retry(self):
+        for attempts in (0, 1, audio.MAX_ATTEMPTS, 99):
+            self.assertEqual(audio.failure_action(attempts, audio.MISSING), audio.RETRY)
+
+    def test_ffmpeg_failures_back_off_then_give_up(self):
+        for attempts in range(1, audio.MAX_ATTEMPTS):
+            self.assertEqual(audio.failure_action(attempts, audio.FFMPEG), audio.BACKOFF)
+        self.assertEqual(audio.failure_action(audio.MAX_ATTEMPTS, audio.FFMPEG), audio.GIVE_UP)
+        self.assertEqual(audio.failure_action(audio.MAX_ATTEMPTS + 1, audio.FFMPEG), audio.GIVE_UP)
+        self.assertEqual(audio.failure_action(None, audio.FFMPEG), audio.BACKOFF)
+
+    def test_limits(self):
+        self.assertEqual(audio.FAILURE_BACKOFF, 30 * 60)
+        self.assertEqual(audio.MAX_ATTEMPTS, 6)
+        self.assertEqual(audio.ATTEMPTS_TTL, 24 * 60 * 60)
+
+    def test_cron_should_try(self):
+        self.assertTrue(audio.cron_should_try(0, False))
+        self.assertTrue(audio.cron_should_try(None, False))
+        self.assertTrue(audio.cron_should_try(audio.MAX_ATTEMPTS - 1, False))
+        self.assertFalse(audio.cron_should_try(1, True))
+        self.assertFalse(audio.cron_should_try(audio.MAX_ATTEMPTS, False))
+
+    def test_stderr_tail(self):
+        self.assertEqual(audio.stderr_tail(None), "")
+        self.assertEqual(audio.stderr_tail(b""), "")
+        self.assertEqual(audio.stderr_tail(b"  No such file\n"), "No such file")
+        long = "x" * 600 + "END"
+        self.assertEqual(len(audio.stderr_tail(long)), 500)
+        self.assertTrue(audio.stderr_tail(long).endswith("END"))
+        self.assertEqual(audio.stderr_tail(b"\xff ok"), "� ok")
+
+    def test_m4a_args(self):
+        self.assertEqual(
+            audio.m4a_args("/usr/bin/ffmpeg", "/abs/in.ogg", "out.m4a"),
+            ["/usr/bin/ffmpeg", "-nostdin", "-y", "-i", "/abs/in.ogg", "-vn", "-ac", "1",
+             "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", "out.m4a"],
+        )
 
 
 if __name__ == "__main__":

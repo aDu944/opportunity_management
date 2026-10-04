@@ -17,8 +17,16 @@ No ffmpeg on the server → `transcode_message_audio` and the cron sweep are
 no-ops returning False/0 and clients play the original where they can.
 Nothing here ever raises to its caller.
 
-`needs_transcode` / `ffmpeg_path` touch no frappe API at import time, so the
-bench-free tests load this file with a stubbed `frappe`.
+The source is resolved to an absolute path and checked right before ffmpeg
+runs: the privatise step moves `/files/x.ogg` to `/private/files/x.ogg`, so
+a path read a moment earlier can vanish. A vanished source is re-resolved
+once from a reloaded File; still missing is transient (no backoff). A real
+conversion failure backs off `FAILURE_BACKOFF` and gives up after
+`MAX_ATTEMPTS` (counter in the cache, `ATTEMPTS_TTL`) — see `failure_action`.
+
+`needs_transcode` / `ffmpeg_path` / `failure_action` / `cron_should_try` /
+`stderr_tail` touch no frappe API, so the bench-free tests load this file
+with a stubbed `frappe`.
 """
 
 import os
@@ -33,8 +41,19 @@ MSG = "WhatsApp Message"
 OGG_EXTENSIONS = (".ogg", ".oga", ".opus")
 FFMPEG_TIMEOUT = 60
 CRON_BATCH = 20
-# A file ffmpeg rejected is not retried by the cron for this long.
-FAILURE_TTL = 6 * 60 * 60
+# A file ffmpeg rejected is not retried by the cron for this long…
+FAILURE_BACKOFF = 30 * 60
+# …and is left alone after this many failures (counted for ATTEMPTS_TTL).
+MAX_ATTEMPTS = 6
+ATTEMPTS_TTL = 24 * 60 * 60
+STDERR_TAIL = 500
+
+# failure_action reasons / results
+MISSING = "missing"
+FFMPEG = "ffmpeg"
+RETRY = "retry"
+BACKOFF = "backoff"
+GIVE_UP = "give_up"
 
 _PATHS = {}
 
@@ -90,6 +109,42 @@ def voice_ogg_args(ffmpeg, source, out):
         ffmpeg, "-nostdin", "-y", "-i", source, "-vn",
         "-c:a", "libopus", "-b:a", "32k", "-ac", "1", "-ar", "48000", out,
     ]
+
+
+def m4a_args(ffmpeg, source, out):
+    """Inbound Ogg/Opus → AAC `.m4a` that iPhones and Safari can play."""
+    return [
+        ffmpeg, "-nostdin", "-y", "-i", source,
+        "-vn", "-ac", "1", "-c:a", "aac", "-b:a", "64k",
+        "-movflags", "+faststart", out,
+    ]
+
+
+def stderr_tail(stderr, limit=STDERR_TAIL) -> str:
+    """Last `limit` characters of ffmpeg's stderr (bytes or str), stripped."""
+    if not stderr:
+        return ""
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode("utf-8", "replace")
+    return str(stderr).strip()[-limit:]
+
+
+def failure_action(attempts, reason) -> str:
+    """What one failed transcode leads to.
+
+    `attempts` counts conversion failures so far, this one included.
+    A missing source (moved by the privatise step) is transient → RETRY
+    with nothing recorded; a real ffmpeg failure → BACKOFF, and GIVE_UP
+    once `MAX_ATTEMPTS` is reached.
+    """
+    if reason == MISSING:
+        return RETRY
+    return GIVE_UP if int(attempts or 0) >= MAX_ATTEMPTS else BACKOFF
+
+
+def cron_should_try(attempts, backing_off) -> bool:
+    """The cron sweep skips a message in backoff or given up on."""
+    return not backing_off and int(attempts or 0) < MAX_ATTEMPTS
 
 
 def to_voice_ogg(source_path):
@@ -152,21 +207,12 @@ def transcode_message_audio(message_name):
         if not source:
             return False
 
-        with tempfile.TemporaryDirectory() as tmp:
-            out = os.path.join(tmp, "voice.m4a")
-            subprocess.run(
-                [
-                    ffmpeg, "-nostdin", "-y", "-i", source.get_full_path(),
-                    "-vn", "-ac", "1", "-c:a", "aac", "-b:a", "64k",
-                    "-movflags", "+faststart", out,
-                ],
-                timeout=FFMPEG_TIMEOUT,
-                capture_output=True,
-                check=True,
-            )
-            duration = probe_duration(out)
-            with open(out, "rb") as handle:
-                content = handle.read()
+        converted = _convert(ffmpeg, source)
+        if converted is None:
+            # Source not on disk even after a reload: it is being moved by
+            # the privatise step. Transient — the next run picks it up.
+            return False
+        content, duration = converted
 
         from opportunity_management.opportunity_management.whatsapp_media import privacy_on
 
@@ -192,11 +238,75 @@ def transcode_message_audio(message_name):
         frappe.db.commit()
         _publish(row.name)
         return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        # ffmpeg ran against a file that exists and failed: a real failure.
+        frappe.db.rollback()
+        detail = f"{exc}\n\nffmpeg stderr (last {STDERR_TAIL} chars):\n{stderr_tail(exc.stderr)}"
+        _record_failure(message_name, f"{detail}\n\n{frappe.get_traceback()}")
+        return False
     except Exception:
         frappe.db.rollback()
-        _remember_failure(message_name)
-        frappe.log_error(frappe.get_traceback(), f"WhatsApp voice transcode failed for {message_name}")
+        _record_failure(message_name, frappe.get_traceback())
         return False
+
+
+def _abs_path(source) -> str:
+    try:
+        return os.path.abspath(source.get_full_path())
+    except Exception:
+        return ""
+
+
+def _resolve_source(source) -> str:
+    """Absolute path of the File on disk, or "" when it is not there.
+
+    On a miss the File is reloaded once — privatising moves the file and
+    rewrites `file_url` / `is_private`. The rollback before the reload only
+    ends this job's read snapshot so the move committed by the privatise
+    step is visible; nothing has been written by this job at that point.
+    """
+    path = _abs_path(source)
+    if path and os.path.exists(path):
+        return path
+    try:
+        frappe.db.rollback()
+        source.reload()
+    except Exception:
+        return ""
+    path = _abs_path(source)
+    return path if path and os.path.exists(path) else ""
+
+
+def _run_ffmpeg(ffmpeg, path):
+    with tempfile.TemporaryDirectory() as tmp:
+        out = os.path.join(tmp, "voice.m4a")
+        subprocess.run(
+            m4a_args(ffmpeg, path, out), timeout=FFMPEG_TIMEOUT, capture_output=True, check=True
+        )
+        duration = probe_duration(out)
+        with open(out, "rb") as handle:
+            return handle.read(), duration
+
+
+def _convert(ffmpeg, source):
+    """(m4a bytes, seconds), or None when the source is not on disk.
+
+    If ffmpeg fails AND its input has disappeared meanwhile (moved
+    mid-run), the path is re-resolved and ffmpeg runs once more; a failure
+    against a file that still exists propagates as a real one.
+    """
+    path = _resolve_source(source)
+    if not path:
+        return None
+    try:
+        return _run_ffmpeg(ffmpeg, path)
+    except subprocess.CalledProcessError:
+        if os.path.exists(path):
+            raise
+    path = _resolve_source(source)
+    if not path:
+        return None
+    return _run_ffmpeg(ffmpeg, path)
 
 
 def _publish(message_name):
@@ -213,26 +323,53 @@ def _publish(message_name):
 
 
 def _failure_key(name):
-    return f"whatsapp_transcode_failed:{name}"
+    # Not the old `whatsapp_transcode_failed:` key: entries left under it
+    # carry the former 6-hour TTL and would keep blocking the cron.
+    return f"whatsapp_transcode_backoff:{name}"
 
 
-def _remember_failure(name):
+def _attempts_key(name):
+    return f"whatsapp_transcode_attempts:{name}"
+
+
+def _attempts(name) -> int:
     try:
-        frappe.cache().set_value(_failure_key(name), 1, expires_in_sec=FAILURE_TTL)
+        return int(frappe.cache().get_value(_attempts_key(name)) or 0)
+    except Exception:
+        return 0
+
+
+def _record_failure(name, detail):
+    """Count a real conversion failure, back off, and log it — the last
+    allowed one says it is the last."""
+    attempts = _attempts(name) + 1
+    action = failure_action(attempts, FFMPEG)
+    try:
+        cache = frappe.cache()
+        cache.set_value(_attempts_key(name), attempts, expires_in_sec=ATTEMPTS_TTL)
+        cache.set_value(_failure_key(name), 1, expires_in_sec=FAILURE_BACKOFF)
     except Exception:
         pass
+    if action == GIVE_UP:
+        title = f"WhatsApp voice transcode gave up on {name} after {attempts} attempts"
+    else:
+        title = f"WhatsApp voice transcode failed for {name} (attempt {attempts}/{MAX_ATTEMPTS})"
+    frappe.log_error(detail, title)
 
 
-def _failed_recently(name) -> bool:
+def _cron_wants(name) -> bool:
     try:
-        return bool(frappe.cache().get_value(_failure_key(name)))
+        backing_off = bool(frappe.cache().get_value(_failure_key(name)))
     except Exception:
-        return False
+        backing_off = False
+    return cron_should_try(_attempts(name), backing_off)
 
 
 def transcode_pending_voice():
-    """Cron `*/5`: audio rows (in AND out) still without a playable copy,
-    newest first, up to CRON_BATCH per run. No-op without ffmpeg."""
+    """Cron `*/5` (via `whatsapp_jobs.process_inbound_media`, after the
+    privatise sweep): audio rows (in AND out) still without a playable
+    copy, newest first, up to CRON_BATCH per run, minus those backing off
+    or given up on. No-op without ffmpeg."""
     try:
         if not ffmpeg_path():
             return 0
@@ -250,7 +387,7 @@ def transcode_pending_voice():
             limit_page_length=CRON_BATCH * 5,
         )
         done = 0
-        todo = [r for r in rows if needs_transcode(r["attach"]) and not _failed_recently(r["name"])]
+        todo = [r for r in rows if needs_transcode(r["attach"]) and _cron_wants(r["name"])]
         for row in todo[:CRON_BATCH]:
             if transcode_message_audio(row["name"]):
                 done += 1

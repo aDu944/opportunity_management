@@ -1,6 +1,6 @@
 """
 Out-of-band work for the WhatsApp team inbox: the auto-reply RQ job and the
-two `*/5` cron sweeps.
+`*/5` cron sweeps.
 
 Split out of `whatsapp_hooks` for size, but the boundary is also the right
 one: nothing here runs inside Meta's webhook request. `send_auto_reply` in
@@ -202,6 +202,28 @@ def privatize_pending_inbound_media():
             frappe.db.commit()
     except Exception:
         frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: privatize_pending_inbound_media")
+
+
+def process_inbound_media():
+    """Cron `*/5`: the privatise sweep, THEN the voice-note transcode sweep.
+
+    One entry point on purpose. Registered as two independent cron jobs
+    they ran in the same tick, and the transcode resolved `/files/x.ogg`
+    just before privatise moved it to `/private/files/` — ffmpeg exit 254
+    ("No such file"). Sequential here, privatise has committed before the
+    transcode reads a single path. Each step is isolated so one failing
+    never skips the other.
+    """
+    try:
+        privatize_pending_inbound_media()
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: process_inbound_media privatize")
+    try:
+        from opportunity_management.opportunity_management.whatsapp_audio import transcode_pending_voice
+
+        transcode_pending_voice()
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: process_inbound_media transcode")
 
 
 def _privatize_outbound_row(row):
