@@ -321,6 +321,21 @@
 
 .wa-text { white-space: pre-wrap; }
 
+/* Links in bubble text (linkify.js) and the "Open in Maps" card link. The
+   text keeps --text-color, already readable on the white, green-tinted and
+   amber-tinted bubbles in both themes; the blue underline marks the link. */
+.wa-link {
+	color: var(--text-color);
+	text-decoration: underline;
+	text-decoration-color: var(--wa-read-blue);
+	text-decoration-thickness: 1.5px;
+	text-underline-offset: 2px;
+	overflow-wrap: anywhere;
+}
+
+.wa-link:hover,
+.wa-link:focus-visible { color: var(--text-color); text-decoration-thickness: 2.5px; }
+
 .wa-media {
 	display: block;
 	max-width: 260px;

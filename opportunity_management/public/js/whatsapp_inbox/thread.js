@@ -15,6 +15,7 @@ import { ThreadHeader } from "./thread_header.js";
 import { Reactions, react_button_html, reactions_html } from "./reactions.js";
 import { card_html } from "./cards.js";
 import { MessageInfo } from "./message_info.js";
+import { linkify_html } from "./linkify.js";
 
 const THREAD_LIMIT = 40;
 
@@ -319,7 +320,7 @@ export class Thread {
 						<span>${esc(item.author_name || item.author || __("System"))}</span>
 						<span class="wa-note-type">${esc(__(item.note_type || "Note"))}</span>
 					</div>
-					<div class="wa-text" dir="auto">${esc(item.text)}</div>
+					<div class="wa-text" dir="auto">${linkify_html(item.text, esc)}</div>
 					${media_html(item)}
 					<div class="wa-meta"><span class="wa-time">${esc(hhmm(item.creation))}</span></div>
 				</div>`;
@@ -360,11 +361,15 @@ export class Thread {
 		}
 
 		// Location / contact cards replace the fallback text; option pills
-		// sit under it.
+		// sit under it. Message bodies, captions and option bodies get
+		// clickable links (`linkify.js`); quotes and the list preview stay plain.
 		const card = card_html(item);
 		const text = card.replaces_text
 			? ""
-			: `<div class="wa-text" dir="auto">${esc(item.text || item.caption || "")}</div>`;
+			: `<div class="wa-text" dir="auto">${linkify_html(
+					item.text || item.caption || "",
+					esc
+			  )}</div>`;
 		return `
 			<div class="wa-bubble ${side}" ${attrs}>
 				${react_button_html(item)}
