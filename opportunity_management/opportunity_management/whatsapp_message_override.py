@@ -2,8 +2,8 @@
 `override_doctype_class` for frappe_whatsapp's `WhatsApp Message`.
 
 Upstream's `send_outgoing` has no branch for `location` or `contact` and no
-way to flag an audio send as a voice note. This subclass overrides ONLY
-`send_outgoing`, and only for an Outgoing, non-template row the inbox built
+way to flag an audio send as a voice note. For WhatsApp rows this subclass
+changes ONLY `send_outgoing`, and only for an Outgoing, non-template row the inbox built
 itself (`whatsapp_payloads.custom_kind` — content type AND a matching
 `custom_payload` marker). Every other row — ERPNext notifications, bulk
 messages, templates, plain text / media — goes straight to
@@ -14,7 +14,14 @@ The error handling mirrors upstream's non-template branch: `notify()` sets
 exception re-thrown so `before_insert` aborts the insert.
 
 If the installed frappe_whatsapp has no `send_outgoing` (an older build that
-sends inline in `before_insert`), the class adds nothing at all.
+sends inline in `before_insert`), the class adds nothing for WhatsApp rows.
+
+**Messenger rows** (`custom_channel == "Messenger"`, see inbox_channels) must
+be inert to everything WhatsApp: `before_insert` / `validate` / `on_update`
+skip upstream entirely for them (no default WhatsApp Account, no WhatsApp
+send, no `create_whatsapp_profile` / `update_profile_name`), and only an
+Outgoing, non-echo row is sent — through `messenger_send.send_row`. Every
+non-Messenger row takes the plain `super()` path, exactly as before.
 """
 
 import frappe
@@ -27,13 +34,58 @@ from frappe_whatsapp.frappe_whatsapp.doctype.whatsapp_message.whatsapp_message i
 
 
 class WhatsAppMessage(Upstream):
+    def before_insert(self):
+        if not _is_messenger(self):
+            return super().before_insert()
+        # No WhatsApp Account on a Messenger row: skip upstream's mandatory one.
+        self.flags.ignore_mandatory = True
+        _send_messenger(self)
+
+    def validate(self):
+        if not _is_messenger(self):
+            parent = getattr(super(), "validate", None)
+            return parent() if parent else None
+
+    def on_update(self):
+        if not _is_messenger(self):
+            parent = getattr(super(), "on_update", None)
+            return parent() if parent else None
+
+    def create_whatsapp_profile(self):
+        if not _is_messenger(self):
+            return super().create_whatsapp_profile()
+
+    def update_profile_name(self):
+        if not _is_messenger(self):
+            return super().update_profile_name()
+
     if hasattr(Upstream, "send_outgoing"):
 
         def send_outgoing(self):
+            if _is_messenger(self):
+                return _send_messenger(self)
             kind = _inbox_kind(self)
             if not kind:
                 return super().send_outgoing()
             _send_inbox_kind(self, kind)
+
+
+def _is_messenger(doc) -> bool:
+    return (doc.get("custom_channel") or "") == "Messenger"
+
+
+def _send_messenger(doc):
+    """Only an Outgoing row we composed goes to Meta; an Incoming row or an
+    echo (a reply already sent from Meta Business Suite) is just stored."""
+    if doc.type != "Outgoing":
+        return
+    from opportunity_management.opportunity_management.whatsapp_payloads import load_payload
+
+    if load_payload(doc.get("custom_payload")).get("kind") == "echo":
+        return
+    from opportunity_management.opportunity_management.messenger_send import send_row
+
+    send_row(doc)
 
 
 def _inbox_kind(doc) -> str:

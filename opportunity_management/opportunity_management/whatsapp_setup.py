@@ -161,6 +161,16 @@ WHATSAPP_MESSAGE_CUSTOM_FIELDS = {
             "no_copy": 1,
             "description": "Meta's reason for a failed status callback.",
         },
+        {
+            # "Messenger" for Messenger rows (inbox_channels); empty = WhatsApp.
+            # The override keys every Messenger side effect on it.
+            "fieldname": "custom_channel",
+            "label": "Channel",
+            "fieldtype": "Data",
+            "insert_after": "custom_error",
+            "read_only": 1,
+            "no_copy": 1,
+        },
     ]
 }
 
@@ -172,7 +182,12 @@ _DOCPERMS = (
     ("WhatsApp Agent", "WhatsApp Templates", {"read": 1}),
     ("WhatsApp Manager", "WhatsApp Templates", {"read": 1}),
     ("WhatsApp Manager", "WhatsApp Account", {"read": 1}),
+    # Messenger inbox users read Messenger rows (and their private files).
+    ("Messenger Agent", "WhatsApp Message", {"read": 1}),
+    ("Messenger Manager", "WhatsApp Message", {"read": 1}),
 )
+
+MESSENGER_ROLES = ("Messenger Agent", "Messenger Manager")
 
 
 def create_whatsapp_message_custom_fields():
@@ -196,6 +211,22 @@ def ensure_message_index():
             frappe.get_traceback(), "WhatsApp inbox: could not add message index"
         )
         return False
+
+
+def ensure_messenger_roles():
+    """`Messenger Agent` / `Messenger Manager`, created like `WhatsApp Agent`
+    (their DocPerms come from `ensure_whatsapp_roles_and_perms`)."""
+    for role in MESSENGER_ROLES:
+        if not frappe.db.exists("Role", role):
+            frappe.get_doc(
+                {
+                    "doctype": "Role",
+                    "role_name": role,
+                    "desk_access": 1,
+                    "search_bar": 1,
+                    "notifications": 1,
+                }
+            ).insert(ignore_permissions=True)
 
 
 def ensure_whatsapp_roles_and_perms():

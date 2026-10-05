@@ -10,6 +10,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, now_datetime
 
+from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management import whatsapp_chat_state as CS
 from opportunity_management.opportunity_management import whatsapp_hooks
 from opportunity_management.opportunity_management import whatsapp_payloads as P
@@ -20,6 +21,7 @@ from opportunity_management.opportunity_management.whatsapp_api_common import (
     _is_manager,
     _note,
     _paging,
+    _refuse_cap,
     _require_inbox_access,
     MetaSendError,
 )
@@ -58,6 +60,11 @@ def typing(conversation):
         key = f"whatsapp_typing:{conv.name}"
         if cache.get_value(key):
             return {"ok": False}
+        if IC.conv_channel(conv) == IC.MESSENGER:
+            cache.set_value(key, 1, expires_in_sec=TYPING_THROTTLE_SECONDS)
+            from opportunity_management.opportunity_management.messenger_send import sender_action
+
+            return {"ok": sender_action(conv, "typing_on")}
         wamid = frappe.db.get_value(
             MSG,
             {"custom_conversation": conv.name, "type": "Incoming", "message_id": ["is", "set"]},
@@ -194,6 +201,9 @@ def _set_blocked(conversation, blocked):
     if not _is_manager():
         frappe.throw(_("Only a WhatsApp Manager can block or unblock contacts"), frappe.PermissionError)
     conv = _get_conv(conversation)
+    if not _is_manager(conv):
+        frappe.throw(_("Only a WhatsApp Manager can block or unblock contacts"), frappe.PermissionError)
+    _refuse_cap(conv, "block", _("Blocking"))
     if bool(cint(conv.get("is_blocked"))) == blocked:
         return _row_for_caller(conv)
     try:

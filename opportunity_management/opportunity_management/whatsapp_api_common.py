@@ -16,6 +16,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
+from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management.whatsapp_utils import inbox_roles
 
 DEFAULT_PAGE_LENGTH = 30
@@ -53,9 +54,18 @@ def _roles():
     return set(frappe.get_roles(frappe.session.user))
 
 
-def _is_manager() -> bool:
-    roles = _roles()
-    return "System Manager" in roles or "WhatsApp Manager" in roles
+def _is_manager(conv=None) -> bool:
+    """Manager of `conv`'s channel; without `conv`, of any channel
+    (WhatsApp-only users: System Manager or WhatsApp Manager, as before)."""
+    channels = IC.manager_channels_for_roles(_roles(), IC.messenger_enabled())
+    if conv is None:
+        return bool(channels)
+    return IC.conv_channel(conv) in channels
+
+
+class ChannelAccessError(frappe.ValidationError):
+    """A conversation of a channel the caller cannot use — reported exactly
+    like a missing one, and 417 (not 403: see NotAssigneeError)."""
 
 
 def _require_inbox_access():
@@ -68,6 +78,8 @@ def _require_inbox_access():
         return
     if roles & set(inbox_roles()):
         return
+    if roles & set(IC.MESSENGER_ROLES):
+        return
     frappe.throw(_("You do not have access to the WhatsApp inbox"), frappe.PermissionError)
 
 
@@ -76,12 +88,42 @@ def _get_conv(name, for_update=False):
         frappe.throw(_("Conversation is required"))
     if not frappe.db.exists("WhatsApp Conversation", name):
         frappe.throw(_("Conversation {0} not found").format(name), frappe.DoesNotExistError)
-    return frappe.get_doc("WhatsApp Conversation", name, for_update=for_update)
+    conv = frappe.get_doc("WhatsApp Conversation", name, for_update=for_update)
+    if IC.conv_channel(conv) not in IC.user_channels():
+        frappe.throw(_("Conversation {0} not found").format(name), ChannelAccessError)
+    return conv
+
+
+def _refuse_cap(conv, cap, label):
+    """Refuse an action the conversation's channel cannot do (`caps`)."""
+    if not IC.caps_for(IC.conv_channel(conv)).get(cap):
+        frappe.throw(
+            _("{0}: not available on {1} conversations").format(label, _(IC.conv_channel(conv))),
+            ChannelAccessError,
+        )
+
+
+def _window_closed_message(conv):
+    if IC.conv_channel(conv) == IC.MESSENGER:
+        return _("This customer must message you again before you can reply")
+    return _(
+        "The 24-hour reply window for this conversation has closed. "
+        "Send an approved template instead."
+    )
+
+
+def _channel_fields(conv):
+    """Extra fields for an Outgoing row of `conv` — {} for WhatsApp, so a
+    WhatsApp insert is exactly what it always was."""
+    if IC.conv_channel(conv) == IC.MESSENGER:
+        return {"custom_channel": IC.MESSENGER}
+    return {}
 
 
 def _require_assignee(conv):
-    """Write actions on a thread belong to its assignee, or to a manager."""
-    if _is_manager():
+    """Write actions on a thread belong to its assignee, or to a manager
+    of its channel."""
+    if _is_manager(conv):
         return
     if conv.assigned_to and conv.assigned_to != frappe.session.user:
         frappe.throw(

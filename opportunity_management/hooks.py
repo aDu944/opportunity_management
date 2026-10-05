@@ -292,19 +292,20 @@ fixtures = [
                 "custom_sent_at",
                 "custom_delivered_at",
                 "custom_read_at",
-                "custom_error"
+                "custom_error",
+                "custom_channel"
             ]]
         ]
     },
     {
         "doctype": "Role",
-        "filters": [["name", "in", ["WhatsApp Agent"]]]
+        "filters": [["name", "in", ["WhatsApp Agent", "Messenger Agent", "Messenger Manager"]]]
     },
     {
         "doctype": "Custom DocPerm",
         "filters": [
             ["parent", "in", ["WhatsApp Message", "WhatsApp Templates", "WhatsApp Account"]],
-            ["role", "in", ["WhatsApp Agent", "WhatsApp Manager"]]
+            ["role", "in", ["WhatsApp Agent", "WhatsApp Manager", "Messenger Agent", "Messenger Manager"]]
         ]
     }
 ]

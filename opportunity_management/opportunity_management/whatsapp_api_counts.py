@@ -8,6 +8,7 @@ it and `whatsapp_api.py` is still the path clients call.
 import frappe
 from frappe.utils import cint
 
+from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management.whatsapp_api_common import (
     _require_inbox_access,
 )
@@ -25,11 +26,17 @@ def get_unread_count():
     agent reply (not auto-replies), Resolve, block and the stale auto-resolve
     job. Unlike `unread_count`, reading a thread does not clear it. Blocked
     contacts are excluded; Resolved threads already are, by the WHERE.
+
+    The totals cover every channel the caller may use; `by_channel` splits
+    them ({"WhatsApp": {mine, unassigned, waiting_mine, waiting_unassigned}}).
     """
     _require_inbox_access()
-    row = frappe.db.sql(
+    channels = IC.user_channels()
+    where = IC.list_channel_sql("", channels)
+    grouped = IC.has_channel_column()
+    rows = frappe.db.sql(
         """
-        SELECT
+        SELECT {channel}
             SUM(CASE WHEN assigned_to = %(me)s AND COALESCE(unread_count, 0) > 0
                      THEN 1 ELSE 0 END) AS mine,
             SUM(CASE WHEN (assigned_to IS NULL OR assigned_to = '')
@@ -43,18 +50,28 @@ def get_unread_count():
                       AND COALESCE(is_blocked, 0) = 0
                      THEN 1 ELSE 0 END) AS waiting_unassigned
         FROM `tabWhatsApp Conversation`
-        WHERE status != 'Resolved'
-        """,
+        WHERE status != 'Resolved' {where}
+        {group}
+        """.format(
+            channel="COALESCE(NULLIF(channel, ''), 'WhatsApp') AS channel," if grouped else "",
+            where="AND " + where if where else "",
+            group="GROUP BY COALESCE(NULLIF(channel, ''), 'WhatsApp')" if grouped else "",
+        ),
         {"me": frappe.session.user},
         as_dict=True,
     )
-    r = row[0] if row else {}
-    mine = cint(r.get("mine"))
-    unassigned = cint(r.get("unassigned"))
+    keys = ("mine", "unassigned", "waiting_mine", "waiting_unassigned")
+    by_channel = {ch: dict.fromkeys(keys, 0) for ch in channels}
+    for r in rows:
+        ch = IC.channel_of(r.get("channel"))
+        if ch in by_channel:
+            by_channel[ch] = {k: cint(r.get(k)) for k in keys}
+    out = {k: sum(c[k] for c in by_channel.values()) for k in keys}
     return {
-        "mine": mine,
-        "unassigned": unassigned,
-        "total": mine + unassigned,
-        "waiting_mine": cint(r.get("waiting_mine")),
-        "waiting_unassigned": cint(r.get("waiting_unassigned")),
+        "mine": out["mine"],
+        "unassigned": out["unassigned"],
+        "total": out["mine"] + out["unassigned"],
+        "waiting_mine": out["waiting_mine"],
+        "waiting_unassigned": out["waiting_unassigned"],
+        "by_channel": by_channel,
     }

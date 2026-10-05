@@ -9,6 +9,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, cint, getdate, nowdate
 
+from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management import whatsapp_crm
 from opportunity_management.opportunity_management import whatsapp_hooks
 from opportunity_management.opportunity_management import whatsapp_serializers as S
@@ -104,16 +105,19 @@ def list_conversations_for_crm(doctype, name):
     if not field:
         frappe.throw(_("Unsupported CRM doctype: {0}").format(doctype))
 
+    filters = {field: name}
+    if IC.has_channel_column() and len(IC.user_channels()) < len(IC.CHANNELS):
+        filters["channel"] = ["in", IC.user_channels()]
     rows = frappe.get_all(
         "WhatsApp Conversation",
-        filters={field: name},
+        filters=filters,
         fields=[
             "name", "phone", "display_name", "whatsapp_account", "status", "assigned_to",
             "last_message_at", "last_inbound_at", "last_message_preview",
             "last_message_direction", "unread_count", "contact", "lead", "customer",
             "opportunity", "customer_language", "notes_count", "first_response_seconds",
             "wa_username", "wa_user_id",
-        ],
+        ] + (["channel", "avatar_url"] if IC.has_channel_column() else []),
         order_by="last_message_at desc",
         limit_page_length=20,
     )
@@ -156,18 +160,25 @@ def get_inbox_stats(from_date=None, to_date=None):
     to_date = getdate(to_date or nowdate())
     from_date = getdate(from_date or add_days(to_date, -29))
     params = {"from": str(from_date), "to": str(to_date), "to_end": f"{to_date} 23:59:59"}
+    # Only the channels the caller manages ("" = all, the query is unchanged).
+    ch = IC.list_channel_sql("", IC.manager_channels())
+    ch = f" AND {ch}" if ch else ""
+    ch_c = IC.list_channel_sql("c", IC.manager_channels())
+    ch_c = f" AND {ch_c}" if ch_c else ""
+    ch_m = IC.channel_sql("m.custom_channel", IC.manager_channels()) if ch else ""
+    ch_m = f" AND {ch_m}" if ch_m else ""
 
     opened = cint(
         frappe.db.sql(
             """SELECT COUNT(*) FROM `tabWhatsApp Conversation`
-               WHERE first_contact_at BETWEEN %(from)s AND %(to_end)s""",
+               WHERE first_contact_at BETWEEN %(from)s AND %(to_end)s""" + ch,
             params,
         )[0][0]
     )
     resolved = cint(
         frappe.db.sql(
             """SELECT COUNT(*) FROM `tabWhatsApp Conversation`
-               WHERE resolved_at BETWEEN %(from)s AND %(to_end)s""",
+               WHERE resolved_at BETWEEN %(from)s AND %(to_end)s""" + ch,
             params,
         )[0][0]
     )
@@ -178,26 +189,26 @@ def get_inbox_stats(from_date=None, to_date=None):
             """SELECT COUNT(*) FROM `tabWhatsApp Conversation`
                WHERE status != 'Resolved'
                  AND resolved_at IS NOT NULL
-                 AND last_inbound_at BETWEEN %(from)s AND %(to_end)s""",
+                 AND last_inbound_at BETWEEN %(from)s AND %(to_end)s""" + ch,
             params,
         )[0][0]
     )
     unassigned_backlog = cint(
         frappe.db.sql(
             """SELECT COUNT(*) FROM `tabWhatsApp Conversation`
-               WHERE status != 'Resolved' AND (assigned_to IS NULL OR assigned_to = '')"""
+               WHERE status != 'Resolved' AND (assigned_to IS NULL OR assigned_to = '')""" + ch
         )[0][0]
     )
     open_total = cint(
         frappe.db.sql(
-            """SELECT COUNT(*) FROM `tabWhatsApp Conversation` WHERE status != 'Resolved'"""
+            """SELECT COUNT(*) FROM `tabWhatsApp Conversation` WHERE status != 'Resolved'""" + ch
         )[0][0]
     )
 
     response_rows = frappe.db.sql(
         """SELECT first_response_seconds FROM `tabWhatsApp Conversation`
            WHERE COALESCE(first_response_seconds, 0) > 0
-             AND first_contact_at BETWEEN %(from)s AND %(to_end)s""",
+             AND first_contact_at BETWEEN %(from)s AND %(to_end)s""" + ch,
         params,
         as_dict=True,
     )
@@ -209,10 +220,10 @@ def get_inbox_stats(from_date=None, to_date=None):
         FROM `tabWhatsApp Message` m
         WHERE m.type = 'Outgoing'
           AND m.custom_sent_by IS NOT NULL AND m.custom_sent_by != ''
-          AND m.creation BETWEEN %(from)s AND %(to_end)s
+          AND m.creation BETWEEN %(from)s AND %(to_end)s {0}
         GROUP BY m.custom_sent_by
         ORDER BY sent DESC
-        """,
+        """.format(ch_m),
         params,
         as_dict=True,
     )
@@ -222,8 +233,8 @@ def get_inbox_stats(from_date=None, to_date=None):
             """SELECT resolved_by, COUNT(*) AS resolved
                FROM `tabWhatsApp Conversation`
                WHERE resolved_by IS NOT NULL
-                 AND resolved_at BETWEEN %(from)s AND %(to_end)s
-               GROUP BY resolved_by""",
+                 AND resolved_at BETWEEN %(from)s AND %(to_end)s {0}
+               GROUP BY resolved_by""".format(ch),
             params,
             as_dict=True,
         )
@@ -237,10 +248,10 @@ def get_inbox_stats(from_date=None, to_date=None):
         """
         SELECT DATE(first_contact_at) AS day, COUNT(*) AS opened
         FROM `tabWhatsApp Conversation`
-        WHERE first_contact_at BETWEEN %(from)s AND %(to_end)s
+        WHERE first_contact_at BETWEEN %(from)s AND %(to_end)s {0}
         GROUP BY DATE(first_contact_at)
         ORDER BY day ASC
-        """,
+        """.format(ch),
         params,
         as_dict=True,
     )
@@ -254,10 +265,10 @@ def get_inbox_stats(from_date=None, to_date=None):
         FROM `tabWhatsApp Conversation Tag` t
         JOIN `tabWhatsApp Conversation` c ON c.name = t.parent
         WHERE t.parenttype = 'WhatsApp Conversation'
-          AND c.last_message_at BETWEEN %(from)s AND %(to_end)s
+          AND c.last_message_at BETWEEN %(from)s AND %(to_end)s {0}
         GROUP BY t.tag
         ORDER BY conversations DESC
-        """,
+        """.format(ch_c),
         params,
         as_dict=True,
     )

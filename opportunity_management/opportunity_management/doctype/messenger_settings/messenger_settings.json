@@ -1,0 +1,135 @@
+{
+ "actions": [],
+ "creation": "2026-10-05 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "issingle": 1,
+ "field_order": [
+  "connection_section",
+  "enabled",
+  "page_id",
+  "page_name",
+  "page_access_token",
+  "column_break_connection",
+  "verify_token",
+  "app_secret",
+  "graph_version",
+  "human_agent_enabled",
+  "status_section",
+  "last_webhook_at",
+  "column_break_status",
+  "last_error"
+ ],
+ "fields": [
+  {
+   "fieldname": "connection_section",
+   "fieldtype": "Section Break",
+   "label": "Facebook Page"
+  },
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "description": "Accept Messenger webhooks and show Messenger chats in the team inbox."
+  },
+  {
+   "fieldname": "page_id",
+   "fieldtype": "Data",
+   "label": "Page ID",
+   "description": "Numeric Facebook Page id. Webhook entries for any other Page are ignored."
+  },
+  {
+   "fieldname": "page_name",
+   "fieldtype": "Data",
+   "label": "Page Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "page_access_token",
+   "fieldtype": "Password",
+   "label": "Page Access Token",
+   "length": 1000,
+   "description": "Long-lived Page access token with pages_messaging."
+  },
+  {
+   "fieldname": "column_break_connection",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "verify_token",
+   "fieldtype": "Data",
+   "label": "Webhook Verify Token",
+   "description": "Any secret string; paste the same value into the Meta app's Messenger webhook settings."
+  },
+  {
+   "fieldname": "app_secret",
+   "fieldtype": "Password",
+   "label": "App Secret",
+   "description": "Meta App Secret, used to check X-Hub-Signature-256. Empty: falls back to site_config whatsapp_app_secret."
+  },
+  {
+   "default": "v25.0",
+   "fieldname": "graph_version",
+   "fieldtype": "Data",
+   "label": "Graph API Version"
+  },
+  {
+   "default": "0",
+   "fieldname": "human_agent_enabled",
+   "fieldtype": "Check",
+   "label": "Human Agent Tag Enabled",
+   "description": "Tick only after Meta grants the Human Agent permission: replies are then allowed for 7 days after the customer's last message (tagged HUMAN_AGENT)."
+  },
+  {
+   "fieldname": "status_section",
+   "fieldtype": "Section Break",
+   "label": "Status"
+  },
+  {
+   "fieldname": "last_webhook_at",
+   "fieldtype": "Datetime",
+   "label": "Last Webhook At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-05 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Opportunity Management",
+ "name": "Messenger Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Messenger Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

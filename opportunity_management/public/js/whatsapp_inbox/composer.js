@@ -11,6 +11,7 @@
 import * as api from "./api.js";
 import { EmojiPopover } from "./emoji.js";
 import { TemplatePicker } from "./template_picker.js";
+import { caps, is_manager_of } from "./channels.js";
 
 // Matches `.wa-input { min-height }` in whatsapp_inbox.css — one row of text
 // plus the control's own padding.
@@ -149,7 +150,7 @@ export class Composer {
 		}
 		const assigned = (conv && conv.assigned_to) || "";
 		const claimed_by_other = !!assigned && assigned !== this.inbox.meta.me;
-		this.locked = claimed_by_other && !this.inbox.meta.is_manager;
+		this.locked = claimed_by_other && !is_manager_of(this.inbox.meta, conv);
 		if (!claimed_by_other) {
 			this.$locked.attr("hidden", true).empty();
 			return;
@@ -170,7 +171,9 @@ export class Composer {
 		this.window_open = !!is_open;
 		// Reactions are free-form sends: same window + lock rules as typing.
 		if (this.inbox.thread) {
-			this.inbox.thread.set_can_react(!!this.conversation && this.window_open && !this.locked);
+			this.inbox.thread.set_can_react(
+				!!this.conversation && this.window_open && !this.locked && caps(this.conversation).reactions
+			);
 		}
 		if (!this.conversation || this.locked || !(this.window_open || this.note_mode)) {
 			// Every branch below except the free-text one hides the composer;
@@ -195,9 +198,13 @@ export class Composer {
 			this.$picker.attr("hidden", true);
 			// Only now is the textarea measurable.
 			this.autosize();
-		} else {
+		} else if (caps(this.conversation).templates) {
 			this.$composer.attr("hidden", true);
 			this.picker.render();
+		} else {
+			// No templates on Messenger: the banner says the customer must write.
+			this.$composer.attr("hidden", true);
+			this.$picker.attr("hidden", true);
 		}
 	}
 

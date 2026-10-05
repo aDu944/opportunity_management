@@ -372,3 +372,24 @@
 .wa-tick-read { color: var(--wa-read-blue); }
 
 .wa-tick-failed { color: var(--red-500, #e24c4c); }
+
+/* ── channels (WhatsApp / Messenger — channels.js) ───────────────────── */
+.wa-channel-filter {
+	display: flex;
+	gap: 4px;
+	margin-bottom: 8px;
+	flex-wrap: wrap;
+}
+.wa-channel-option svg {
+	vertical-align: -2px;
+	margin-inline-end: 4px;
+}
+.wa-channel-badge {
+	display: inline-flex;
+	align-items: center;
+	margin-inline-end: 4px;
+	vertical-align: -1px;
+	flex: none;
+}
+.wa-channel-whatsapp { color: #25d366; }
+.wa-channel-messenger { color: #0a7cff; }

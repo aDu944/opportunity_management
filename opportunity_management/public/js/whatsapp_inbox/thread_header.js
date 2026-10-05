@@ -12,6 +12,7 @@
 
 import * as api from "./api.js";
 import { avatar_html } from "./avatar.js";
+import { agents_for, badge_html, is_manager_of } from "./channels.js";
 
 function esc(value) {
 	return frappe.utils.escape_html(value == null ? "" : String(value));
@@ -56,6 +57,7 @@ export class ThreadHeader {
 			conv.display_name || "",
 			conv.handle || "",
 			conv.avatar_url || "",
+			conv.channel || "",
 		]);
 	}
 
@@ -92,7 +94,9 @@ export class ThreadHeader {
 			<div class="wa-head-main">
 				${avatar_html(conv)}
 				<div class="wa-head-who">
-					<div class="wa-head-name" dir="auto">${esc(conv.display_name || conv.handle || "")}</div>
+					<div class="wa-head-name" dir="auto">${badge_html(this.inbox.meta, conv)}${esc(
+						conv.display_name || conv.handle || ""
+					)}</div>
 					<div class="wa-head-phone" dir="ltr">${esc(conv.handle || "")}</div>
 				</div>
 			</div>
@@ -171,7 +175,8 @@ export class ThreadHeader {
 		const conv = this.conversation;
 		const me = this.inbox.meta.me;
 		const assigned = conv.assigned_to || "";
-		const is_manager = !!this.inbox.meta.is_manager;
+		// Manager of THIS conversation's channel (Messenger Manager ≠ WhatsApp).
+		const is_manager = is_manager_of(this.inbox.meta, conv);
 
 		if (!assigned) {
 			// Managers used to get only the picker, which meant answering a
@@ -204,7 +209,7 @@ export class ThreadHeader {
 			df: {
 				fieldtype: "Autocomplete",
 				fieldname: "wa_assignee",
-				options: (this.inbox.meta.agents || [])
+				options: agents_for(this.inbox.meta, conv)
 					.filter((a) => !transfer_only || a.user !== me)
 					.map((a) => ({
 						label: a.full_name || a.user,

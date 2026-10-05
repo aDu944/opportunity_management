@@ -39,9 +39,12 @@ from opportunity_management.opportunity_management.whatsapp_utils import (
 from opportunity_management.opportunity_management.whatsapp_api_common import (
     DEFAULT_THREAD_LIMIT,
     MAX_THREAD_LIMIT,
+    _channel_fields,
     _get_conv,
     _note,
     _refuse_blocked,
+    _refuse_cap,
+    _window_closed_message,
     _require_assignee,
     _require_inbox_access,
     MetaSendError,
@@ -174,6 +177,8 @@ def _auto_claim(conv):
 
 
 def _is_window_error(message) -> bool:
+    if isinstance(message, WindowClosedError):  # Messenger raises it typed
+        return True
     text = str(message or "")
     return WINDOW_CLOSED_ERROR_CODE in text or "24 hour" in text.lower()
 
@@ -212,13 +217,7 @@ def send_message(conversation, text=None, reply_to=None, attachment=None):
         frappe.throw(_("Message text or an attachment is required"))
 
     if not conv.window_open():
-        frappe.throw(
-            _(
-                "The 24-hour reply window for this conversation has closed. "
-                "Send an approved template instead."
-            ),
-            exc=WindowClosedError,
-        )
+        frappe.throw(_window_closed_message(conv), exc=WindowClosedError)
 
     content_type = _content_type_for(attachment)
     check_video_size(content_type, attachment)
@@ -234,6 +233,7 @@ def send_message(conversation, text=None, reply_to=None, attachment=None):
         "custom_sent_by": frappe.session.user,
         "custom_read": 1,
     }
+    payload.update(_channel_fields(conv))
     if reply_to:
         payload["is_reply"] = 1
         payload["reply_to_message_id"] = reply_to
@@ -249,6 +249,8 @@ def send_message(conversation, text=None, reply_to=None, attachment=None):
                 _("The 24-hour reply window has closed. Send an approved template."),
                 exc=WindowClosedError,
             )
+        if isinstance(exc, MetaSendError):  # Messenger: already worded
+            frappe.throw(str(exc)[:400], exc=MetaSendError)
         frappe.throw(_("WhatsApp rejected the message: {0}").format(str(exc)[:300]), exc=MetaSendError)
 
     return S.message_item(doc)
@@ -260,6 +262,7 @@ def send_template(conversation, template, params=None, header_media=None):
     has closed, so this path never checks `window_open`."""
     _require_inbox_access()
     conv = _get_conv(conversation)
+    _refuse_cap(conv, "templates", _("Templates"))
     _refuse_blocked(conv)
     _auto_claim(conv)
 

@@ -34,6 +34,7 @@ def setup_whatsapp_inbox():
     for step, label in (
         (whatsapp_setup.create_whatsapp_message_custom_fields, "custom fields"),
         (whatsapp_setup.ensure_message_index, "message index"),
+        (whatsapp_setup.ensure_messenger_roles, "Messenger roles"),
         (whatsapp_setup.ensure_whatsapp_roles_and_perms, "roles and permissions"),
         (whatsapp_setup.seed_inbox_defaults, "inbox defaults"),
     ):

@@ -16,6 +16,7 @@ import { Reactions, react_button_html, reactions_html } from "./reactions.js";
 import { card_html } from "./cards.js";
 import { MessageInfo, sender_label } from "./message_info.js";
 import { linkify_html } from "./linkify.js";
+import { closed_text, human_agent_text } from "./channels.js";
 
 const THREAD_LIMIT = 40;
 
@@ -183,7 +184,7 @@ export class Thread {
 			this.$banner
 				.removeAttr("hidden")
 				.attr("class", "wa-banner wa-banner-closed")
-				.text(__("24h window closed — send a template"));
+				.text(closed_text(conv));
 		}
 		if (this.inbox.composer) {
 			this.inbox.composer.set_window(!!conv.window_open);
@@ -195,10 +196,13 @@ export class Thread {
 			.removeAttr("hidden")
 			.attr("class", "wa-banner wa-banner-open")
 			.text(
-				__("Free-text until {0} ({1})", [
-					window_closes_at(this.remaining),
-					duration_label(this.remaining),
-				])
+				(this.conversation && this.conversation.window_mode === "human_agent"
+					? human_agent_text() + " · "
+					: "") +
+					__("Free-text until {0} ({1})", [
+						window_closes_at(this.remaining),
+						duration_label(this.remaining),
+					])
 			);
 	}
 

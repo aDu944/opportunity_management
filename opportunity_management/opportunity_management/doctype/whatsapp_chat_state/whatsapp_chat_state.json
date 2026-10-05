@@ -55,7 +55,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-03 12:00:00.000000",
+ "modified": "2026-10-05 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Opportunity Management",
  "name": "WhatsApp Chat State",
@@ -77,6 +77,11 @@
    "read": 1,
    "report": 1,
    "role": "WhatsApp Manager"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Messenger Manager"
   }
  ],
  "sort_field": "modified",

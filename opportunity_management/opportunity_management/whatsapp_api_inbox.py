@@ -10,6 +10,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_to_date, cint, now_datetime
 
+from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management import whatsapp_assign_rules as AR
 from opportunity_management.opportunity_management import whatsapp_chat_state as CS
 from opportunity_management.opportunity_management import whatsapp_hooks
@@ -25,7 +26,6 @@ from opportunity_management.opportunity_management.whatsapp_templates import (
 from opportunity_management.opportunity_management.whatsapp_utils import (
     WINDOW_SECONDS,
     get_inbox_settings,
-    inbox_users,
 )
 # Moved for size; re-exported so `whatsapp_api` keeps importing it from here.
 from opportunity_management.opportunity_management.whatsapp_api_counts import (  # noqa: F401
@@ -49,11 +49,14 @@ from opportunity_management.opportunity_management.whatsapp_api_common import (
 def get_inbox_meta():
     _require_inbox_access()
     settings = get_inbox_settings()
+    channels = IC.user_channels()
     agents = []
-    for email in inbox_users():
-        agents.append(
-            {"user": email, "full_name": frappe.db.get_value("User", email, "full_name") or email}
-        )
+    for email, agent_channels in IC.roster(channels):
+        agents.append({
+            "user": email,
+            "full_name": frappe.db.get_value("User", email, "full_name") or email,
+            "channels": agent_channels,
+        })
     agents.sort(key=lambda a: (a["full_name"] or "").lower())
 
     tags = frappe.get_all(
@@ -66,6 +69,9 @@ def get_inbox_meta():
 
     return {
         "is_manager": _is_manager(),
+        # Channels the caller may use / manage, in IC.CHANNELS order.
+        "channels": channels,
+        "manager_channels": IC.manager_channels(),
         "me": frappe.session.user,
         "agents": agents,
         "tags": tags,
@@ -96,6 +102,7 @@ def list_conversations(
     status=None,
     limit_start=0,
     limit_page_length=None,
+    channel=None,
 ):
     """Paged conversation list.
 
@@ -107,12 +114,21 @@ def list_conversations(
     `tag` (one name) and `tags` (JSON list or comma string) both filter on the
     conversation's tags; when several are given the conversation must carry
     **all** of them. `tag` is kept for the existing mobile callers.
+
+    `channel` ("WhatsApp" | "Messenger") narrows to one channel; omitted = all
+    of the caller's channels (inbox_channels).
     """
     _require_inbox_access()
     start, length = _paging(limit_start, limit_page_length)
 
     clauses = []
     params = {"limit": length + 1, "start": start}
+    channels = IC.user_channels()
+    if channel:
+        channels = [c for c in channels if c == IC.channel_of(channel)]
+    channel_clause = IC.list_channel_sql("c", channels)
+    if channel_clause:
+        clauses.append(channel_clause)
 
     scope = (scope or "all").lower()
     if scope == "mine":
@@ -128,8 +144,9 @@ def list_conversations(
         # Same rule as ConvRow.window_open (serializers.window_seconds_remaining):
         # open while now - last_inbound_at < 24h, so expired is the complement.
         clauses.append("c.status != 'Resolved'")
-        clauses.append("(c.last_inbound_at IS NULL OR c.last_inbound_at <= %(window_cutoff)s)")
         params["window_cutoff"] = add_to_date(now_datetime(), seconds=-WINDOW_SECONDS)
+        # Messenger with the Human Agent tag stays writable for 7 days.
+        clauses.append(IC.expired_sql("c", channels, params))
     else:
         clauses.append("c.status != 'Resolved'")
 
@@ -185,7 +202,7 @@ def list_conversations(
                c.last_message_preview, c.last_message_direction, c.unread_count,
                c.contact, c.lead, c.customer, c.opportunity, c.customer_language,
                c.notes_count, c.first_response_seconds, c.wa_username, c.wa_user_id,
-               c.is_blocked, {state_select}
+               c.is_blocked, {IC.list_select("c")}{state_select}
         FROM `tabWhatsApp Conversation` c
         {state_join}
         WHERE {where}
@@ -230,6 +247,8 @@ def get_or_create_conversation(phone, whatsapp_account=None, display_name=None):
     message publishes on its own.
     """
     _require_inbox_access()
+    if IC.WHATSAPP not in IC.user_channels():
+        frappe.throw(_("You do not have access to the WhatsApp inbox"), frappe.PermissionError)
     # A pasted BSUID is accepted as-is; anything else is a phone number.
     number = normalize_wa_identifier(str(phone or "").strip())
     if not number:
@@ -254,9 +273,9 @@ def get_conversation(name):
             "profile_name": _profile_name(conv.phone),
             "window_open": conv.window_open(),
             "window_seconds_remaining": conv.window_seconds_remaining(),
-            "can_assign": _is_manager(),
+            "can_assign": _is_manager(conv),
             # Manager, or the owner handing on their own thread (`assign`).
-            "can_transfer": AR.may_transfer(_is_manager(), frappe.session.user, conv.assigned_to),
+            "can_transfer": AR.may_transfer(_is_manager(conv), frappe.session.user, conv.assigned_to),
             "is_mine": conv.assigned_to == frappe.session.user,
             "contact_name": _crm_label("Contact", conv.contact),
             "lead_name": _crm_label("Lead", conv.lead),
@@ -329,7 +348,9 @@ def assign(conversation, user):
     me = frappe.session.user
     user = (user or "").strip()
     conv = _get_conv(conversation, for_update=True)
-    ok, verdict = AR.may_assign(_is_manager(), me, conv.assigned_to, user, roster=set(inbox_users()))
+    # The roster is the users of THIS conversation's channel.
+    roster = set(IC.channel_users(IC.conv_channel(conv)))
+    ok, verdict = AR.may_assign(_is_manager(conv), me, conv.assigned_to, user, roster=roster)
     if not ok:
         if verdict == AR.TARGET_NOT_AGENT:
             frappe.throw(_("{0} is not an active WhatsApp inbox agent").format(user))
@@ -456,7 +477,9 @@ def mark_read(conversation):
     )
     conv.unread_count = 0
 
-    if cint(get_inbox_settings().get("auto_read_receipt")) and newest:
+    if cint(get_inbox_settings().get("auto_read_receipt")) and newest and IC.conv_channel(conv) == IC.MESSENGER:
+        IC.mark_seen(conv)
+    elif cint(get_inbox_settings().get("auto_read_receipt")) and newest:
         try:
             msg = frappe.get_doc("WhatsApp Message", newest[0]["name"])
             if msg.get("message_id"):

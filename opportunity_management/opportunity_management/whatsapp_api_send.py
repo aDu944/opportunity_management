@@ -23,9 +23,13 @@ from frappe.utils import cint
 
 from opportunity_management.opportunity_management import whatsapp_payloads as P
 from opportunity_management.opportunity_management import whatsapp_serializers as S
+from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management.whatsapp_api_common import (
+    _channel_fields,
     _get_conv,
     _refuse_blocked,
+    _refuse_cap,
+    _window_closed_message,
     _require_inbox_access,
     MetaSendError,
     WindowClosedError,
@@ -55,19 +59,17 @@ def _throw_payload(exc):
 
 # ── shared send path ─────────────────────────────────────────────────────────
 
-def _open_for_send(conversation):
+def _open_for_send(conversation, cap=None, label=None):
+    """`cap`: the `caps` key this send needs (Messenger has no location /
+    contact cards); refused before anything is claimed."""
     _require_inbox_access()
     conv = _get_conv(conversation)
+    if cap:
+        _refuse_cap(conv, cap, label or cap)
     _refuse_blocked(conv)
     _auto_claim(conv)
     if not conv.window_open():
-        frappe.throw(
-            _(
-                "The 24-hour reply window for this conversation has closed. "
-                "Send an approved template instead."
-            ),
-            exc=WindowClosedError,
-        )
+        frappe.throw(_window_closed_message(conv), exc=WindowClosedError)
     return conv
 
 
@@ -82,6 +84,7 @@ def _insert(conv, fields, note_text, reply_to=None):
         "custom_sent_by": frappe.session.user,
         "custom_read": 1,
     }
+    payload.update(_channel_fields(conv))
     payload.update(fields)
     if reply_to:
         payload["is_reply"] = 1
@@ -97,6 +100,8 @@ def _insert(conv, fields, note_text, reply_to=None):
                 _("The 24-hour reply window has closed. Send an approved template."),
                 exc=WindowClosedError,
             )
+        if isinstance(exc, MetaSendError):  # Messenger: already worded
+            frappe.throw(str(exc)[:400], exc=MetaSendError)
         frappe.throw(_("WhatsApp rejected the message: {0}").format(str(exc)[:300]), exc=MetaSendError)
     return S.message_item(doc)
 
@@ -109,7 +114,7 @@ def send_location(conversation, latitude, longitude, name=None, address=None, re
         card = P.location_card(latitude, longitude, name, address)
     except P.PayloadError as exc:
         _throw_payload(exc)
-    conv = _open_for_send(conversation)
+    conv = _open_for_send(conversation, "location", _("Locations"))
     text = P.location_text(card)
     fields = {
         "content_type": "location",
@@ -125,7 +130,7 @@ def send_contact(conversation, name, phone, reply_to=None):
         cards = [P.contact_card(name, phone)]
     except P.PayloadError as exc:
         _throw_payload(exc)
-    conv = _open_for_send(conversation)
+    conv = _open_for_send(conversation, "contact", _("Contact cards"))
     text = P.contacts_text(cards)
     fields = {
         "content_type": "contact",
@@ -170,6 +175,10 @@ def send_voice(conversation, attachment, reply_to=None, duration=None):
     if not attachment:
         frappe.throw(_("A recording is required"))
     conv = _open_for_send(conversation)
+    if IC.conv_channel(conv) == IC.MESSENGER:
+        from opportunity_management.opportunity_management.messenger_send import voice_fields
+
+        return _insert(conv, voice_fields(conv, attachment, duration), _("[voice note]"), reply_to)
     from opportunity_management.opportunity_management.whatsapp_audio import (
         needs_transcode,
         to_voice_ogg,
@@ -235,6 +244,13 @@ def forward_message(message, to_conversation):
     ).get("kind") in P.CARD_KINDS:
         frappe.throw(_("Only text, photos, videos, documents and audio can be forwarded"))
 
+    source_conv = _get_conv(src.custom_conversation)  # caller must see the source too
+    target = IC.channel_of(
+        frappe.db.get_value("WhatsApp Conversation", to_conversation, "channel")
+        if IC.has_channel_column() else None
+    )
+    if target != IC.conv_channel(source_conv):  # checked before _auto_claim
+        frappe.throw(_("Messages can only be forwarded to a conversation on the same channel"))
     conv = _open_for_send(to_conversation)
     if kind == "text" or not src.attach:
         text = (src.get("custom_body_text") or strip_html(src.message) or "").strip()

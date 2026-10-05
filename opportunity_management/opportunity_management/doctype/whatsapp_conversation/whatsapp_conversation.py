@@ -42,7 +42,12 @@ class WhatsAppConversation(Document):
         self.wa_username = clean_username(self.wa_username) or None
         if not self.display_name and not is_bsuid(self.phone):
             self.display_name = self.phone
-        self.conversation_key = "{0}:{1}".format(self.whatsapp_account or "", self.phone or "")
+        if (self.get("channel") or "") == "Messenger":
+            # messenger:<page_id>:<psid>, set by messenger_ingest — keep it.
+            if not str(self.conversation_key or "").startswith("messenger:"):
+                self.conversation_key = "messenger::{0}".format(str(self.phone or "")[3:])
+        else:
+            self.conversation_key = "{0}:{1}".format(self.whatsapp_account or "", self.phone or "")
 
         if self.unread_count and self.unread_count < 0:
             self.unread_count = 0
@@ -52,7 +57,13 @@ class WhatsAppConversation(Document):
     # ── 24h window ───────────────────────────────────────────────────────────
 
     def window_seconds_remaining(self, now=None) -> int:
-        """Seconds of free-text window left; 0 when closed (or never opened)."""
+        """Seconds of free-text window left; 0 when closed (or never opened).
+        A Messenger thread follows its own rule (inbox_channels.window_state:
+        24 h, then 7 days with the Human Agent tag when enabled)."""
+        if (self.get("channel") or "") == "Messenger":
+            from opportunity_management.opportunity_management.inbox_channels import conv_window
+
+            return conv_window(self, now=now)[1]
         if not self.last_inbound_at:
             return 0
         try:

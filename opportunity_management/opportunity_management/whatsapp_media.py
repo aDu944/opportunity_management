@@ -30,6 +30,8 @@ OPTIONAL_MESSAGE_FIELDS = (
     # round 3: cards / voice / message info; `buttons` is upstream's (options).
     "custom_payload", "custom_is_voice", "custom_sent_at", "custom_delivered_at",
     "custom_read_at", "custom_error", "buttons",
+    # Messenger channel (inbox_channels).
+    "custom_channel",
 )
 
 

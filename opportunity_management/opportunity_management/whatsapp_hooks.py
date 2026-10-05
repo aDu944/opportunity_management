@@ -22,6 +22,7 @@ which also owns the two `*/5` cron sweeps.
 import frappe
 from frappe.utils import add_to_date, cint, get_datetime, now_datetime
 
+from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management import whatsapp_crm
 from opportunity_management.opportunity_management import whatsapp_jobs
 from opportunity_management.opportunity_management import whatsapp_message_extras as X
@@ -41,7 +42,6 @@ from opportunity_management.opportunity_management.whatsapp_identity import (
 )
 from opportunity_management.opportunity_management.whatsapp_utils import (
     detect_language,
-    inbox_users,
     normalize_body,
     setting,
 )
@@ -63,6 +63,10 @@ def _thread_item(row, kind="message", **kwargs):
 
 def on_message_after_insert(doc, method=None):
     """Thread a freshly inserted WhatsApp Message (plan §1.4)."""
+    if (doc.get("custom_channel") or "") == IC.MESSENGER:  # keyed by PSID, no CRM / auto-reply
+        from opportunity_management.opportunity_management.messenger_ingest import after_insert
+
+        return after_insert(doc)
     try:
         incoming = (doc.get("type") or "") == "Incoming"
         raw_number = doc.get("from") if incoming else doc.get("to")
@@ -440,7 +444,8 @@ def publish_inbox_event(event, conv, item=None, extra=None):
     if extra:
         payload.update(extra)
 
-    recipients = set(inbox_users())
+    # Only users of this conversation's channel (WhatsApp: inbox_users()).
+    recipients = set(IC.channel_users(IC.conv_channel(conv)))
     if conv.get("assigned_to"):
         recipients.add(conv.get("assigned_to"))
     # pinned / muted are per user: each recipient gets their own flags.
@@ -461,8 +466,13 @@ def _push_inbound(conv, doc):
 
     # A user who muted this thread gets no push (counts are unaffected).
     seen = set(muted_users(conv.name))
+    channel = IC.conv_channel(conv)
+    if channel == IC.MESSENGER:
+        from opportunity_management.opportunity_management.messenger_ingest import inbound_push as build
+    else:
+        build = T.whatsapp_inbound
     if conv.assigned_to:
-        title, body, data = T.whatsapp_inbound(conv, doc)
+        title, body, data = build(conv, doc)
         _send_to_users([conv.assigned_to], title, body, data, dedupe_seen=seen)
         return
 
@@ -475,8 +485,8 @@ def _push_inbound(conv, doc):
         if now_datetime() < next_allowed:
             return
 
-    title, body, data = T.whatsapp_inbound(conv, doc)
-    _send_to_users(inbox_users(), title, body, data, dedupe_seen=seen)
+    title, body, data = build(conv, doc)
+    _send_to_users(IC.channel_users(channel), title, body, data, dedupe_seen=seen)
     stamp = now_datetime()
     conv.last_team_alert_at = stamp
     frappe.db.set_value(

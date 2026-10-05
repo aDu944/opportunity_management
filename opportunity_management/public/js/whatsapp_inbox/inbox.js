@@ -11,6 +11,7 @@ import { ConversationList } from "./conversation_list.js";
 import { Thread } from "./thread.js";
 import { Composer } from "./composer.js";
 import { SidePanel } from "./side_panel.js";
+import { many_channels, mount_filter } from "./channels.js";
 
 const REALTIME_EVENT = "whatsapp_inbox";
 
@@ -56,6 +57,11 @@ export class WhatsAppInbox {
 		api.get_inbox_meta()
 			.then((meta) => {
 				this.meta = Object.assign(this.meta, meta || {});
+				if (many_channels(this.meta)) {
+					this.page.set_title(__("Team Inbox"));
+					this.page.set_title_sub(__("Shared WhatsApp and Messenger team inbox"));
+				}
+				mount_filter(this.list, this.meta);
 				this.add_manager_actions();
 				this.list.render_tag_filter(this.meta.tags);
 				this.side.render_tabs();

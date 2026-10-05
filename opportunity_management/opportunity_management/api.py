@@ -1923,7 +1923,13 @@ def submit_late_checkin_leave(employee, checkin_time=None):
         else "Auto-submitted: late check-in (balance exhausted — half-day deduction)"
     )
 
-    to_time = checkin_time or frappe.utils.now_datetime().strftime("%H:%M:%S")
+    # The app sends a full datetime; the field is a Time. Store HH:MM:SS so
+    # nothing downstream (the HR email among them) sees a date in it.
+    try:
+        to_time = frappe.utils.get_datetime(checkin_time).strftime("%H:%M:%S") if checkin_time else None
+    except Exception:
+        to_time = None
+    to_time = to_time or frappe.utils.now_datetime().strftime("%H:%M:%S")
 
     doc = frappe.get_doc({
         "doctype": "Leave Application",
@@ -2223,6 +2229,7 @@ def get_mobile_config():
             "geofence_reminders": _i("enable_geofence_reminders", 1),
             "attendance_history_view": _i("enable_attendance_history_view", 1),
             "whatsapp_inbox": _i("enable_whatsapp_inbox", 0),
+            "messenger_inbox": _messenger_inbox_enabled(),
         },
 
         "security": {
@@ -2302,6 +2309,14 @@ def get_mobile_config():
     }
 
 
+def _messenger_inbox_enabled():
+    """1 when Messenger Settings `enabled` is ticked (0 before it exists)."""
+    try:
+        return 1 if int(frappe.db.get_single_value("Messenger Settings", "enabled") or 0) else 0
+    except Exception:
+        return 0
+
+
 def _default_mobile_config():
     return {
         "min_app_version": "1.0.0",
@@ -2332,6 +2347,7 @@ def _default_mobile_config():
             "approvals": 1, "geofence_reminders": 1,
             "attendance_history_view": 1,
             "whatsapp_inbox": 0,
+            "messenger_inbox": 0,
         },
         "security": {
             "allow_biometric_login": 1, "allow_remember_me": 1,

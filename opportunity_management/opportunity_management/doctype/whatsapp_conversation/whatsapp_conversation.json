@@ -12,6 +12,8 @@
   "wa_username",
   "wa_user_id",
   "whatsapp_account",
+  "channel",
+  "avatar_url",
   "column_break_head",
   "status",
   "is_blocked",
@@ -48,6 +50,7 @@
   "last_out_of_hours_reply_at",
   "column_break_automation",
   "last_team_alert_at",
+  "profile_fetched_at",
   "conversation_key"
  ],
  "fields": [
@@ -89,6 +92,26 @@
    "label": "WhatsApp Account",
    "options": "WhatsApp Account",
    "in_standard_filter": 1
+  },
+  {
+   "default": "WhatsApp",
+   "fieldname": "channel",
+   "fieldtype": "Select",
+   "label": "Channel",
+   "options": "WhatsApp\nMessenger",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "read_only": 1,
+   "description": "Messenger: `phone` is the Page-scoped user id as FB.<psid> and the key is messenger:<page_id>:<psid>."
+  },
+  {
+   "fieldname": "avatar_url",
+   "fieldtype": "Data",
+   "label": "Avatar",
+   "read_only": 1,
+   "hidden": 1,
+   "description": "Messenger profile picture (private File), refreshed at most weekly."
   },
   {
    "fieldname": "column_break_head",
@@ -303,6 +326,12 @@
    "read_only": 1
   },
   {
+   "fieldname": "profile_fetched_at",
+   "fieldtype": "Datetime",
+   "label": "Profile Fetched At",
+   "read_only": 1
+  },
+  {
    "fieldname": "conversation_key",
    "fieldtype": "Data",
    "label": "Conversation Key",
@@ -319,7 +348,7 @@
    "link_fieldname": "conversation"
   }
  ],
- "modified": "2026-10-03 12:00:00.000000",
+ "modified": "2026-10-05 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Opportunity Management",
  "name": "WhatsApp Conversation",
@@ -353,6 +382,24 @@
    "read": 1,
    "report": 1,
    "role": "WhatsApp Agent",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Messenger Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Messenger Agent",
    "write": 1
   }
  ],

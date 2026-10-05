@@ -9,6 +9,7 @@
 
 import * as api from "./api.js";
 import { avatar_html } from "./avatar.js";
+import { caps, is_manager_of } from "./channels.js";
 import { day_label, duration_label } from "./time.js";
 
 const CRM_DOCTYPES = ["Contact", "Lead", "Customer", "Opportunity"];
@@ -146,7 +147,8 @@ export class SidePanel {
 	/** Managers only: block / unblock on WhatsApp (block also resolves). */
 	render_block() {
 		const conv = this.conversation;
-		if (!this.inbox.meta.is_manager || !conv) {
+		// Manager of this channel only; Messenger has no block list (caps.block).
+		if (!conv || !is_manager_of(this.inbox.meta, conv) || !caps(conv).block) {
 			return;
 		}
 		const blocked = !!conv.is_blocked;

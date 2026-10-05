@@ -16,6 +16,7 @@ import frappe
 from frappe import _
 from frappe.utils import get_datetime, now_datetime
 
+from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management.whatsapp_payloads import decorate_item
 from opportunity_management.opportunity_management.whatsapp_identity import (
     clean_username,
@@ -200,14 +201,17 @@ def conv_row(conv, tags=None, assignee_name=None, now=None, images=None, state=N
     phone = _g(conv, "phone", "") or ""
     username = clean_username(_g(conv, "wa_username", "")) or None
     user_id = _g(conv, "wa_user_id", "") or (phone if is_bsuid(phone) else "") or None
+    channel = IC.conv_channel(conv)
+    messenger = channel == IC.MESSENGER
 
-    return {
+    row = {
         "name": name,
         # For `has_phone == False` this is the BSUID — the send address, never
         # something to show as a number. `handle` is the display line.
         "phone": phone,
         "display_name": display_label(
-            _g(conv, "display_name", ""), phone, username, fallback=_("WhatsApp user")
+            _g(conv, "display_name", ""), phone, username,
+            fallback=_("Messenger user") if messenger else _("WhatsApp user"),
         ),
         "username": username,
         "user_id": user_id,
@@ -243,7 +247,19 @@ def conv_row(conv, tags=None, assignee_name=None, now=None, images=None, state=N
         # The CALLER's flags (publish_inbox_event re-stamps each recipient's).
         "pinned": bool(state.get("pinned")),
         "muted": bool(state.get("muted")),
+        "channel": channel,
+        "caps": IC.caps_for(channel),
     }
+    if messenger:
+        # PSID `FB.<id>`: no phone, no handle; the window has a 7-day tier;
+        # no CRM image → the downloaded Messenger profile picture.
+        mode, remaining = IC.conv_window(conv, now=now)
+        row.update({"window_open": mode != IC.CLOSED, "window_seconds_remaining": remaining,
+                    "window_mode": mode, "has_phone": False, "handle": ""})
+        row["avatar_url"] = row["avatar_url"] or _g(conv, "avatar_url") or None
+    else:
+        row["window_mode"] = IC.STANDARD if row["window_open"] else IC.CLOSED
+    return row
 
 
 def _own_state(conv):
@@ -321,6 +337,8 @@ _THREAD_ITEM_BLANK = {
     "read": 1,
     "unread": False,
     "media_size": None,
+    # The message's channel; "" on an internal note.
+    "channel": "",
 }
 
 
@@ -386,6 +404,7 @@ def message_item(row, reply_texts=None, sender_names=None, sizes=None):
             "is_sticker": bool(_g(row, "custom_is_sticker", 0)),
             "read": 1 if _g(row, "custom_read", 0) else 0,
             "unread": direction == "in" and not _g(row, "custom_read", 0),
+            "channel": IC.channel_of(_g(row, "custom_channel")),
         }
     )
     if attach:

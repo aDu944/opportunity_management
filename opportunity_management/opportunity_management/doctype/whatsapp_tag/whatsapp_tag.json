@@ -36,7 +36,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-09-16 00:00:00.000000",
+ "modified": "2026-10-05 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Opportunity Management",
  "name": "WhatsApp Tag",
@@ -66,6 +66,19 @@
   {
    "read": 1,
    "role": "WhatsApp Agent"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Messenger Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Messenger Agent"
   }
  ],
  "sort_field": "modified",

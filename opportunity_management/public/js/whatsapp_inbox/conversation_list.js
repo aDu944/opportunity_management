@@ -9,6 +9,7 @@
 
 import * as api from "./api.js";
 import { avatar_html } from "./avatar.js";
+import { badge_html, channel_of } from "./channels.js";
 import { relative_time } from "./time.js";
 
 // "expired" = not Resolved and the 24h customer-service window has closed
@@ -49,6 +50,8 @@ export class ConversationList {
 		this.scope = "all";
 		this.search = "";
 		this.tags = [];
+		// "" = every channel the user has (channels.mount_filter sets it).
+		this.channel = "";
 		this.rows = [];
 		this.has_more = false;
 		this.loading = false;
@@ -219,6 +222,7 @@ export class ConversationList {
 				// pager stays honest (client-side filtering would drop rows out
 				// of a page and break `has_more`).
 				tags: this.tags.length ? JSON.stringify(this.tags) : undefined,
+				channel: this.channel || undefined,
 				limit_start: start,
 				limit_page_length: PAGE_LENGTH,
 			})
@@ -281,6 +285,7 @@ export class ConversationList {
 				${avatar_html(row)}
 				<div class="wa-row-main">
 					<div class="wa-row-top">
+						${badge_html(this.inbox.meta, row)}
 						<span class="wa-row-name" dir="auto">${esc(row.display_name || row.handle || "")}</span>
 						${toggles}
 						<span class="wa-row-time">${esc(relative_time(row.last_message_at))}</span>
@@ -371,6 +376,9 @@ export class ConversationList {
 
 	belongs_here(row) {
 		if (this.search || this.tags.length) {
+			return false;
+		}
+		if (this.channel && channel_of(row) !== this.channel) {
 			return false;
 		}
 		if (this.scope === "mine") {

@@ -12,7 +12,9 @@ from opportunity_management.opportunity_management import whatsapp_reactions as 
 from opportunity_management.opportunity_management.whatsapp_api_common import (
     MetaSendError,
     WindowClosedError,
+    _channel_fields,
     _get_conv,
+    _refuse_cap,
     _refuse_blocked,
     _require_assignee,
     _require_inbox_access,
@@ -33,6 +35,7 @@ def react(conversation, message_id, emoji=None):
     """
     _require_inbox_access()
     conv = _get_conv(conversation)
+    _refuse_cap(conv, "reactions", _("Reactions"))
     _refuse_blocked(conv)
     _require_assignee(conv)
 
@@ -72,6 +75,7 @@ def react(conversation, message_id, emoji=None):
         "custom_sent_by": frappe.session.user,
         "custom_read": 1,
     }
+    payload.update(_channel_fields(conv))
     try:
         doc = frappe.get_doc(payload)
         doc.flags.ignore_permissions = True
@@ -80,6 +84,8 @@ def react(conversation, message_id, emoji=None):
         # No Failed Send note: a lost reaction is not worth a thread entry.
         frappe.db.rollback()
         text = str(exc)
+        if isinstance(exc, (WindowClosedError, MetaSendError)):  # Messenger: worded already
+            frappe.throw(text, exc=type(exc))
         if WINDOW_CLOSED_ERROR_CODE in text or "24 hour" in text.lower():
             frappe.throw(_("The 24-hour reply window has closed."), exc=WindowClosedError)
         frappe.throw(_("WhatsApp rejected the reaction: {0}").format(text[:300]), exc=MetaSendError)

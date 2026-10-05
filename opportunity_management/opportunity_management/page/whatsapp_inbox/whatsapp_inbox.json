@@ -5,7 +5,7 @@
     "doctype": "Page",
     "icon": "fa fa-comments",
     "idx": 0,
-    "modified": "2026-09-16 00:00:00",
+    "modified": "2026-10-05 12:00:00",
     "modified_by": "Administrator",
     "module": "Opportunity Management",
     "name": "whatsapp-inbox",
@@ -20,6 +20,12 @@
         },
         {
             "role": "WhatsApp Agent"
+        },
+        {
+            "role": "Messenger Manager"
+        },
+        {
+            "role": "Messenger Agent"
         }
     ],
     "standard": "Yes",
