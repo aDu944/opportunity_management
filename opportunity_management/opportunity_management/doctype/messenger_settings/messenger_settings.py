@@ -35,7 +35,23 @@ def test_connection():
     try:
         me = API.graph_request(settings, "GET", "me", params={"fields": "id,name"})
     except API.GraphError as exc:
-        return {"ok": False, "error": str(exc)}
+        # Reading the Page node needs `pages_read_engagement`, which a token
+        # generated for Messenger often lacks (#100) — and which chats do not
+        # need. Fall back to a call that only needs `pages_messaging`.
+        try:
+            API.graph_request(settings, "GET", "me/messenger_profile", params={"fields": "greeting"})
+        except API.GraphError as exc2:
+            return {"ok": False, "error": str(exc2) if str(exc2) != str(exc) else str(exc)}
+        return {
+            "ok": True,
+            "id": settings.page_id or None,
+            "name": settings.page_name or None,
+            "warning": _(
+                "The token works for messaging. The Page name could not be read because the "
+                "token lacks the pages_read_engagement permission; chats do not need it. "
+                "Type the Page name yourself and make sure the Page ID is right."
+            ),
+        }
     if me.get("name") and me.get("name") != settings.page_name:
         frappe.db.set_single_value("Messenger Settings", "page_name", me["name"])
     warning = ""
