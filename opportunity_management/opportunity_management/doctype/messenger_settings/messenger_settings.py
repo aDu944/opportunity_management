@@ -24,8 +24,17 @@ class MessengerSettings(Document):
 
 @frappe.whitelist()
 def test_connection():
-    """Manager-only: who does the Page token belong to? `{ok, id, name}` or
-    `{ok: False, error}` with Meta's reason."""
+    """Manager-only check of the stored token. `{ok, id, name, warning}` or
+    `{ok: False, error}`.
+
+    Three kinds of token get pasted here:
+      * the Page's own token — what the inbox needs (`/me` is the Page);
+      * a Page token without `pages_read_engagement` — `/me` fails with #100
+        although messaging works, so fall back to a `pages_messaging` call;
+      * a user / system-user token — `/me` is a PERSON, and `me/messages`
+        would fail. Exchange it for the Page's token (`me/accounts`), which
+        inherits the system user's "never expires".
+    """
     roles = set(frappe.get_roles())
     if not roles & {"System Manager", "Messenger Manager"}:
         frappe.throw(_("Only a Messenger Manager can test the connection"), frappe.PermissionError)
@@ -33,15 +42,12 @@ def test_connection():
 
     settings = frappe.get_single("Messenger Settings")
     try:
-        me = API.graph_request(settings, "GET", "me", params={"fields": "id,name"})
+        me = API.graph_request(settings, "GET", "me", params={"fields": "id,name", "metadata": "1"})
     except API.GraphError as exc:
-        # Reading the Page node needs `pages_read_engagement`, which a token
-        # generated for Messenger often lacks (#100) — and which chats do not
-        # need. Fall back to a call that only needs `pages_messaging`.
         try:
             API.graph_request(settings, "GET", "me/messenger_profile", params={"fields": "greeting"})
         except API.GraphError as exc2:
-            return {"ok": False, "error": str(exc2) if str(exc2) != str(exc) else str(exc)}
+            return {"ok": False, "error": str(exc2) or str(exc)}
         return {
             "ok": True,
             "id": settings.page_id or None,
@@ -52,6 +58,11 @@ def test_connection():
                 "Type the Page name yourself and make sure the Page ID is right."
             ),
         }
+
+    kind = ((me.get("metadata") or {}).get("type") or "").lower()
+    if kind and kind != "page":
+        return _adopt_page_token(API, settings, me)
+
     if me.get("name") and me.get("name") != settings.page_name:
         frappe.db.set_single_value("Messenger Settings", "page_name", me["name"])
     warning = ""
@@ -60,3 +71,52 @@ def test_connection():
             me["id"], settings.page_id
         )
     return {"ok": True, "id": me.get("id"), "name": me.get("name"), "warning": warning}
+
+
+def _adopt_page_token(API, settings, me):
+    """The stored token is a person's (user or system user). Find the Page it
+    can act for and store THAT Page's token instead."""
+    who = me.get("name") or me.get("id") or ""
+    try:
+        res = API.graph_request(
+            settings, "GET", "me/accounts", params={"fields": "id,name,access_token", "limit": "100"}
+        )
+    except API.GraphError as exc:
+        return {"ok": False, "error": _("This is the token of {0}, not of a Page, and its Pages could not be listed: {1}").format(who, str(exc))}
+    pages = [p for p in (res.get("data") or []) if p.get("id") and p.get("access_token")]
+    if not pages:
+        return {
+            "ok": False,
+            "error": _(
+                "This is the token of {0}, not of a Page, and it has no Pages. In Meta Business "
+                "Settings, give this system user the Facebook Page as an asset (full control), "
+                "then generate the token again with pages_show_list, pages_messaging and "
+                "pages_manage_metadata ticked."
+            ).format(who),
+        }
+    wanted = (settings.page_id or "").strip()
+    page = next((p for p in pages if str(p["id"]) == wanted), None)
+    if page is None and len(pages) == 1:
+        page = pages[0]
+    if page is None:
+        listing = ", ".join("{0} ({1})".format(p.get("name") or "?", p["id"]) for p in pages)
+        return {
+            "ok": False,
+            "error": _(
+                "This token can act for several Pages: {0}. Put the right Page's number in "
+                "Page ID, save, and test again."
+            ).format(listing),
+        }
+    settings.page_access_token = page["access_token"]
+    settings.page_id = str(page["id"])
+    settings.page_name = page.get("name") or settings.page_name
+    settings.save(ignore_permissions=True)
+    return {
+        "ok": True,
+        "id": page["id"],
+        "name": page.get("name"),
+        "warning": _(
+            "You pasted the token of {0}. It has been replaced with the token of the Page itself, "
+            "which is what Messenger needs; the Page ID and name were filled in."
+        ).format(who),
+    }
