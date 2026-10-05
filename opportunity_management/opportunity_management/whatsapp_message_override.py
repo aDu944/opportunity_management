@@ -21,7 +21,10 @@ be inert to everything WhatsApp: `before_insert` / `validate` / `on_update`
 skip upstream entirely for them (no default WhatsApp Account, no WhatsApp
 send, no `create_whatsapp_profile` / `update_profile_name`), and only an
 Outgoing, non-echo row is sent — through `messenger_send.send_row`. Every
-non-Messenger row takes the plain `super()` path, exactly as before.
+non-Messenger row takes the plain `super()` path, exactly as before —
+except a row with `custom_payload` kind `external` / `echo` (another app's
+reply, `external_replies`): `before_insert` and `send_outgoing` return
+without sending, on every channel.
 """
 
 import frappe
@@ -36,7 +39,11 @@ from frappe_whatsapp.frappe_whatsapp.doctype.whatsapp_message.whatsapp_message i
 class WhatsAppMessage(Upstream):
     def before_insert(self):
         if not _is_messenger(self):
-            return super().before_insert()
+            if _is_store_only(self):
+                return  # placeholder / echo of another app's reply: never sent
+            result = super().before_insert()
+            _mark_own(self)
+            return result
         # No WhatsApp Account on a Messenger row: skip upstream's mandatory one.
         self.flags.ignore_mandatory = True
         _send_messenger(self)
@@ -64,6 +71,8 @@ class WhatsAppMessage(Upstream):
         def send_outgoing(self):
             if _is_messenger(self):
                 return _send_messenger(self)
+            if _is_store_only(self):
+                return
             kind = _inbox_kind(self)
             if not kind:
                 return super().send_outgoing()
@@ -72,6 +81,27 @@ class WhatsAppMessage(Upstream):
 
 def _is_messenger(doc) -> bool:
     return (doc.get("custom_channel") or "") == "Messenger"
+
+
+def _is_store_only(doc) -> bool:
+    """Guard 1 against sending a row that only records another app's reply
+    (`external_replies`): custom_payload kind `external` / `echo`."""
+    from opportunity_management.opportunity_management.whatsapp_payloads import load_payload
+
+    return load_payload(doc.get("custom_payload")).get("kind") in ("external", "echo")
+
+
+def _mark_own(doc):
+    """Our send's wamid, before its row commits: its first status must not
+    become an "external reply" placeholder."""
+    if doc.get("type") != "Outgoing" or not doc.get("message_id"):
+        return
+    try:
+        from opportunity_management.opportunity_management.external_replies import mark_own
+
+        mark_own(doc.get("message_id"))
+    except Exception:
+        pass
 
 
 def _send_messenger(doc):

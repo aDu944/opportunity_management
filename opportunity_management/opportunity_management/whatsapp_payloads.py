@@ -401,4 +401,8 @@ def decorate_item(item, row_get):
         value = row_get("custom_" + key)
         item[key] = str(value)[:19] if value else None
     item["error"] = row_get("custom_error") or None
+    # Sent from another app on the number (external_replies): a text-less
+    # placeholder, or an echo with its text. Not a Messenger Suite echo.
+    item["external"] = kind == "external" or (kind == "echo" and bool(payload.get("external")))
+    item["external_category"] = str(payload.get("category") or "") if item["external"] else ""
     return item

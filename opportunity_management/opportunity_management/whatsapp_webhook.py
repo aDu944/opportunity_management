@@ -22,7 +22,8 @@ Four things the upstream handler does not do (verified on v1.0.12):
    in `frappe.flags` (`_stash_sender_contacts`) for the after_insert hook.
 5. **Statuses for messages it never stored crash it** (`get_doc` with
    name None). The number is shared with other senders, so those are
-   normal; `_drop_foreign_statuses` removes them first.
+   normal; `_drop_foreign_statuses` removes them first (after
+   `external_replies` stored a PBX reply's placeholder).
 
 `webhook.post()` reads `frappe.local.form_dict`, so mutating it in place is
 enough — the original picks up our edits.
@@ -87,6 +88,10 @@ def webhook():
             return "ok"
     except Exception:
         frappe.log_error(frappe.get_traceback(), "WhatsApp webhook: status filter failed")
+    try:  # `message_echoes` (another app's sends) — never seen so far
+        _external().ingest_echoes(data)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "WhatsApp webhook: echo ingest failed")
 
     _stash_sender_contacts(data)
     _stash_referrals(data)
@@ -294,7 +299,17 @@ def _drop_foreign_statuses(data) -> int:
         unknown -= _known_message_ids(unknown)
     if not unknown:
         return 0
+    try:  # a PBX (other-app) reply → placeholder; ids whose row exists by now stay
+        unknown -= _external().record_unknown_statuses(data, unknown)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "WhatsApp webhook: external replies failed")
     return filter_statuses(data, ids - unknown)
+
+
+def _external():
+    from opportunity_management.opportunity_management import external_replies
+
+    return external_replies
 
 
 _SUPPORTED_TYPES = {

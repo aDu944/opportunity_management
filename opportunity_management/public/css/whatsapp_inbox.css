@@ -321,6 +321,7 @@
 }
 
 .wa-text { white-space: pre-wrap; }
+.wa-text-external { font-style: italic; color: var(--text-muted); }
 
 /* Links in bubble text (linkify.js) and the "Open in Maps" card link. The
    text keeps --text-color, already readable on the white, green-tinted and

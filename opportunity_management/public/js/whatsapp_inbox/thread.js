@@ -336,7 +336,7 @@ export class Thread {
 		const quote = item.reply_to_message_id
 			? `<div class="wa-quote" dir="auto">${esc(item.reply_to_text || __("Replied message"))}</div>`
 			: "";
-		// Outgoing: who sent it (You / name / Auto-reply / System), plus the
+		// Outgoing: who sent it (You / name / Other app / Auto-reply / System), plus the
 		// template marker when it was one — `message_info.sender_label`.
 		let caption = "";
 		if (item.direction !== "in") {
@@ -372,15 +372,19 @@ export class Thread {
 		// sit under it. Message bodies, captions and option bodies get
 		// clickable links (`linkify.js`); quotes and the list preview stay plain.
 		const card = card_html(item);
+		// Sent from another app (PBX): no text unless Meta echoed it.
+		const placeholder = item.external && !item.text;
 		const text = card.replaces_text
 			? ""
+			: placeholder
+			? `<div class="wa-text wa-text-external">${esc(__("Replied from another app — text not available"))}</div>`
 			: `<div class="wa-text" dir="auto">${linkify_html(
 					item.text || item.caption || "",
 					esc
 			  )}</div>`;
 		return `
 			<div class="wa-bubble ${side}" ${attrs}>
-				${react_button_html(item)}
+				${placeholder ? "" : react_button_html(item)}
 				${caption}
 				${quote}
 				${item.direction === "in" ? referral_card_html(item) : ""}

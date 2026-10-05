@@ -18,10 +18,23 @@ function when(value) {
 	return value ? `${day_label(value)}, ${hhmm(value)}` : "—";
 }
 
-/** Who sent an outgoing item: "Auto-reply" for the welcome / out-of-hours
+/** The server's (English) conversation preview for a reply sent from
+ *  another app on the number (`external_replies`); shown translated. */
+export const EXTERNAL_PREVIEW = "Replied from another app";
+
+export function preview_text(row) {
+	const value = row.last_message_preview || "";
+	return value === EXTERNAL_PREVIEW ? __(EXTERNAL_PREVIEW) : value;
+}
+
+/** Who sent an outgoing item: "Other app" for a reply sent from another app
+ *  on the number (e.g. the PBX), "Auto-reply" for the welcome / out-of-hours
  *  replies, "System" for a row ERPNext sent outside the inbox (no
  *  `sender_user`), "You" for the session user, else the sender's full name. */
 export function sender_label(item) {
+	if (item.external) {
+		return { text: __("Other app"), me: false };
+	}
 	if (item.is_auto) {
 		return { text: __("Auto-reply"), me: false };
 	}

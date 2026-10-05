@@ -12,6 +12,7 @@ import { avatar_html } from "./avatar.js";
 import { badge_html, channel_of } from "./channels.js";
 import { relative_time } from "./time.js";
 import { ad_chip_html } from "./referral.js";
+import { preview_text } from "./message_info.js";
 
 // "expired" = not Resolved and the 24h customer-service window has closed
 // (only a template reaches the customer) — server scope of the same name.
@@ -297,7 +298,7 @@ export class ConversationList {
 					</div>
 					<div class="wa-row-bottom">
 						<span class="wa-row-preview" dir="auto">
-							<span class="wa-dir">${arrow}</span> ${esc(row.last_message_preview || "")}
+							<span class="wa-dir">${arrow}</span> ${esc(preview_text(row))}
 						</span>
 						${unread}
 					</div>
