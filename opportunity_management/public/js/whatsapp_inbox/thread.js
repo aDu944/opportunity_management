@@ -17,6 +17,7 @@ import { card_html } from "./cards.js";
 import { MessageInfo, sender_label } from "./message_info.js";
 import { linkify_html } from "./linkify.js";
 import { closed_text, human_agent_text } from "./channels.js";
+import { referral_card_html } from "./referral.js";
 
 const THREAD_LIMIT = 40;
 
@@ -324,6 +325,7 @@ export class Thread {
 						<span>${esc(item.author_name || item.author || __("System"))}</span>
 						<span class="wa-note-type">${esc(__(item.note_type || "Note"))}</span>
 					</div>
+					${referral_card_html(item)}
 					<div class="wa-text" dir="auto">${linkify_html(item.text, esc)}</div>
 					${media_html(item)}
 					<div class="wa-meta"><span class="wa-time">${esc(hhmm(item.creation))}</span></div>
@@ -381,6 +383,7 @@ export class Thread {
 				${react_button_html(item)}
 				${caption}
 				${quote}
+				${item.direction === "in" ? referral_card_html(item) : ""}
 				${media_html(item)}
 				${card.html}
 				${text}

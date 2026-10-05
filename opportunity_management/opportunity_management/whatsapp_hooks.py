@@ -26,6 +26,7 @@ from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management import whatsapp_crm
 from opportunity_management.opportunity_management import whatsapp_jobs
 from opportunity_management.opportunity_management import whatsapp_message_extras as X
+from opportunity_management.opportunity_management import inbox_referrals as R
 from opportunity_management.opportunity_management.whatsapp_chat_state import (
     NO_STATE,
     muted_users,
@@ -139,6 +140,7 @@ def on_message_after_insert(doc, method=None):
 
     try:
         if incoming:  # location / contacts: back to a card (custom_payload)
+            R.stamp_inbound_referral(conv, doc)  # ad referral; never raises
             X.stamp_inbound_card(doc)
     except Exception:
         frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: card stamping failed")
@@ -471,6 +473,7 @@ def _push_inbound(conv, doc):
         from opportunity_management.opportunity_management.messenger_ingest import inbound_push as build
     else:
         build = T.whatsapp_inbound
+    build = R.with_ad(build)  # "Ad: <headline>" + data.ad for an ad-originated message
     if conv.assigned_to:
         title, body, data = build(conv, doc)
         _send_to_users([conv.assigned_to], title, body, data, dedupe_seen=seen)

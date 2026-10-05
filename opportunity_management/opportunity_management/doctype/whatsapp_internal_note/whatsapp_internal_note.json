@@ -13,7 +13,8 @@
   "mentions",
   "section_break_body",
   "text",
-  "attach"
+  "attach",
+  "referral"
  ],
  "fields": [
   {
@@ -66,11 +67,19 @@
    "fieldname": "attach",
    "fieldtype": "Attach",
    "label": "Attachment"
+  },
+  {
+   "fieldname": "referral",
+   "fieldtype": "Long Text",
+   "label": "Referral (JSON)",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "The ad / post / link a System note reports (inbox_referrals.on_standalone)."
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-05 12:00:00.000000",
+ "modified": "2026-10-05 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Opportunity Management",
  "name": "WhatsApp Internal Note",

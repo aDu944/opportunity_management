@@ -12,6 +12,7 @@ import { Thread } from "./thread.js";
 import { Composer } from "./composer.js";
 import { SidePanel } from "./side_panel.js";
 import { many_channels, mount_filter } from "./channels.js";
+import { ad_changed } from "./referral.js";
 
 const REALTIME_EVENT = "whatsapp_inbox";
 
@@ -226,6 +227,10 @@ export class WhatsAppInbox {
 		const is_open = this.current && this.current.name === conv.name;
 
 		if (payload.event === "message") {
+			if (is_open && ad_changed(this.current, conv)) {
+				this.current.ad = conv.ad; // a new referral / its picture landed
+				this.side.set_conversation(this.current);
+			}
 			if (is_open) {
 				// Reading it right now: append and clear the badge rather than
 				// letting an unread count appear behind the cursor.

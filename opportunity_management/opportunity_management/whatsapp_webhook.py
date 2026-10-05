@@ -89,6 +89,7 @@ def webhook():
         frappe.log_error(frappe.get_traceback(), "WhatsApp webhook: status filter failed")
 
     _stash_sender_contacts(data)
+    _stash_referrals(data)
 
     try:
         return _delegate(data)
@@ -417,6 +418,17 @@ def _stash_sender_contacts(data):
         frappe.log_error(frappe.get_traceback(), "WhatsApp webhook: sender contacts stash failed")
 
 
+def _stash_referrals(data):
+    """`messages[].referral` (click-to-WhatsApp ad / post) by wamid, for
+    the after_insert hook — upstream drops it. Never raises."""
+    try:
+        from opportunity_management.opportunity_management.inbox_referrals import stash_whatsapp
+
+        stash_whatsapp(data)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "WhatsApp webhook: referral stash failed")
+
+
 def _has_payload(data) -> bool:
     for value in _values(data):
         if value.get("messages") or value.get("statuses"):
@@ -460,6 +472,7 @@ def simulate(fixture="text_inbound"):
         return {"fixture": fixture, "dropped": dropped, "result": "all duplicates"}
 
     _stash_sender_contacts(data)
+    _stash_referrals(data)
     _original()()
     frappe.db.commit()
     return {"fixture": fixture, "dropped": dropped, "result": "delivered"}

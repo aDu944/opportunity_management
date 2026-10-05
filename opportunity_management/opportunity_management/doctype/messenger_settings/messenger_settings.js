@@ -13,7 +13,7 @@ frappe.ui.form.on("Messenger Settings", {
 				`<code>${frappe.utils.escape_html(url)}</code>`,
 			]) +
 				"<br>" +
-				__("Subscribe the Page to: messages, message_echoes, message_deliveries, message_reads, message_reactions, messaging_postbacks."),
+				__("Subscribe the Page to: messages, message_echoes, message_deliveries, message_reads, message_reactions, messaging_postbacks, messaging_referrals."),
 			"blue"
 		);
 		frm.add_custom_button(__("Subscribe Page to webhook"), () => {

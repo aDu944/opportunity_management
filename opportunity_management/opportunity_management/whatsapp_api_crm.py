@@ -10,6 +10,7 @@ from frappe import _
 from frappe.utils import add_days, cint, getdate, nowdate
 
 from opportunity_management.opportunity_management import inbox_channels as IC
+from opportunity_management.opportunity_management.inbox_referrals import conv_list_fields
 from opportunity_management.opportunity_management import whatsapp_crm
 from opportunity_management.opportunity_management import whatsapp_hooks
 from opportunity_management.opportunity_management import whatsapp_serializers as S
@@ -117,7 +118,7 @@ def list_conversations_for_crm(doctype, name):
             "last_message_direction", "unread_count", "contact", "lead", "customer",
             "opportunity", "customer_language", "notes_count", "first_response_seconds",
             "wa_username", "wa_user_id",
-        ] + (["channel", "avatar_url"] if IC.has_channel_column() else []),
+        ] + (["channel", "avatar_url"] if IC.has_channel_column() else []) + conv_list_fields(),
         order_by="last_message_at desc",
         limit_page_length=20,
     )

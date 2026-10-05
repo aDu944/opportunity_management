@@ -51,7 +51,12 @@
   "column_break_automation",
   "last_team_alert_at",
   "profile_fetched_at",
-  "conversation_key"
+  "conversation_key",
+  "section_break_ad",
+  "ad_headline",
+  "ad_id",
+  "column_break_ad",
+  "ad_referral"
  ],
  "fields": [
   {
@@ -338,6 +343,40 @@
    "read_only": 1,
    "unique": 1,
    "description": "{whatsapp_account}:{phone} — the thread identity."
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_break_ad",
+   "fieldtype": "Section Break",
+   "label": "Ad Referral"
+  },
+  {
+   "fieldname": "ad_headline",
+   "fieldtype": "Data",
+   "label": "Ad Headline",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "description": "Headline of the most recent ad / post / link the customer came from."
+  },
+  {
+   "fieldname": "ad_id",
+   "fieldtype": "Data",
+   "label": "Ad ID",
+   "read_only": 1,
+   "search_index": 1,
+   "description": "Meta's ad / source id of the most recent referral."
+  },
+  {
+   "fieldname": "column_break_ad",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ad_referral",
+   "fieldtype": "Long Text",
+   "label": "Latest Referral (JSON)",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "ConvRow `ad`: {source, headline, body, url, image_url, ad_id, at} (inbox_referrals)."
   }
  ],
  "index_web_pages_for_search": 0,
@@ -348,7 +387,7 @@
    "link_fieldname": "conversation"
   }
  ],
- "modified": "2026-10-05 12:00:00.000000",
+ "modified": "2026-10-05 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Opportunity Management",
  "name": "WhatsApp Conversation",

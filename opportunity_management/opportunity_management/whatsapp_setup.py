@@ -171,6 +171,16 @@ WHATSAPP_MESSAGE_CUSTOM_FIELDS = {
             "read_only": 1,
             "no_copy": 1,
         },
+        {
+            # JSON: the ad / post / link this inbound message came from
+            # (ad_referrals / inbox_referrals).
+            "fieldname": "custom_referral",
+            "label": "Ad Referral",
+            "fieldtype": "Long Text",
+            "insert_after": "custom_channel",
+            "read_only": 1,
+            "no_copy": 1,
+        },
     ]
 }
 

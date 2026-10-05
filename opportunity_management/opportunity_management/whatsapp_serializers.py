@@ -16,6 +16,7 @@ import frappe
 from frappe import _
 from frappe.utils import get_datetime, now_datetime
 
+from opportunity_management.opportunity_management import ad_referrals as AR
 from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management.whatsapp_payloads import decorate_item
 from opportunity_management.opportunity_management.whatsapp_identity import (
@@ -249,6 +250,7 @@ def conv_row(conv, tags=None, assignee_name=None, now=None, images=None, state=N
         "muted": bool(state.get("muted")),
         "channel": channel,
         "caps": IC.caps_for(channel),
+        "ad": AR.public_ad(_g(conv, "ad_referral")),  # latest ad / post / link
     }
     if messenger:
         # PSID `FB.<id>`: no phone, no handle; the window has a 7-day tier;
@@ -339,6 +341,7 @@ _THREAD_ITEM_BLANK = {
     "media_size": None,
     # The message's channel; "" on an internal note.
     "channel": "",
+    "referral": None,  # the ad / post / link it came from (ad_referrals)
 }
 
 
@@ -405,6 +408,7 @@ def message_item(row, reply_texts=None, sender_names=None, sizes=None):
             "read": 1 if _g(row, "custom_read", 0) else 0,
             "unread": direction == "in" and not _g(row, "custom_read", 0),
             "channel": IC.channel_of(_g(row, "custom_channel")),
+            "referral": AR.public(_g(row, "custom_referral")),
         }
     )
     if attach:
@@ -441,6 +445,7 @@ def note_item(row, author_names=None):
             "media_mime": _guess_mime(attach),
             "media_private": 1 if attach and "/private/" in str(attach) else 0,
             "reactions": [],
+            "referral": AR.public(_g(row, "referral")),
         }
     )
     return item

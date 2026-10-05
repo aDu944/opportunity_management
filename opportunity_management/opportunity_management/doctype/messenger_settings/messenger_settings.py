@@ -133,7 +133,7 @@ def _adopt_page_token(API, settings, me):
 
 SUBSCRIBED_FIELDS = (
     "messages", "message_echoes", "message_deliveries", "message_reads",
-    "message_reactions", "messaging_postbacks",
+    "message_reactions", "messaging_postbacks", "messaging_referrals",
 )
 
 

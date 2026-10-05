@@ -11,6 +11,7 @@ import * as api from "./api.js";
 import { avatar_html } from "./avatar.js";
 import { caps, is_manager_of } from "./channels.js";
 import { day_label, duration_label } from "./time.js";
+import { came_from_html } from "./referral.js";
 
 const CRM_DOCTYPES = ["Contact", "Lead", "Customer", "Opportunity"];
 const SEARCH_DEBOUNCE_MS = 300;
@@ -116,6 +117,7 @@ export class SidePanel {
 			__(conv.status || "Open")
 		)}</span></div>
 			</div>
+			${came_from_html(conv)}
 			<div class="wa-card wa-crm"></div>
 			<div class="wa-card wa-opps"></div>
 			<div class="wa-card wa-meta-card">

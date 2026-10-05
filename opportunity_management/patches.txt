@@ -10,3 +10,4 @@ opportunity_management.patches.repair_bsuid_conversations
 opportunity_management.patches.backfill_whatsapp_stickers
 opportunity_management.patches.add_whatsapp_round3_fields
 opportunity_management.patches.add_messenger_channel
+opportunity_management.patches.backfill_ad_referrals

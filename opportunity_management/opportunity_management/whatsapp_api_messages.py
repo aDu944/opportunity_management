@@ -15,6 +15,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, now_datetime
 
+from opportunity_management.opportunity_management import inbox_referrals as IR
 from opportunity_management.opportunity_management import whatsapp_hooks
 from opportunity_management.opportunity_management import whatsapp_reactions as R
 from opportunity_management.opportunity_management import whatsapp_serializers as S
@@ -84,7 +85,7 @@ def get_messages(conversation, before=None, after=None, limit=None, around=None)
         return messages_around(conversation, around, limit)
 
     msg_fields = message_fields()
-    note_fields = NOTE_FIELDS
+    note_fields = IR.note_fields(NOTE_FIELDS)  # + `referral` once migrated
 
     # Reaction rows are not thread items; they decorate their target's
     # `reactions` (whatsapp_reactions).

@@ -11,6 +11,7 @@ import * as api from "./api.js";
 import { avatar_html } from "./avatar.js";
 import { badge_html, channel_of } from "./channels.js";
 import { relative_time } from "./time.js";
+import { ad_chip_html } from "./referral.js";
 
 // "expired" = not Resolved and the 24h customer-service window has closed
 // (only a template reaches the customer) — server scope of the same name.
@@ -300,7 +301,7 @@ export class ConversationList {
 						</span>
 						${unread}
 					</div>
-					<div class="wa-row-foot">${assignee} ${blocked}</div>
+					<div class="wa-row-foot">${assignee} ${blocked} ${ad_chip_html(row)}</div>
 				</div>
 			</div>`;
 	}

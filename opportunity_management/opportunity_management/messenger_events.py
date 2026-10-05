@@ -12,7 +12,12 @@ A Page webhook POST is `{"object": "page", "entry": [{"id": <page id>,
     delivery     {mids?: [...], watermark}
     read         {watermark}
     reaction     {reaction, emoji, action: react|unreact, mid}
-    postback     {mid?, title, payload}
+    postback     {mid?, title, payload, referral?}
+    referral     {ref?, source, type, ad_id?, ads_context_data?, referer_uri?}
+                 (`messaging_referrals`: an existing thread opened from an
+                 ad / m.me link — no message comes with it)
+
+`message.referral` and `postback.referral` ride on their event.
 
 For an echo the Page is the sender, so the customer is `recipient.id`.
 Normalised shape (every kind carries `psid`, `page_id`, `timestamp`):
@@ -23,6 +28,10 @@ Normalised shape (every kind carries `psid`, `page_id`, `timestamp`):
     {"kind": "read", "watermark"}
     {"kind": "reaction", "mid", "emoji", "action"}
     {"kind": "postback", "mid", "text"}
+    {"kind": "referral", "referral"}
+
+A message / postback with a referral also carries `"referral": <Meta's
+dict, verbatim>`; `ad_referrals.from_messenger` normalises it later.
 """
 
 # Same marker as messenger_api.OUR_METADATA (kept import-free; a test pins it).
@@ -74,7 +83,7 @@ def _message(event, base):
         text = str(message["quick_reply"]["payload"])
     if extra:
         text = "\n".join([t for t in [text] + extra if t])
-    return dict(
+    return _with_referral(message, dict(
         base,
         kind="message",
         mid=mid,
@@ -83,7 +92,16 @@ def _message(event, base):
         reply_to=_dict(message.get("reply_to")).get("mid") or None,
         echo=bool(message.get("is_echo")),
         ours=message.get("metadata") == OUR_METADATA,
-    )
+    ))
+
+
+def _with_referral(source, parsed):
+    """Copy `source.referral` (a dict) onto a parsed event — only when present,
+    so events without one keep their exact shape."""
+    referral = source.get("referral")
+    if isinstance(referral, dict) and referral:
+        parsed["referral"] = referral
+    return parsed
 
 
 def parse(data, page_id=None) -> list:
@@ -135,7 +153,10 @@ def _event(event, page_id):
         text = str(postback.get("title") or postback.get("payload") or "")
         if not text:
             return None
-        return dict(base, kind="postback", mid=postback.get("mid") or None, text=text)
+        return _with_referral(postback, dict(base, kind="postback", mid=postback.get("mid") or None, text=text))
+    if "referral" in event:
+        referral = _dict(event["referral"])
+        return dict(base, kind="referral", referral=referral) if referral else None
     return None
 
 

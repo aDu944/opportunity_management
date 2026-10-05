@@ -386,3 +386,56 @@
 
 .wa-row:hover .wa-row-toggle,
 .wa-row-toggle.active { opacity: 1; }
+
+/* ── ad referrals (referral.js) ──────────────────────────────────────── */
+
+.wa-ref-card {
+	display: block;
+	margin-bottom: 6px;
+	padding: 6px 8px;
+	max-width: 280px;
+	color: inherit;
+	background: var(--control-bg);
+	border: 1px solid var(--border-color);
+	border-inline-start: 3px solid var(--primary);
+	border-radius: 6px;
+	text-decoration: none;
+}
+
+a.wa-ref-card:hover { color: inherit; text-decoration: none; border-color: var(--primary); }
+
+.wa-ref-label {
+	display: inline-block;
+	margin-bottom: 4px;
+	padding: 0 6px;
+	font-size: var(--text-xs, 11px);
+	font-weight: 600;
+	color: var(--primary);
+	background: var(--fg-color);
+	border-radius: 8px;
+}
+
+.wa-ref-img {
+	display: block;
+	width: 100%;
+	max-height: 140px;
+	margin-bottom: 4px;
+	object-fit: cover;
+	border-radius: 4px;
+}
+
+.wa-ref-headline { font-weight: 600; font-size: var(--text-sm, 12px); }
+
+.wa-ref-body {
+	display: -webkit-box;
+	overflow: hidden;
+	font-size: var(--text-xs, 11px);
+	color: var(--text-muted);
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+}
+
+.wa-chip-ad { color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+
+.wa-came-from .wa-ref-img { max-height: 160px; margin-top: 4px; }
+.wa-came-from .wa-ref-body { -webkit-line-clamp: 4; margin-bottom: 4px; }

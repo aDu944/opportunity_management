@@ -11,6 +11,7 @@ from frappe import _
 from frappe.utils import add_to_date, cint, now_datetime
 
 from opportunity_management.opportunity_management import inbox_channels as IC
+from opportunity_management.opportunity_management import inbox_referrals as IR
 from opportunity_management.opportunity_management import whatsapp_assign_rules as AR
 from opportunity_management.opportunity_management import whatsapp_chat_state as CS
 from opportunity_management.opportunity_management import whatsapp_hooks
@@ -185,10 +186,10 @@ def list_conversations(
         clauses.append(
             """(c.phone LIKE %(search)s
                 OR c.display_name LIKE %(search)s
-                OR c.wa_username LIKE %(search_user)s
+                OR c.wa_username LIKE %(search_user)s{0}
                 OR EXISTS (SELECT 1 FROM `tabWhatsApp Message` m
                             WHERE m.custom_conversation = c.name
-                              AND m.custom_body_text LIKE %(search)s))"""
+                              AND m.custom_body_text LIKE %(search)s))""".format(IR.search_sql("c"))
         )
 
     where = " AND ".join(clauses) or "1 = 1"
@@ -202,7 +203,7 @@ def list_conversations(
                c.last_message_preview, c.last_message_direction, c.unread_count,
                c.contact, c.lead, c.customer, c.opportunity, c.customer_language,
                c.notes_count, c.first_response_seconds, c.wa_username, c.wa_user_id,
-               c.is_blocked, {IC.list_select("c")}{state_select}
+               c.is_blocked, {IC.list_select("c")}{IR.list_select("c")}{state_select}
         FROM `tabWhatsApp Conversation` c
         {state_join}
         WHERE {where}

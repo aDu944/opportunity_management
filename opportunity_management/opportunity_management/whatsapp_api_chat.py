@@ -135,6 +135,7 @@ def messages_around(conversation, around, limit):
         NOTE_FIELDS,
         message_fields,
     )
+    from opportunity_management.opportunity_management.inbox_referrals import note_fields
 
     older_n, newer_n = P.around_split(limit)
     base = {"custom_conversation": conversation, "content_type": ["!=", R.REACTION]}
@@ -146,7 +147,7 @@ def messages_around(conversation, around, limit):
         )
         notes = frappe.get_all(
             NOTE, filters={"conversation": conversation, "creation": [op, around]},
-            fields=NOTE_FIELDS, order_by=order, limit_page_length=n + 1,
+            fields=note_fields(NOTE_FIELDS), order_by=order, limit_page_length=n + 1,
         )
         return msgs, notes
 

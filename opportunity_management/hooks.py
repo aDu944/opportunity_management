@@ -293,7 +293,8 @@ fixtures = [
                 "custom_delivered_at",
                 "custom_read_at",
                 "custom_error",
-                "custom_channel"
+                "custom_channel",
+                "custom_referral"
             ]]
         ]
     },

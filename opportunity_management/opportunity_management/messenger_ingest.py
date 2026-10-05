@@ -12,6 +12,9 @@ WhatsApp channel's are shaped, so every inbox endpoint reads them unchanged:
     delivery / read     watermark → outgoing rows delivered / read
     reaction            a `reaction` row, like WhatsApp's (chips)
     postback            the button title as an incoming text
+    referral            (bare `messaging_referrals`) a System note carrying
+                        the ad / link referral (inbox_referrals.on_standalone);
+                        a referral on a message / postback rides on its row
 
 `after_insert(doc)` is what `whatsapp_hooks.on_message_after_insert` hands a
 Messenger row to: the same unread / preview / reopen / realtime / push
@@ -33,6 +36,7 @@ from frappe.utils import add_to_date, get_datetime, now_datetime
 from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management import messenger_api as API
 from opportunity_management.opportunity_management import messenger_events as EV
+from opportunity_management.opportunity_management import inbox_referrals as R
 
 MSG = "WhatsApp Message"
 CONV = "WhatsApp Conversation"
@@ -54,6 +58,8 @@ def handle(event):
         return _on_watermark(event)
     if kind == "reaction":
         return _on_reaction(event)
+    if kind == "referral":
+        return R.on_standalone(upsert_conversation(event["psid"], event["page_id"]), event.get("referral"))
 
 
 # ── conversation ─────────────────────────────────────────────────────────────
@@ -128,6 +134,8 @@ def _on_message(event):
             fields["custom_is_sticker"] = 1
         if i == 0 and event.get("reply_to"):
             fields.update({"is_reply": 1, "reply_to_message_id": event["reply_to"]})
+        if i == 0 and incoming and event.get("referral"):
+            R.remember_messenger(fields["message_id"], event["referral"])  # stamped in after_insert
         doc = _insert(conv, incoming, fields)
         if att and att.get("url"):
             frappe.enqueue(_JOB + "download_attachment", queue="short", enqueue_after_commit=True,
@@ -251,6 +259,8 @@ def after_insert(doc):
         doc.custom_body_text, doc.custom_read = body_text, values["custom_read"]
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Messenger: message stamping failed")
+    if incoming:
+        R.stamp_inbound_referral(conv, doc)  # ad / link referral; never raises
     try:
         H._apply_message_to_conversation(conv, doc, incoming, body_text)
     except Exception:
