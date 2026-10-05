@@ -42,8 +42,21 @@ def test_connection():
 
     settings = frappe.get_single("Messenger Settings")
     try:
-        me = API.graph_request(settings, "GET", "me", params={"fields": "id,name", "metadata": "1"})
+        # `category` exists only on a Page: a user / system-user token fails
+        # here (#100 nonexisting field), which is how the two are told apart.
+        # (`metadata=1` is not returned for system users, so it cannot be used.)
+        me = API.graph_request(settings, "GET", "me", params={"fields": "id,name,category"})
     except API.GraphError as exc:
+        try:
+            person = API.graph_request(settings, "GET", "me", params={"fields": "id,name"})
+        except API.GraphError:
+            person = None
+        if person and person.get("id"):
+            # Readable as a plain node but not as a Page → a person's token.
+            try:
+                API.graph_request(settings, "GET", "me/messenger_profile", params={"fields": "greeting"})
+            except API.GraphError:
+                return _adopt_page_token(API, settings, person)
         try:
             API.graph_request(settings, "GET", "me/messenger_profile", params={"fields": "greeting"})
         except API.GraphError as exc2:
@@ -58,10 +71,6 @@ def test_connection():
                 "Type the Page name yourself and make sure the Page ID is right."
             ),
         }
-
-    kind = ((me.get("metadata") or {}).get("type") or "").lower()
-    if kind and kind != "page":
-        return _adopt_page_token(API, settings, me)
 
     if me.get("name") and me.get("name") != settings.page_name:
         frappe.db.set_single_value("Messenger Settings", "page_name", me["name"])
@@ -120,3 +129,32 @@ def _adopt_page_token(API, settings, me):
             "which is what Messenger needs; the Page ID and name were filled in."
         ).format(who),
     }
+
+
+SUBSCRIBED_FIELDS = (
+    "messages", "message_echoes", "message_deliveries", "message_reads",
+    "message_reactions", "messaging_postbacks",
+)
+
+
+@frappe.whitelist()
+def subscribe_page():
+    """Manager-only: subscribe the Page to this app's Messenger webhook
+    fields (the "Add subscriptions" step in the Meta dashboard). Needs the
+    Page token to carry `pages_manage_metadata`. Returns what Meta now lists."""
+    roles = set(frappe.get_roles())
+    if not roles & {"System Manager", "Messenger Manager"}:
+        frappe.throw(_("Only a Messenger Manager can subscribe the Page"), frappe.PermissionError)
+    from opportunity_management.opportunity_management import messenger_api as API
+
+    settings = frappe.get_single("Messenger Settings")
+    try:
+        API.graph_request(
+            settings, "POST", "me/subscribed_apps",
+            params={"subscribed_fields": ",".join(SUBSCRIBED_FIELDS)},
+        )
+        listed = API.graph_request(settings, "GET", "me/subscribed_apps")
+    except API.GraphError as exc:
+        return {"ok": False, "error": str(exc)}
+    fields = sorted({f for app in (listed.get("data") or []) for f in (app.get("subscribed_fields") or [])})
+    return {"ok": True, "fields": fields}

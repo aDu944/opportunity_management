@@ -16,6 +16,24 @@ frappe.ui.form.on("Messenger Settings", {
 				__("Subscribe the Page to: messages, message_echoes, message_deliveries, message_reads, message_reactions, messaging_postbacks."),
 			"blue"
 		);
+		frm.add_custom_button(__("Subscribe Page to webhook"), () => {
+			frappe.call({
+				method: "opportunity_management.opportunity_management.doctype.messenger_settings.messenger_settings.subscribe_page",
+				freeze: true,
+				callback(r) {
+					const res = r.message || {};
+					frappe.msgprint({
+						title: __("Messenger"),
+						message: res.ok
+							? __("The Page is subscribed to: {0}", [
+									frappe.utils.escape_html((res.fields || []).join(", ") || "—"),
+							  ])
+							: frappe.utils.escape_html(res.error || __("Unknown error")),
+						indicator: res.ok ? "green" : "red",
+					});
+				},
+			});
+		});
 		frm.add_custom_button(__("Test connection"), () => {
 			frappe.call({
 				method: "opportunity_management.opportunity_management.doctype.messenger_settings.messenger_settings.test_connection",
