@@ -352,6 +352,12 @@ def message_item(row, reply_texts=None, sender_names=None, sizes=None):
 
     sent_by = _g(row, "custom_sent_by") or None
     reply_to = _g(row, "reply_to_message_id") or None
+    # Single-item callers (send_* / forward / realtime) pass no map: one
+    # lookup, so the sender's name is never blank for an inbox-sent row.
+    sender_name = ""
+    if sent_by:
+        names = sender_names if sender_names is not None else _full_names([sent_by])
+        sender_name = names.get(sent_by) or sent_by
 
     item.update(
         {
@@ -370,7 +376,7 @@ def message_item(row, reply_texts=None, sender_names=None, sizes=None):
             "reply_to_message_id": reply_to,
             "reply_to_text": (reply_texts or {}).get(reply_to, "") if reply_to else "",
             "sender_user": sent_by,
-            "sender_name": (sender_names or {}).get(sent_by, "") if sent_by else "",
+            "sender_name": sender_name,
             "is_auto": 1 if _g(row, "custom_is_auto", 0) else 0,
             "is_template": 1 if (_g(row, "use_template", 0) or _g(row, "template")) else 0,
             "template_name": _g(row, "template", "") or "",

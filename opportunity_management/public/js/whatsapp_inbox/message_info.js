@@ -1,6 +1,6 @@
 /**
  * Message info: clicking the time / ticks of an outgoing message opens a
- * small popover with its Sent / Delivered / Read times (12-hour clock via
+ * small popover with who sent it and its Sent / Delivered / Read times (12-hour clock via
  * `time.js`) and, for a failed message, Meta's reason.
  *
  * The times are recorded from round 3 on (`sent_at` / `delivered_at` /
@@ -16,6 +16,22 @@ function esc(value) {
 
 function when(value) {
 	return value ? `${day_label(value)}, ${hhmm(value)}` : "—";
+}
+
+/** Who sent an outgoing item: "Auto-reply" for the welcome / out-of-hours
+ *  replies, "System" for a row ERPNext sent outside the inbox (no
+ *  `sender_user`), "You" for the session user, else the sender's full name. */
+export function sender_label(item) {
+	if (item.is_auto) {
+		return { text: __("Auto-reply"), me: false };
+	}
+	if (!item.sender_user) {
+		return { text: __("System"), me: false };
+	}
+	if (item.sender_user === frappe.session.user) {
+		return { text: __("You"), me: true };
+	}
+	return { text: item.sender_name || item.sender_user, me: false };
 }
 
 export class MessageInfo {
@@ -45,6 +61,9 @@ export class MessageInfo {
 			? `<div class="wa-info-error" dir="auto">${esc(item.error || __("Failed"))}</div>`
 			: "";
 		this.$pop = $(`<div class="wa-info-pop" data-for="${esc(id)}">
+				<div class="wa-kv"><span>${esc(__("Sent by"))}</span><span dir="auto">${esc(
+			sender_label(item).text
+		)}</span></div>
 				<div class="wa-kv"><span>${esc(__("Sent"))}</span><span>${esc(when(item.sent_at))}</span></div>
 				<div class="wa-kv"><span>${esc(__("Delivered"))}</span><span>${esc(
 			when(item.delivered_at)

@@ -308,6 +308,7 @@
 .wa-note-type { font-style: italic; }
 
 .wa-auto { font-size: var(--text-xs, 11px); color: var(--text-muted); margin-bottom: 2px; }
+.wa-auto.wa-sender-me { color: var(--primary); }
 
 .wa-quote {
 	margin-bottom: 4px;

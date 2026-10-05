@@ -114,7 +114,8 @@ def search_messages(conversation, query, limit=30):
                 "creation": S._iso(r.creation),
                 "text": r.custom_body_text or "",
                 "direction": "in" if incoming else "out",
-                "sender_name": customer if incoming else names.get(r.custom_sent_by, ""),
+                "sender_name": customer if incoming
+                else (names.get(r.custom_sent_by) or r.custom_sent_by or ""),
             }
         )
     return {"items": items}

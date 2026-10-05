@@ -14,7 +14,7 @@ import { day_label, duration_label, hhmm, same_day, window_closes_at } from "./t
 import { ThreadHeader } from "./thread_header.js";
 import { Reactions, react_button_html, reactions_html } from "./reactions.js";
 import { card_html } from "./cards.js";
-import { MessageInfo } from "./message_info.js";
+import { MessageInfo, sender_label } from "./message_info.js";
 import { linkify_html } from "./linkify.js";
 
 const THREAD_LIMIT = 40;
@@ -330,15 +330,17 @@ export class Thread {
 		const quote = item.reply_to_message_id
 			? `<div class="wa-quote" dir="auto">${esc(item.reply_to_text || __("Replied message"))}</div>`
 			: "";
+		// Outgoing: who sent it (You / name / Auto-reply / System), plus the
+		// template marker when it was one — `message_info.sender_label`.
 		let caption = "";
-		if (item.is_auto) {
-			caption = `<div class="wa-auto">${esc(__("Automatic reply"))}</div>`;
-		} else if (item.is_template) {
-			caption = `<div class="wa-auto">${esc(
-				__("Template: {0}", [item.template_name || ""])
-			)}</div>`;
-		} else if (item.sender_name) {
-			caption = `<div class="wa-auto">${esc(item.sender_name)}</div>`;
+		if (item.direction !== "in") {
+			const who = sender_label(item);
+			const parts = [who.text];
+			if (item.is_template) {
+				parts.push(__("Template: {0}", [item.template_name || ""]));
+			}
+			const cls = who.me ? "wa-auto wa-sender-me" : "wa-auto";
+			caption = `<div class="${cls}" dir="auto">${esc(parts.join(" · "))}</div>`;
 		}
 		const ticks = item.direction === "out" ? tick_html(item.status) : "";
 		const attrs = `data-id="${esc(item.id)}" data-message-id="${esc(item.message_id || "")}"`;
