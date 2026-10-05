@@ -33,6 +33,33 @@ def _get_hr_manager_emails():
     return [r["email"] for r in rows]
 
 
+def _clock_12h(value) -> str:
+    """'9:30 AM' from whatever the late check-in stored.
+
+    `custom_to_time` is a Time field, but at insert it still holds what the
+    caller passed — the mobile app sends a full datetime
+    ("2026-10-05 09:30:32.359737"), the DB later hands back a timedelta
+    ("9:30:32.359737"). Slicing the first 8 characters turned the former into
+    "2026-10-", which is what the email and its subject showed.
+    """
+    import re
+
+    m = re.search(r"(\d{1,2}):(\d{2})", str(value or ""))
+    if not m:
+        return str(value or "")
+    hour, minute = int(m.group(1)) % 24, m.group(2)
+    return f"{hour % 12 or 12}:{minute} {'AM' if hour < 12 else 'PM'}"
+
+
+def _short_date(value) -> str:
+    """'5 Oct 2026' (falls back to the raw value)."""
+    try:
+        d = frappe.utils.getdate(value)
+        return f"{d.day} {d.strftime('%b %Y')}"
+    except Exception:
+        return str(value or "")
+
+
 def on_leave_application_insert(doc, method=None):
     """Email HR/managers when an employee submits a new leave request.
 
@@ -49,13 +76,14 @@ def on_leave_application_insert(doc, method=None):
     is_late_checkin = (doc.description or "").startswith("Auto-submitted: late check-in")
     late_block = ""
     if is_late_checkin and doc.get("custom_to_time"):
-        checkin_t = str(doc.get("custom_to_time"))[:8]
+        checkin_t = _clock_12h(doc.get("custom_to_time"))
+        checkin_when = f"{_short_date(doc.from_date)}, {checkin_t}"
         late_block = (
             "<tr>"
             "<td style='padding:8px 12px;border:1px solid #ddd;background:#FFF4E5;"
             "font-weight:bold;color:#E65100'>Actual Check-in Time</td>"
             "<td style='padding:8px 12px;border:1px solid #ddd;background:#FFF4E5;"
-            f"font-weight:bold;font-size:15px;color:#E65100'>{checkin_t}</td>"
+            f"font-weight:bold;font-size:15px;color:#E65100'>{checkin_when}</td>"
             "</tr>"
         )
         subject = f"تأخير في الحضور — {employee_name} ({checkin_t}) | Late Check-in — {employee_name} ({checkin_t})"
