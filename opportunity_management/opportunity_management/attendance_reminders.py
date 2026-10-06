@@ -34,6 +34,8 @@ asked for. All clock times shown to employees are 12-hour (AM/PM, ص/م).
 
 import frappe
 
+from opportunity_management.opportunity_management.checkin_exempt import exempt_filter_sql
+
 # Poll window — each function is called every 5 minutes by the cron. The
 # poll window defines how many seconds AFTER the target instant a fire is
 # still valid (so a slightly slow scheduler tick doesn't skip a slot).
@@ -113,7 +115,7 @@ def _clock_12h(hour: int, minute: int = 0) -> tuple:
 
 
 def _employees_missing_checkin():
-    """Active employees with a token who have no IN checkin today."""
+    """Active, non-exempt employees with a token who have no IN checkin today."""
     today = frappe.utils.today()
     return frappe.db.sql(
         """
@@ -128,15 +130,15 @@ def _employees_missing_checkin():
                 AND DATE(c.time) = %s
                 AND c.log_type = 'IN'
           )
-        """,
+        """ + exempt_filter_sql(),
         (today,),
         as_dict=True,
     )
 
 
 def _employees_missing_checkout():
-    """Active employees with a token who have an IN today but no OUT after
-    their last IN (i.e. they're still on the clock)."""
+    """Active, non-exempt employees with a token who have an IN today but no
+    OUT after their last IN (i.e. they're still on the clock)."""
     today = frappe.utils.today()
     return frappe.db.sql(
         """
@@ -163,7 +165,7 @@ def _employees_missing_checkout():
                       AND c2.log_type = 'IN'
                 )
           )
-        """,
+        """ + exempt_filter_sql(),
         (today, today, today),
         as_dict=True,
     )

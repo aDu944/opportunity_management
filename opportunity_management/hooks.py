@@ -276,6 +276,15 @@ fixtures = [
             ["fieldname", "in", ["custom_share_pct", "custom_user"]]
         ]
     },
+    # Check-in exemption flag. Also created by the seed_checkin_exempt patch
+    # (fixtures sync after post_model_sync).
+    {
+        "doctype": "Custom Field",
+        "filters": [
+            ["dt", "in", ["Employee"]],
+            ["fieldname", "in", ["custom_checkin_exempt"]]
+        ]
+    },
     # ── WhatsApp team inbox ──────────────────────────────────────────────
     # NOTE: fixtures are synced AFTER post-model-sync patches, so the same
     # objects are also created idempotently in

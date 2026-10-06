@@ -11,6 +11,7 @@ from frappe import _
 from frappe.utils import nowdate, getdate, date_diff, flt, cint
 from datetime import datetime
 from opportunity_management.opportunity_management import notification_utils
+from opportunity_management.opportunity_management import checkin_exempt
 
 
 # ── Display-name mapping ─────────────────────────────────────────────────────
@@ -1523,12 +1524,13 @@ def get_todays_leave_status(user=None):
     chip instead of pushing them toward a check-in / late-check-in action.
 
     Returns {"on_leave": bool, "leave_type": str|None, "name": str|None,
-             "from_date": ISO, "to_date": ISO}.
+             "from_date": ISO, "to_date": ISO, "checkin_exempt": bool}.
     """
     user = user or frappe.session.user
     emp_id = frappe.db.get_value("Employee", {"user_id": user}, "name")
     if not emp_id:
-        return {"on_leave": False}
+        return {"on_leave": False, "checkin_exempt": False}
+    exempt = checkin_exempt.is_exempt_employee(emp_id)
 
     today = getdate(nowdate())
     row = frappe.db.get_all(
@@ -1545,7 +1547,7 @@ def get_todays_leave_status(user=None):
         limit=1,
     )
     if not row:
-        return {"on_leave": False}
+        return {"on_leave": False, "checkin_exempt": exempt}
 
     r = row[0]
     return {
@@ -1554,6 +1556,7 @@ def get_todays_leave_status(user=None):
         "leave_type": r["leave_type"],
         "from_date": str(r["from_date"]),
         "to_date": str(r["to_date"]),
+        "checkin_exempt": exempt,
     }
 
 
@@ -1569,6 +1572,8 @@ def submit_missed_checkin_leave(user=None):
     emp_id = frappe.db.get_value("Employee", {"user_id": user}, "name")
     if not emp_id:
         frappe.throw(_("Employee record not found for {0}").format(user))
+    if checkin_exempt.is_exempt_employee(emp_id):
+        return {"skipped": "exempt"}
 
     # Reuse the same server-side path as the auto-late flow. Time is now
     # (server-local Baghdad time).
@@ -1807,7 +1812,10 @@ def submit_late_checkin_leave(employee, checkin_time=None):
     Records the time range: from 09:00:00 to the actual check-in time.
     If the employee has remaining balance, uses Time-Off Leave type.
     If balance is exhausted, submits the same type — ERPNext will mark it as LWP.
+    Check-in-exempt employees get {"skipped": "exempt"} and no leave.
     """
+    if checkin_exempt.is_exempt_employee(employee):
+        return {"skipped": "exempt"}
     today = frappe.utils.today()
     # Default leave type can be overridden via ESS Mobile Settings → Attendance.
     leave_type = "Time-Off Leave - زمنية"
@@ -2680,7 +2688,7 @@ def send_daily_checkin_reminders():
                 AND DATE(c.time) = %s
                 AND c.log_type = 'IN'
           )
-        """,
+        """ + checkin_exempt.exempt_filter_sql(),
         (today,),
         as_dict=True,
     )
@@ -2767,7 +2775,7 @@ def auto_checkout_pending_employees():
                       AND c2.log_type = 'IN'
                 )
           )
-        """,
+        """ + checkin_exempt.exempt_filter_sql(),  # exempt staff aren't clocked out
         (today, today, today),
         as_dict=True,
     )

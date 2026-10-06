@@ -59,6 +59,9 @@ def geofence_checkin_reminder(location_name):
     Sends an FCM push notification to the employee reminding them to check in.
     """
     user = frappe.session.user
+    from opportunity_management.opportunity_management.checkin_exempt import is_exempt_user
+    if is_exempt_user(user):
+        return {"status": "exempt"}
 
     # Get the employee's FCM token stored by the mobile app on login
     emp = frappe.db.get_value(

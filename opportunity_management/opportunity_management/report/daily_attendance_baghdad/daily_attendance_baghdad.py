@@ -57,6 +57,9 @@ def execute(filters=None):
 		# Status
 		if on_leave:
 			status, indicator = _("On Leave"), "blue"
+		elif emp.get("checkin_exempt"):
+			# Not required to check in: never Absent / Late.
+			status, indicator = _("Exempt"), "grey"
 		elif in_time is None:
 			status, indicator = _("Absent"), "red"
 		else:
@@ -86,7 +89,7 @@ def execute(filters=None):
 		})
 
 	# Sort: Absent first (so HR sees them at the top), then Late, then On Time, then On Leave.
-	priority = {"red": 0, "orange": 1, "green": 2, "blue": 3}
+	priority = {"red": 0, "orange": 1, "green": 2, "blue": 3, "grey": 4}
 	rows.sort(key=lambda r: (priority.get(r["indicator"], 9), r["employee_name"]))
 
 	# Strip the indicator key from final rows (used only for sort + cell colour).
@@ -114,8 +117,12 @@ def _columns():
 
 
 def _get_baghdad_employees():
-	return frappe.db.sql("""
-		SELECT name, employee_name, department
+	from opportunity_management.opportunity_management.checkin_exempt import (
+		FIELDNAME, has_exempt_column,
+	)
+	exempt_col = f", {FIELDNAME} AS checkin_exempt" if has_exempt_column() else ""
+	return frappe.db.sql(f"""
+		SELECT name, employee_name, department{exempt_col}
 		FROM `tabEmployee`
 		WHERE status = 'Active' AND branch = 'Baghdad'
 		ORDER BY employee_name
