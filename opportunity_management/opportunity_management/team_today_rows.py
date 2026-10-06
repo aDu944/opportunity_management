@@ -27,7 +27,9 @@ def _zone_expr():
     return (
         "GROUP_CONCAT(CASE WHEN c.log_type = 'IN' THEN CONCAT("
         f"COALESCE(c.custom_outside_zone, 0), '{P.ZONE_FIELD_SEP}', {reason}) END "
-        "ORDER BY c.time SEPARATOR CHAR(30))"
+        # SEPARATOR must be a string literal in MariaDB (CHAR(30) is a syntax
+        # error there); embed the record separator itself.
+        f"ORDER BY c.time SEPARATOR '{P.ZONE_SEP}')"
     )
 
 
