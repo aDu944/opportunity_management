@@ -474,6 +474,7 @@ def _push_inbound(conv, doc):
     else:
         build = T.whatsapp_inbound
     build = R.with_ad(build)  # "Ad: <headline>" + data.ad for an ad-originated message
+    frappe.get_attr("opportunity_management.opportunity_management.whatsapp_shareholder_push.notify_shareholders")(conv, *build(conv, doc), seen)
     if conv.assigned_to:
         title, body, data = build(conv, doc)
         _send_to_users([conv.assigned_to], title, body, data, dedupe_seen=seen)

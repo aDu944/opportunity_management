@@ -267,6 +267,15 @@ fixtures = [
         "doctype": "Workspace",
         "filters": [["name", "in", ["Opportunity Management"]]]
     },
+    # Shareholder app: ownership share + linked user. Also created by the
+    # seed_shareholder_settings patch (fixtures sync after post_model_sync).
+    {
+        "doctype": "Custom Field",
+        "filters": [
+            ["dt", "in", ["Shareholder"]],
+            ["fieldname", "in", ["custom_share_pct", "custom_user"]]
+        ]
+    },
     # ── WhatsApp team inbox ──────────────────────────────────────────────
     # NOTE: fixtures are synced AFTER post-model-sync patches, so the same
     # objects are also created idempotently in

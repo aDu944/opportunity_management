@@ -105,7 +105,11 @@
   "enable_crash_reporting",
   "enable_analytics",
   "col_break_telem_1",
-  "verbose_logging_for_user_ids"
+  "verbose_logging_for_user_ids",
+  "shareholder_tab",
+  "shareholder_company",
+  "col_break_shareholder_1",
+  "distribution_account"
  ],
  "fields": [
   {
@@ -661,12 +665,35 @@
    "label": "Late Check-in Cutoff Hour",
    "default": "12",
    "description": "Hour (0-23, Baghdad) after which no check-in of any kind is accepted and the day counts as absent. Between the end of the check-in window and this hour the employee can still file a late check-in, which deducts a half-day Time-Off. From this hour the app offers only Apply for Leave. Default 12 (noon)."
+  },
+  {
+   "fieldname": "shareholder_tab",
+   "fieldtype": "Tab Break",
+   "label": "Shareholder"
+  },
+  {
+   "fieldname": "shareholder_company",
+   "fieldtype": "Link",
+   "label": "Shareholder Company",
+   "options": "Company",
+   "description": "The company the shareholder app reports on (balances, sales, distributions). Empty = AL KHORA."
+  },
+  {
+   "fieldname": "col_break_shareholder_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "distribution_account",
+   "fieldtype": "Link",
+   "label": "Distribution Account",
+   "options": "Account",
+   "description": "Optional. Submitted Journal Entry rows against this account (of the shareholder company) are the distributions ledger in the shareholder app."
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-03 10:00:00.000000",
+ "modified": "2026-10-06 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Opportunity Management",
  "name": "ESS Mobile Settings",

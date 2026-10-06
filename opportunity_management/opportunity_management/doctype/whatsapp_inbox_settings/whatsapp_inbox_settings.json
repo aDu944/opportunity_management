@@ -33,6 +33,7 @@
   "alerts_section",
   "notify_team_on_unassigned",
   "team_alert_throttle_minutes",
+  "notify_shareholders_all_chats",
   "column_break_alerts",
   "default_reengage_template",
   "auto_resolve_after_days",
@@ -207,6 +208,13 @@
    "label": "Team Alert Throttle (Minutes)"
   },
   {
+   "default": "1",
+   "fieldname": "notify_shareholders_all_chats",
+   "fieldtype": "Check",
+   "label": "Notify Shareholders On Every Inbound",
+   "description": "Users with the Shareholder role get a push for every inbound customer message on every chat (assigned or not, ignoring the team-alert throttle). Muted threads stay silent."
+  },
+  {
    "fieldname": "column_break_alerts",
    "fieldtype": "Column Break"
   },
@@ -250,7 +258,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-03 12:00:00.000000",
+ "modified": "2026-10-06 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Opportunity Management",
  "name": "WhatsApp Inbox Settings",
