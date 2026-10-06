@@ -13,3 +13,4 @@ opportunity_management.patches.add_messenger_channel
 opportunity_management.patches.backfill_ad_referrals
 opportunity_management.patches.seed_shareholder_settings
 opportunity_management.patches.seed_checkin_exempt
+opportunity_management.patches.seed_saturday_hours

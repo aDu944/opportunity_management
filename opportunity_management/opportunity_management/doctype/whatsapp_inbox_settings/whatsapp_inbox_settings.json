@@ -20,6 +20,11 @@
   "column_break_hours",
   "business_hours_end",
   "timezone",
+  "short_day_section",
+  "short_day",
+  "short_day_start",
+  "column_break_short",
+  "short_day_end",
   "automation_tab",
   "welcome_section",
   "enable_welcome",
@@ -131,6 +136,33 @@
    "description": "Informational. Business-hours maths runs in the site timezone."
   },
   {
+   "fieldname": "short_day_section",
+   "fieldtype": "Section Break",
+   "label": "Day With Different Hours",
+   "description": "One business day that opens or closes at different times (e.g. Saturday 9:00 AM – 3:00 PM). Leave empty if every business day has the same hours."
+  },
+  {
+   "fieldname": "short_day",
+   "fieldtype": "Select",
+   "label": "Day",
+   "options": "\nSat\nSun\nMon\nTue\nWed\nThu\nFri"
+  },
+  {
+   "fieldname": "short_day_start",
+   "fieldtype": "Time",
+   "label": "Start",
+   "description": "Optional — defaults to the normal Business Hours Start."
+  },
+  {
+   "fieldname": "column_break_short",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "short_day_end",
+   "fieldtype": "Time",
+   "label": "End"
+  },
+  {
    "fieldname": "automation_tab",
    "fieldtype": "Tab Break",
    "label": "Automation"
@@ -174,14 +206,14 @@
    "fieldname": "out_of_hours_text_en",
    "fieldtype": "Small Text",
    "label": "Out Of Hours Text (EN)",
-   "description": "Use {{business_hours}} to insert the window configured above, e.g. \"Sat–Thu, 9:00 AM – 4:00 PM\"."
+   "description": "Use {{business_hours}} to insert the window configured above, e.g. \"Sat 9:00 AM – 3:00 PM, Sun–Thu 9:00 AM – 4:00 PM\"."
   },
   {
    "depends_on": "enable_out_of_hours",
    "fieldname": "out_of_hours_text_ar",
    "fieldtype": "Small Text",
    "label": "Out Of Hours Text (AR)",
-   "description": "Use {{business_hours}} to insert the window configured above in Arabic, e.g. \"السبت–الخميس، 9:00 ص – 4:00 م\"."
+   "description": "Use {{business_hours}} to insert the window configured above in Arabic, e.g. \"السبت 9:00 ص – 3:00 م، الأحد–الخميس 9:00 ص – 4:00 م\"."
   },
   {
    "default": "12",

@@ -413,5 +413,40 @@ class TestStripHtml(unittest.TestCase):
         self.assertEqual(wu.strip_html("a<br>b"), "a\nb")
 
 
+
+
+_SAT_SHORT = dict(_SAT_THU, short_day="Sat", short_day_start="09:00:00", short_day_end="15:00:00")
+
+
+class TestShortDay(unittest.TestCase):
+    def test_saturday_closes_early(self):
+        self.assertTrue(wu.is_business_hours(_on("Sat", 14, 59, 59), settings=_SAT_SHORT))
+        self.assertFalse(wu.is_business_hours(_on("Sat", 15, 0, 0), settings=_SAT_SHORT))
+        # Other days keep the normal window.
+        self.assertTrue(wu.is_business_hours(_on("Sun", 15, 30), settings=_SAT_SHORT))
+        self.assertFalse(wu.is_business_hours(_on("Sun", 16, 0, 0), settings=_SAT_SHORT))
+
+    def test_start_falls_back_to_normal_start(self):
+        settings = dict(_SAT_SHORT, short_day_start=None)
+        self.assertFalse(wu.is_business_hours(_on("Sat", 8, 59), settings=settings))
+        self.assertTrue(wu.is_business_hours(_on("Sat", 9, 0), settings=settings))
+
+    def test_label(self):
+        self.assertEqual(wu.business_hours_label(_SAT_SHORT, "en"),
+                         "Sat 9:00 AM – 3:00 PM, Sun–Thu 9:00 AM – 4:00 PM")
+        self.assertEqual(wu.business_hours_label(_SAT_SHORT, "ar"),
+                         "السبت 9:00 ص – 3:00 م، الأحد–الخميس 9:00 ص – 4:00 م")
+
+    def test_short_day_outside_business_days_is_ignored(self):
+        settings = dict(_SAT_SHORT, business_days="Sun,Mon,Tue,Wed,Thu")
+        self.assertEqual(wu.business_hours_label(settings, "en"), "Sun–Thu, 9:00 AM – 4:00 PM")
+        self.assertFalse(wu.is_business_hours(_on("Sat", 10), settings=settings))
+
+    def test_unset_short_window_is_ignored(self):
+        settings = dict(_SAT_THU, short_day="Sat", short_day_end=None)
+        self.assertEqual(wu.business_hours_label(settings, "en"), "Sat–Thu, 9:00 AM – 4:00 PM")
+        self.assertTrue(wu.is_business_hours(_on("Sat", 15, 30), settings=settings))
+
+
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    unittest.main()

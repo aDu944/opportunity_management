@@ -21,6 +21,7 @@ import re
 
 import frappe
 
+
 # ── Constants ────────────────────────────────────────────────────────────────
 
 # Meta's customer-service window.
@@ -227,8 +228,8 @@ def is_business_hours(now=None, settings=None) -> bool:
         if allowed and now.strftime("%a").lower()[:3] not in allowed:
             return False
 
-    raw_start = _g(settings, "business_hours_start")
-    raw_end = _g(settings, "business_hours_end")
+    raw_start, raw_end = SD.window_for(
+        now, settings, _g(settings, "business_hours_start"), _g(settings, "business_hours_end"))
     if business_window_unset(raw_start, raw_end):
         # No real window configured (empty, start == end, or the near-equal
         # `nowtime()` artefact) → treat the day as fully staffed rather than
@@ -262,24 +263,10 @@ def clock_12h(value, lang="en") -> str:
 
 
 def business_hours_label(settings, lang="en") -> str:
-    """E.g. "Sat–Thu, 9:00 AM – 4:00 PM" / "السبت–الخميس، 9:00 ص – 4:00 م". Runs of
-    days (week from Saturday) collapse to First–Last, others comma-separated."""
+    """"Sat–Thu, 9:00 AM – 4:00 PM"; with a short day "Sat 9:00 AM – 3:00 PM, Sun–Thu 9:00 AM – 4:00 PM"."""
     lang = "ar" if str(lang or "").strip().lower().startswith("ar") else "en"
-    names = dict(zip(_WEEK_ORDER, _DAY_NAMES[lang]))
-    comma = "، " if lang == "ar" else ", "
     days = {d.strip().lower()[:3] for d in str(_g(settings, "business_days", "") or "").split(",")}
-    runs, run = [], []
-    for day in _WEEK_ORDER + ("",):  # the "" sentinel flushes the last run
-        if day in days:
-            run.append(day)
-        elif run:
-            runs.append("–".join(dict.fromkeys((names[run[0]], names[run[-1]]))))
-            run = []
-    parts = [comma.join(runs)] if runs else []
-    start, end = _g(settings, "business_hours_start"), _g(settings, "business_hours_end")
-    if not business_window_unset(start, end):
-        parts.append(f"{clock_12h(start, lang)} – {clock_12h(end, lang)}")
-    return comma.join(parts)
+    return SD.label(settings, lang, days)
 
 
 def render_template_body(body, params) -> str:
@@ -497,3 +484,17 @@ def setting(field, default=None):
     """
     value = get_inbox_settings().get(field)
     return default if value in (None, "") else value
+
+
+# whatsapp_short_day gets its primitives handed over here (no import cycle; works for file-path loads).
+try:
+    from opportunity_management.opportunity_management import whatsapp_short_day as SD
+except ImportError:
+    import importlib.util as _ilu, os as _os  # noqa: E401
+
+    _spec = _ilu.spec_from_file_location(
+        "whatsapp_short_day", _os.path.join(_os.path.dirname(__file__), "whatsapp_short_day.py"))
+    SD = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(SD)
+SD.bind(_g=_g, _DAY_TOKENS=_DAY_TOKENS, _WEEK_ORDER=_WEEK_ORDER, _DAY_NAMES=_DAY_NAMES,
+        business_window_unset=business_window_unset, clock_12h=clock_12h)
