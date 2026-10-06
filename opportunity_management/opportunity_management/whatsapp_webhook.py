@@ -42,6 +42,8 @@ import time
 
 import frappe
 
+from opportunity_management.opportunity_management.whatsapp_unsupported import unsupported_text
+
 _SIGNATURE_HEADER = "X-Hub-Signature-256"
 _MISSING_SECRET_FLAG = "_whatsapp_missing_secret_logged"
 
@@ -351,7 +353,7 @@ def _coerce_unsupported(data):
             elif mtype == "contacts":
                 body = _contacts_text(message.get("contacts") or [])
             else:
-                body = f"[unsupported message type: {mtype}]"
+                body = unsupported_text(message, mtype)
             message["type"] = "text"
             message["text"] = {"body": body}
 
