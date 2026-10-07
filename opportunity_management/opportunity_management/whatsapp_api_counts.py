@@ -28,7 +28,8 @@ def get_unread_count():
     contacts are excluded; Resolved threads already are, by the WHERE.
 
     The totals cover every channel the caller may use; `by_channel` splits
-    them ({"WhatsApp": {mine, unassigned, waiting_mine, waiting_unassigned}}).
+    them ({"WhatsApp": {mine, unassigned, waiting_mine, waiting_unassigned,
+    mine_open, unassigned_open}}).
     """
     _require_inbox_access()
     channels = IC.user_channels()
@@ -48,7 +49,9 @@ def get_unread_count():
             SUM(CASE WHEN (assigned_to IS NULL OR assigned_to = '')
                       AND awaiting_reply_since IS NOT NULL
                       AND COALESCE(is_blocked, 0) = 0
-                     THEN 1 ELSE 0 END) AS waiting_unassigned
+                     THEN 1 ELSE 0 END) AS waiting_unassigned,
+            SUM(CASE WHEN assigned_to = %(me)s THEN 1 ELSE 0 END) AS mine_open,
+            SUM(CASE WHEN assigned_to IS NULL OR assigned_to = '' THEN 1 ELSE 0 END) AS unassigned_open
         FROM `tabWhatsApp Conversation`
         WHERE status != 'Resolved' {where}
         {group}
@@ -60,7 +63,7 @@ def get_unread_count():
         {"me": frappe.session.user},
         as_dict=True,
     )
-    keys = ("mine", "unassigned", "waiting_mine", "waiting_unassigned")
+    keys = ("mine", "unassigned", "waiting_mine", "waiting_unassigned", "mine_open", "unassigned_open")
     by_channel = {ch: dict.fromkeys(keys, 0) for ch in channels}
     for r in rows:
         ch = IC.channel_of(r.get("channel"))
@@ -73,5 +76,9 @@ def get_unread_count():
         "total": out["mine"] + out["unassigned"],
         "waiting_mine": out["waiting_mine"],
         "waiting_unassigned": out["waiting_unassigned"],
+        # Open (not Resolved) chats per scope, unread or not — the inbox
+        # filter chips show these so "My Chats (2)" means two chats.
+        "mine_open": out["mine_open"],
+        "unassigned_open": out["unassigned_open"],
         "by_channel": by_channel,
     }
