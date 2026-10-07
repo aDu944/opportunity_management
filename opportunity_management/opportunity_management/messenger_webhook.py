@@ -99,4 +99,17 @@ def _signature_ok(settings, raw) -> bool:
                 "Messenger webhook: signature verification disabled",
             )
         return True
-    return API.valid_signature(secret, raw, frappe.get_request_header(_SIGNATURE_HEADER))
+    ok = API.valid_signature(secret, raw, frappe.get_request_header(_SIGNATURE_HEADER))
+    if not ok and not getattr(frappe.local, "_messenger_bad_signature_logged", False):
+        # Once per request cycle, so a mismatch is visible in Desk instead of
+        # only as a 403 in nginx. The usual cause: the Page is subscribed from
+        # a different Meta app than the one whose App Secret we hold.
+        frappe.local._messenger_bad_signature_logged = True
+        frappe.log_error(
+            "X-Hub-Signature-256 did not match the App Secret in Messenger Settings "
+            "(or, when that is empty, site_config whatsapp_app_secret). Paste the App "
+            "Secret of the Meta app that owns the Messenger webhook into Messenger "
+            "Settings → App Secret.",
+            "Messenger webhook: bad signature (403)",
+        )
+    return ok
