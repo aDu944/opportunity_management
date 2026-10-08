@@ -1,6 +1,6 @@
 """
 SQL for `team_today.get_team_attendance` — one grouped query over active,
-non-exempt employees with the day's check-in bounds and the first IN's
+non-exempt, non-review-account employees with the day's check-in bounds and the first IN's
 outside-zone flag, plus one leave query. Pure shaping lives in
 `team_today_pure` (bench-free tests).
 """
@@ -10,7 +10,7 @@ import datetime as _dt
 import frappe
 
 from opportunity_management.opportunity_management import team_today_pure as P
-from opportunity_management.opportunity_management.checkin_exempt import exempt_filter_sql
+from opportunity_management.opportunity_management.checkin_exempt import team_filter_sql
 
 
 def _zone_expr():
@@ -34,14 +34,14 @@ def _zone_expr():
 
 
 def attendance_rows(day):
-    """Per-employee rows: employee, employee_name, department, designation,
-    image, first_in, last_in, last_out, zone. The checkin join is a time range
+    """Per-employee rows: employee, employee_name, branch, department,
+    designation, image, first_in, last_in, last_out, zone. The checkin join is a time range
     (index-friendly) instead of DATE(c.time)."""
     start = _dt.datetime.combine(day, _dt.time.min)
     end = start + _dt.timedelta(days=1)
     return frappe.db.sql(
         f"""
-        SELECT e.name AS employee, e.employee_name, e.department,
+        SELECT e.name AS employee, e.employee_name, e.branch, e.department,
                e.designation, e.image,
                MIN(CASE WHEN c.log_type = 'IN' THEN c.time END) AS first_in,
                MAX(CASE WHEN c.log_type = 'IN' THEN c.time END) AS last_in,
@@ -51,8 +51,8 @@ def attendance_rows(day):
         LEFT JOIN `tabEmployee Checkin` c
                ON c.employee = e.name
               AND c.time >= %(start)s AND c.time < %(end)s
-        WHERE e.status = 'Active'{exempt_filter_sql()}
-        GROUP BY e.name, e.employee_name, e.department, e.designation, e.image
+        WHERE e.status = 'Active'{team_filter_sql()}
+        GROUP BY e.name, e.employee_name, e.branch, e.department, e.designation, e.image
         """,
         {"start": start, "end": end},
         as_dict=True,
@@ -87,3 +87,18 @@ def holidays(day):
         {"day": day},
     )
     return {r[0] for r in rows}
+
+
+def caller_branch(user):
+    """Employee.branch of `user` ("" when none / no Employee). An Active
+    Employee wins over a left one with the same login."""
+    rows = frappe.db.sql(
+        """
+        SELECT e.branch FROM `tabEmployee` e
+        WHERE e.user_id = %(user)s
+        ORDER BY (e.status = 'Active') DESC, e.modified DESC
+        LIMIT 1
+        """,
+        {"user": user},
+    )
+    return P.norm_branch(rows[0][0]) if rows else ""

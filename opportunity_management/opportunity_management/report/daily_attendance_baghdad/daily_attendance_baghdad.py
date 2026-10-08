@@ -1,6 +1,7 @@
 """Daily Attendance — Baghdad
 
-One row per active Baghdad-Branch employee for the selected date. Pulls the
+One row per active Baghdad-Branch employee (app-store review accounts
+excluded) for the selected date. Pulls the
 real check-in/out times directly from Employee Checkin (the authoritative
 source the mobile app writes to), determines status, and shows the reason if
 the check-in was made outside the approved zone.
@@ -117,15 +118,17 @@ def _columns():
 
 
 def _get_baghdad_employees():
+	"""Active Baghdad employees. Check-in-exempt managers stay (shown as
+	"Exempt"); app-store review accounts are left out — they are not staff."""
 	from opportunity_management.opportunity_management.checkin_exempt import (
-		FIELDNAME, has_exempt_column,
+		FIELDNAME, has_exempt_column, review_filter_sql,
 	)
-	exempt_col = f", {FIELDNAME} AS checkin_exempt" if has_exempt_column() else ""
+	exempt_col = f", e.{FIELDNAME} AS checkin_exempt" if has_exempt_column() else ""
 	return frappe.db.sql(f"""
-		SELECT name, employee_name, department{exempt_col}
-		FROM `tabEmployee`
-		WHERE status = 'Active' AND branch = 'Baghdad'
-		ORDER BY employee_name
+		SELECT e.name, e.employee_name, e.department{exempt_col}
+		FROM `tabEmployee` e
+		WHERE e.status = 'Active' AND e.branch = 'Baghdad'{review_filter_sql()}
+		ORDER BY e.employee_name
 	""", as_dict=True)
 
 

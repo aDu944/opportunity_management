@@ -78,3 +78,45 @@ def is_exempt_user(user) -> bool:
         return bool(frappe.db.get_value("Employee", {"user_id": user}, FIELDNAME))
     except Exception:
         return False
+
+
+# --- App-store review accounts ---------------------------------------------
+# Store reviewer logins are Employees (so the check-in card works for review)
+# but not staff: `custom_review_account` = 1 (seeded by the
+# `seed_review_accounts` patch) keeps them out of team attendance, its stats
+# and the daily attendance report. Reminders and `is_exempt_employee` ignore
+# this flag on purpose — reviewers keep the normal check-in card.
+
+REVIEW_FIELDNAME = "custom_review_account"
+
+REVIEW_SQL = "COALESCE(e.custom_review_account, 0) = 0"
+
+SEED_REVIEW_USERS = (
+    "apple@alkhora.com",
+    "applereview@alkhora.com",
+    "googlereview@alkhora.com",
+)
+
+
+def review_sql_clause(has_column: bool) -> str:
+    """`" AND <REVIEW_SQL>"` to append to a WHERE, or "" before migrate."""
+    return f" AND {REVIEW_SQL}" if has_column else ""
+
+
+def has_review_column() -> bool:
+    import frappe
+    try:
+        return bool(frappe.db.has_column("Employee", REVIEW_FIELDNAME))
+    except Exception:
+        return False
+
+
+def review_filter_sql() -> str:
+    """WHERE-suffix excluding review accounts (alias `e`); safe pre-migrate."""
+    return review_sql_clause(has_review_column())
+
+
+def team_filter_sql() -> str:
+    """WHERE-suffix for team attendance / stats (alias `e`): no check-in
+    exempt employees and no review accounts. Each half is column-guarded."""
+    return exempt_filter_sql() + review_filter_sql()

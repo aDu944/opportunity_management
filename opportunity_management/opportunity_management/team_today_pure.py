@@ -155,6 +155,7 @@ def attendance_row(row, cutoff, leave_type=None):
     outside, reason = parse_zone(row.get("zone")) if has_in else (False, None)
     return {
         "employee": row.get("employee") or row.get("name"),
+        "branch": norm_branch(row.get("branch")),
         "employee_name": (row.get("employee_name") or row.get("employee")
                           or row.get("name") or "").strip(),
         "department": row.get("department") or None,
@@ -196,17 +197,100 @@ def build_attendance(raw_rows, leaves, cutoff):
     """(summary, rows) for the page. `leaves` maps employee → leave type;
     the summary is the card's roll-up of the same rows so both always agree."""
     leaves = leaves or {}
-    prepared = []
-    for r in raw_rows or ():
-        emp = r.get("employee") or r.get("name")
-        item = dict(r)
-        item["on_leave"] = emp in leaves
-        prepared.append(item)
+    prepared = _with_leave(raw_rows, leaves)
     full = summarize(prepared, cutoff)
     summary = {k: full[k] for k in SUMMARY_KEYS}
     rows = [attendance_row(r, cutoff, leaves.get(r.get("employee") or r.get("name")))
             for r in prepared]
     return summary, sort_rows(rows)
+
+
+def _with_leave(raw_rows, leaves):
+    out = []
+    for r in raw_rows or ():
+        item = dict(r)
+        item["on_leave"] = (r.get("employee") or r.get("name")) in leaves
+        out.append(item)
+    return out
+
+
+# --- Branch grouping (caller's branch first) --------------------------------
+
+CARD_BRANCH_KEYS = ("total", "checked_in", "late", "on_leave", "not_in")
+
+
+def norm_branch(value):
+    """Employee.branch as a clean string; NULL / blank → ""."""
+    return "" if value is None else str(value).strip()
+
+
+def branch_order(branches, mine=""):
+    """Distinct branches: the caller's first (even with no employees), the
+    rest A-Z case-insensitively, the empty branch "" last."""
+    mine = norm_branch(mine)
+    seen = {norm_branch(b) for b in branches or ()}
+    rest = sorted((b for b in seen if b and b != mine), key=lambda b: (b.lower(), b))
+    return ([mine] if mine else []) + rest + ([""] if "" in seen else [])
+
+
+def group_by_branch(rows):
+    """{branch: [rows]} keyed by the normalised `branch` of each row."""
+    groups = {}
+    for r in rows or ():
+        groups.setdefault(norm_branch(r.get("branch")), []).append(r)
+    return groups
+
+
+def branch_rollups(rows, cutoff, mine="", keys=SUMMARY_KEYS):
+    """[{branch, <keys>…}] per branch in `branch_order`, from the card's
+    `summarize` so the per-branch numbers add up to the overall ones."""
+    groups = group_by_branch(rows)
+    out = []
+    for b in branch_order(groups, mine):
+        s = summarize(groups.get(b, ()), cutoff)
+        out.append({"branch": b, **{k: s[k] for k in keys}})
+    return out
+
+
+def summarize_by_branch(rows, cutoff, my_branch="", limit=NAME_LIMIT):
+    """The Home card: counts and names for the caller's branch (everyone when
+    the caller has none) + `other_branches` counts for the rest."""
+    mine = norm_branch(my_branch)
+    if not mine:
+        out = summarize(rows, cutoff, limit)
+        out.update(my_branch="", summary_scope="all", other_branches=[])
+        return out
+    out = summarize(group_by_branch(rows).get(mine, ()), cutoff, limit)
+    others = [b for b in branch_rollups(rows, cutoff, mine, CARD_BRANCH_KEYS)
+              if b["branch"] != mine]
+    out.update(my_branch=mine, summary_scope="branch", other_branches=others)
+    return out
+
+
+def empty_branch_summary():
+    return summarize_by_branch([], None)
+
+
+def build_branch_attendance(raw_rows, leaves, cutoff, my_branch=""):
+    """The Team attendance page payload minus date / is_working_day:
+    {my_branch, summary_scope, summary, branches, rows}. `summary` is the
+    caller's branch (all when none); `branches` has every branch's roll-up,
+    the caller's first; rows carry `branch` and keep the server sort."""
+    mine = norm_branch(my_branch)
+    _all, rows = build_attendance(raw_rows, leaves, cutoff)
+    prepared = _with_leave(raw_rows, leaves or {})
+    branches = branch_rollups(prepared, cutoff, mine)
+    if mine:
+        summary = {k: branches[0][k] for k in SUMMARY_KEYS}
+    else:
+        summary = _all
+    return {
+        "my_branch": mine,
+        "summary_scope": "branch" if mine else "all",
+        "summary": summary,
+        "branches": branches,
+        "rows": rows,
+    }
 
 
 def is_working_day(day, working_days, holidays=()):

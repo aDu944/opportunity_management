@@ -59,5 +59,20 @@ class TestSplitFound(unittest.TestCase):
         self.assertEqual(C.split_found(None, ["a@b.c"]), ([], []))
 
 
+class TestReviewClause(unittest.TestCase):
+    def test_fragment(self):
+        self.assertEqual(C.REVIEW_SQL, "COALESCE(e.custom_review_account, 0) = 0")
+        self.assertEqual(C.review_sql_clause(True), " AND " + C.REVIEW_SQL)
+        self.assertEqual(C.review_sql_clause(False), "")
+        self.assertNotIn("%", C.review_sql_clause(True))
+
+    def test_seed_users(self):
+        self.assertEqual(
+            set(C.SEED_REVIEW_USERS),
+            {"apple@alkhora.com", "applereview@alkhora.com", "googlereview@alkhora.com"},
+        )
+        self.assertFalse(set(C.SEED_REVIEW_USERS) & set(C.SEED_EXEMPT_USERS))
+
+
 if __name__ == "__main__":
     unittest.main()

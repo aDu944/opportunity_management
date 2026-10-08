@@ -285,6 +285,15 @@ fixtures = [
             ["fieldname", "in", ["custom_checkin_exempt"]]
         ]
     },
+    # App-store review account flag. Also created by the seed_review_accounts
+    # patch (fixtures sync after post_model_sync).
+    {
+        "doctype": "Custom Field",
+        "filters": [
+            ["dt", "in", ["Employee"]],
+            ["fieldname", "in", ["custom_review_account"]]
+        ]
+    },
     # ── WhatsApp team inbox ──────────────────────────────────────────────
     # NOTE: fixtures are synced AFTER post-model-sync patches, so the same
     # objects are also created idempotently in

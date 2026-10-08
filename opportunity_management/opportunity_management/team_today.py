@@ -5,6 +5,11 @@
 employee (present / late / on leave / not in yet / checked out), plus the
 caller's pending leave approvals and waiting WhatsApp chats. Each block is
 isolated: a failure is logged and that block returns zeros / null.
+App-store review accounts (`custom_review_account`) are never counted.
+
+Both endpoints scope their headline numbers to the caller's own branch
+(Employee.branch of the session user; everyone when the caller has none)
+and report the other branches separately.
 
 `get_team_attendance` backs the Team attendance page behind the card: the
 same population, one row per employee for a chosen day (SQL in
@@ -17,7 +22,7 @@ from frappe.utils import getdate, today
 
 from opportunity_management.opportunity_management import team_today_pure as P
 from opportunity_management.opportunity_management import team_today_rows as R
-from opportunity_management.opportunity_management.checkin_exempt import exempt_filter_sql
+from opportunity_management.opportunity_management.checkin_exempt import team_filter_sql
 
 ALLOWED_ROLES = {"System Manager", "HR Manager", "HR User"}
 
@@ -46,11 +51,12 @@ def _cutoff():
 
 
 def _rows(day):
-    """One row per active, non-exempt employee with today's IN/OUT bounds
-    and whether an approved, submitted leave covers today."""
+    """One row per active, non-exempt, non-review employee with its branch,
+    today's IN/OUT bounds and whether an approved, submitted leave covers
+    today."""
     return frappe.db.sql(
         """
-        SELECT e.name, e.employee_name,
+        SELECT e.name, e.employee_name, e.branch,
                (SELECT MIN(c.time) FROM `tabEmployee Checkin` c
                  WHERE c.employee = e.name AND c.log_type = 'IN'
                    AND DATE(c.time) = %(day)s) AS first_in,
@@ -66,10 +72,14 @@ def _rows(day):
                           AND %(day)s BETWEEN la.from_date AND la.to_date) AS on_leave
         FROM `tabEmployee` e
         WHERE e.status = 'Active'
-        """ + exempt_filter_sql(),
+        """ + team_filter_sql(),
         {"day": day},
         as_dict=True,
     )
+
+
+def _my_branch():
+    return _safe("caller branch", lambda: R.caller_branch(frappe.session.user), "")
 
 
 def _approvals_count():
@@ -90,8 +100,11 @@ def get_team_today():
     day = str(getdate(today()))  # site timezone (Asia/Baghdad), as the reminders use
     out = {"date": day}
     cutoff = _cutoff()
-    out.update(_safe("attendance", lambda: P.summarize(_rows(day), cutoff),
-                     P.empty_summary()))
+    mine = _my_branch()
+    out.update(_safe("attendance",
+                     lambda: P.summarize_by_branch(_rows(day), cutoff, mine),
+                     {**P.empty_branch_summary(), "my_branch": mine,
+                      "summary_scope": "branch" if mine else "all"}))
     out["approvals_pending"] = _safe("approvals", _approvals_count, 0)
     out["chats_waiting"] = _safe("chats waiting", _chats_count, None)
     return out
@@ -122,16 +135,21 @@ def get_team_attendance(date=None):
     """Per-employee attendance for one day (Team attendance page).
 
     Same audience and population as `get_team_today`; the summary is the
-    card's roll-up of the same rows so the two always agree."""
+    card's roll-up of the same rows (caller's branch, or everyone when the
+    caller has none) so the two always agree. `branches` rolls up every
+    branch, the caller's first, "" (no branch) last."""
     _require_manager()
     day = _resolve_day(date)
     cutoff = _cutoff()
     raw = R.attendance_rows(day)
     leaves = _safe("attendance leaves", lambda: R.leave_types(day), {})
-    summary, rows = P.build_attendance(raw, leaves, cutoff)
+    built = P.build_branch_attendance(raw, leaves, cutoff, _my_branch())
     return {
         "date": str(day),
-        "summary": summary,
+        "my_branch": built["my_branch"],
+        "summary_scope": built["summary_scope"],
+        "summary": built["summary"],
+        "branches": built["branches"],
         "is_working_day": _working_day(day),
-        "rows": rows,
+        "rows": built["rows"],
     }

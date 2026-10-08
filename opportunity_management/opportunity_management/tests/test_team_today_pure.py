@@ -165,5 +165,87 @@ class TestAttendance(unittest.TestCase):
         self.assertEqual(P.clamp_day(dt.date(2026, 10, 1), t), dt.date(2026, 10, 1))
 
 
+class TestBranches(unittest.TestCase):
+    C = dt.time(9, 15)
+
+    def raw(self, emp, branch, first_in=None, last_out=None):
+        return {"employee": emp, "employee_name": emp, "branch": branch,
+                "first_in": first_in, "last_in": first_in, "last_out": last_out}
+
+    def rows(self):
+        return [
+            self.raw("B1", "Baghdad", at(8, 50)),
+            self.raw("B2", "Baghdad", at(9, 40)),
+            self.raw("B3", "Baghdad"),
+            self.raw("A1", "Amman", at(8, 0), last_out=at(16, 0)),
+            self.raw("A2", "Amman"),
+            self.raw("E1", "Erbil", at(9, 0)),
+            self.raw("X1", None),
+            self.raw("X2", "  "),
+            self.raw("Z1", "abu dhabi"),
+        ]
+
+    def test_norm_and_order(self):
+        self.assertEqual(P.norm_branch(None), "")
+        self.assertEqual(P.norm_branch(" Amman "), "Amman")
+        self.assertEqual(P.branch_order(["Erbil", "", "Amman", "Baghdad", None], "Baghdad"),
+                         ["Baghdad", "Amman", "Erbil", ""])
+        self.assertEqual(P.branch_order(["Erbil", "", "abu dhabi", "Amman"]),
+                         ["abu dhabi", "Amman", "Erbil", ""])
+        # The caller's branch leads even when nobody else is in it.
+        self.assertEqual(P.branch_order(["Amman"], "Erbil"), ["Erbil", "Amman"])
+        self.assertEqual(P.branch_order([], ""), [])
+
+    def test_card_scoped_to_my_branch(self):
+        s = P.summarize_by_branch(self.rows(), self.C, "Baghdad")
+        self.assertEqual(s["my_branch"], "Baghdad")
+        self.assertEqual(s["summary_scope"], "branch")
+        self.assertEqual((s["total"], s["checked_in"], s["late"], s["not_in"]), (3, 2, 1, 1))
+        self.assertEqual(s["late_names"], ["B2"])
+        self.assertEqual(s["not_in_names"], ["B3"])
+        self.assertEqual([b["branch"] for b in s["other_branches"]],
+                         ["abu dhabi", "Amman", "Erbil", ""])
+        amman = s["other_branches"][1]
+        self.assertEqual(amman, {"branch": "Amman", "total": 2, "checked_in": 1,
+                                 "late": 0, "on_leave": 0, "not_in": 1})
+        self.assertEqual(s["other_branches"][-1]["total"], 2)  # NULL + blank
+
+    def test_card_without_branch_is_everyone(self):
+        s = P.summarize_by_branch(self.rows(), self.C, None)
+        self.assertEqual(s["my_branch"], "")
+        self.assertEqual(s["summary_scope"], "all")
+        self.assertEqual(s["total"], 9)
+        self.assertEqual(s["other_branches"], [])
+        e = P.empty_branch_summary()
+        self.assertEqual((e["total"], e["other_branches"]), (0, []))
+
+    def test_page_payload(self):
+        out = P.build_branch_attendance(self.rows(), {"A2": "Annual"}, self.C, "Amman")
+        self.assertEqual(out["my_branch"], "Amman")
+        self.assertEqual(out["summary_scope"], "branch")
+        self.assertEqual(out["summary"], {"total": 2, "checked_in": 1, "late": 0,
+                                          "on_leave": 1, "not_in": 0, "checked_out": 1})
+        self.assertEqual([b["branch"] for b in out["branches"]],
+                         ["Amman", "abu dhabi", "Baghdad", "Erbil", ""])
+        self.assertEqual(sum(b["total"] for b in out["branches"]), 9)
+        by = {r["employee"]: r for r in out["rows"]}
+        self.assertEqual(by["X1"]["branch"], "")
+        self.assertEqual(by["X2"]["branch"], "")
+        self.assertEqual(by["B2"]["branch"], "Baghdad")
+        self.assertEqual(by["A2"]["status"], "on_leave")
+
+    def test_page_without_branch(self):
+        out = P.build_branch_attendance(self.rows(), {}, self.C, "")
+        self.assertEqual(out["summary_scope"], "all")
+        self.assertEqual(out["summary"]["total"], 9)
+        self.assertEqual(out["branches"][-1]["branch"], "")
+        self.assertEqual(len(out["rows"]), 9)
+
+    def test_my_branch_with_nobody(self):
+        out = P.build_branch_attendance(self.rows(), {}, self.C, "Basra")
+        self.assertEqual(out["summary"]["total"], 0)
+        self.assertEqual(out["branches"][0]["branch"], "Basra")
+
+
 if __name__ == "__main__":
     unittest.main()
