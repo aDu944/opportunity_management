@@ -373,7 +373,10 @@ def refresh_profile(conversation):
             # e.g. 2018218 "No profile available" (phone-only accounts) or a
             # missing Business Asset User Profile Access feature.
             profile = {}
-            frappe.log_error(str(exc), "Messenger: profile fetch failed")
+            # Keyword args: a single-line first positional is taken as the
+            # *title* by frappe.log_error and overflows its 140 chars.
+            frappe.log_error(title="Messenger: profile fetch failed",
+                             message=f"{conv.phone}: {exc}")
         name = " ".join(p for p in (profile.get("first_name"), profile.get("last_name")) if p).strip()
         if name and (not conv.display_name or conv.display_name == conv.phone):
             values["display_name"] = name
