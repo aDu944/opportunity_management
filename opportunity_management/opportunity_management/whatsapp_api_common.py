@@ -55,9 +55,10 @@ def _roles():
 
 
 def _is_manager(conv=None) -> bool:
-    """Manager of `conv`'s channel; without `conv`, of any channel
-    (WhatsApp-only users: System Manager or WhatsApp Manager, as before)."""
-    channels = IC.manager_channels_for_roles(_roles(), IC.messenger_enabled())
+    """Manager of `conv`'s channel; without `conv`, of any channel.
+    WhatsApp: System Manager or WhatsApp Manager; Messenger: Messenger
+    Manager only (a System Manager is not a Messenger manager)."""
+    channels = IC.manager_channels_for_roles(_roles())
     if conv is None:
         return bool(channels)
     return IC.conv_channel(conv) in channels

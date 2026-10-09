@@ -7,7 +7,8 @@ assigned, unassigned, inside or outside the team-alert throttle
 Called once from `whatsapp_hooks._push_inbound`, before the assignee / team
 fan-out. It shares that step's `seen` set, so a shareholder who muted the
 thread (already in `seen`) gets nothing, and one who is also the assignee or
-on the team list is pushed once, not twice.
+on the team list is pushed once, not twice. A Messenger message reaches only
+shareholders who also hold a Messenger role.
 
 Never raises: a failure here must not stop the assignee's push.
 """
@@ -15,6 +16,7 @@ Never raises: a failure here must not stop the assignee's push.
 import frappe
 from frappe.utils import cint
 
+from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management.whatsapp_utils import setting
 
 SHAREHOLDER_ROLE = "Shareholder"
@@ -32,6 +34,10 @@ def notify_shareholders(conv, title, body, data, seen):
         if not cint(setting("notify_shareholders_all_chats", 1)):
             return
         users = [u for u in shareholder_users() if u and u not in seen]
+        if users and IC.conv_channel(conv) == IC.MESSENGER:
+            # Messenger exists only for Messenger Agent / Manager holders.
+            allowed = set(IC.channel_users(IC.MESSENGER))
+            users = [u for u in users if u in allowed]
         if not users:
             return
         from opportunity_management.opportunity_management.business_hooks import _send_to_users

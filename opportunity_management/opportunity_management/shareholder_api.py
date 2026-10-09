@@ -170,9 +170,13 @@ def _overview(company):
     month["collected"] = _safe(
         "month collected", lambda: F.collected_between(company, m_start, today), 0.0)
 
+    # WhatsApp as before; Messenger only for a Messenger role holder.
+    chat_scope = IC.list_channel_sql(
+        "", [IC.WHATSAPP] + [c for c in IC.user_channels() if c == IC.MESSENGER])
     new_chats = _safe("new chats", lambda: cint(frappe.db.sql(
         """SELECT COUNT(*) FROM `tabWhatsApp Conversation`
-           WHERE first_contact_at >= %(start)s""",
+           WHERE first_contact_at >= %(start)s {0}""".format(
+            "AND " + chat_scope if chat_scope else ""),
         {"start": f"{today} 00:00:00"})[0][0]), 0)
     zero = {"count": 0, "total": 0.0}
     return {

@@ -448,7 +448,7 @@ def publish_inbox_event(event, conv, item=None, extra=None):
 
     # Only users of this conversation's channel (WhatsApp: inbox_users()).
     recipients = set(IC.channel_users(IC.conv_channel(conv)))
-    if conv.get("assigned_to"):
+    if IC.reaches_assignee(conv):  # Messenger: only while they hold a Messenger role
         recipients.add(conv.get("assigned_to"))
     # pinned / muted are per user: each recipient gets their own flags.
     states = states_by_user(conv.name)
@@ -475,6 +475,7 @@ def _push_inbound(conv, doc):
         build = T.whatsapp_inbound
     build = R.with_ad(build)  # "Ad: <headline>" + data.ad for an ad-originated message
     frappe.get_attr("opportunity_management.opportunity_management.whatsapp_shareholder_push.notify_shareholders")(conv, *build(conv, doc), seen)
+    frappe.get_attr("opportunity_management.opportunity_management.messenger_push.notify_messenger_managers")(conv, *build(conv, doc), seen)
     if conv.assigned_to:
         title, body, data = build(conv, doc)
         _send_to_users([conv.assigned_to], title, body, data, dedupe_seen=seen)

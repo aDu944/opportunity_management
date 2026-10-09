@@ -10,12 +10,12 @@ or opens a conversation asks this module which channels the caller has.
 
 Access:
     WhatsApp   ⇐ any role in Inbox Settings `agent_roles` (`inbox_roles()`)
-    Messenger  ⇐ Messenger Agent / Messenger Manager
-    System Manager ⇐ every channel — Messenger only once Messenger Settings
-                     is enabled, so a System Manager's inbox is exactly the
-                     WhatsApp one until the owner switches Messenger on
-Manager-ness is per channel: WhatsApp Manager → WhatsApp, Messenger Manager →
-Messenger, System Manager → all (same Messenger rule).
+    Messenger  ⇐ Messenger Agent / Messenger Manager — ONLY these roles
+    System Manager ⇐ WhatsApp. Never Messenger by itself: without an explicit
+                     Messenger role the channel does not exist for them (no
+                     rows, counts, pushes, Desk list rows).
+Manager-ness is per channel: WhatsApp Manager / System Manager → WhatsApp,
+Messenger Manager → Messenger.
 
 The top half is pure (no `frappe` import at module scope) so
 `tests/test_inbox_channels_pure.py` loads it bench-free; the frappe-backed
@@ -67,26 +67,37 @@ def conv_channel(conv) -> str:
     return channel_of(value)
 
 
-def channels_for_roles(roles, whatsapp_roles, messenger_enabled=True) -> list:
-    """Channels a set of roles may use, in CHANNELS order. A System Manager
-    gets Messenger only when it is enabled; an explicit Messenger role
-    always does (someone granted it on purpose)."""
+def channels_for_roles(roles, whatsapp_roles) -> list:
+    """Channels a set of roles may use, in CHANNELS order. System Manager
+    implies WhatsApp only; Messenger needs an explicit Messenger role."""
     roles = set(roles or ())
-    system = SYSTEM_MANAGER in roles
     out = []
-    if system or roles & set(whatsapp_roles or ()):
+    if SYSTEM_MANAGER in roles or roles & set(whatsapp_roles or ()):
         out.append(WHATSAPP)
-    if roles & set(MESSENGER_ROLES) or (system and messenger_enabled):
+    if roles & set(MESSENGER_ROLES):
         out.append(MESSENGER)
     return out
 
 
-def manager_channels_for_roles(roles, messenger_enabled=True) -> list:
+def manager_channels_for_roles(roles) -> list:
+    """Channels a set of roles manages: WhatsApp ⇐ WhatsApp Manager / System
+    Manager; Messenger ⇐ Messenger Manager only."""
     roles = set(roles or ())
-    system = SYSTEM_MANAGER in roles
-    out = [WHATSAPP] if system or MANAGER_ROLES[WHATSAPP] in roles else []
-    if MANAGER_ROLES[MESSENGER] in roles or (system and messenger_enabled):
+    out = [WHATSAPP] if SYSTEM_MANAGER in roles or MANAGER_ROLES[WHATSAPP] in roles else []
+    if MANAGER_ROLES[MESSENGER] in roles:
         out.append(MESSENGER)
+    return out
+
+
+def messenger_recipients(role_holders, seen=()) -> list:
+    """Users to push from `role_holders` (first-seen order, deduped), minus
+    `seen` (muted / already pushed) and Administrator / Guest."""
+    skip = set(seen or ()) | {"Administrator", "Guest"}
+    out = []
+    for user in role_holders or ():
+        if user and user not in skip:
+            skip.add(user)
+            out.append(user)
     return out
 
 
@@ -160,11 +171,11 @@ def _roles(user=None):
 def user_channels(user=None) -> list:
     from opportunity_management.opportunity_management.whatsapp_utils import inbox_roles
 
-    return channels_for_roles(_roles(user), inbox_roles(), messenger_enabled())
+    return channels_for_roles(_roles(user), inbox_roles())
 
 
 def manager_channels(user=None) -> list:
-    return manager_channels_for_roles(_roles(user), messenger_enabled())
+    return manager_channels_for_roles(_roles(user))
 
 
 def messenger_enabled() -> bool:
@@ -263,24 +274,50 @@ def conv_window(conv, now=None):
 def channel_users(channel) -> list:
     """Enabled users who work `channel` — push and realtime recipients and
     the assignment roster. WhatsApp is `inbox_users()` unchanged; Messenger
-    mirrors it with the Messenger roles (System Managers only while nobody
-    holds one)."""
+    is the Messenger Agent / Manager holders only — no System Manager
+    fallback. Nobody holding one means nobody is alerted (logged once a day)."""
     from opportunity_management.opportunity_management.whatsapp_utils import inbox_users
 
     if channel_of(channel) == WHATSAPP:
         return inbox_users()
     from opportunity_management.opportunity_management.business_hooks import _users_with_role
 
-    users, seen = [], {"Administrator", "Guest"}
-    for roles in (MESSENGER_ROLES, (SYSTEM_MANAGER,)):
-        for role in roles:
-            for email in _users_with_role(role):
-                if email and email not in seen:
-                    seen.add(email)
-                    users.append(email)
-        if users:
-            break
+    users = messenger_recipients([u for role in MESSENGER_ROLES for u in _users_with_role(role)])
+    if not users:
+        _log_no_messenger_roles()
     return users
+
+
+def _log_no_messenger_roles():
+    """One Error Log a day while no enabled user holds a Messenger role."""
+    import frappe
+    from frappe.utils import nowdate
+
+    try:
+        key = "messenger:no_role_holders:" + nowdate()
+        cache = frappe.cache()
+        if cache.get_value(key):
+            return
+        cache.set_value(key, 1, expires_in_sec=26 * 60 * 60)
+        frappe.log_error(
+            "No enabled user holds Messenger Agent / Messenger Manager: Messenger "
+            "chats reach nobody (no team alerts, nobody can open them).",
+            "Messenger: no role holders",
+        )
+    except Exception:
+        pass
+
+
+def reaches_assignee(conv) -> bool:
+    """May `conv`'s assignee get its pushes / realtime events? Always for
+    WhatsApp (unchanged); for Messenger only while the assignee still holds
+    a Messenger role (an old assignment must not leak the channel)."""
+    user = conv.get("assigned_to") if conv is not None else None
+    if not user:
+        return False
+    if conv_channel(conv) != MESSENGER:
+        return True
+    return MESSENGER in user_channels(user)
 
 
 def roster(channels) -> list:

@@ -2,6 +2,7 @@
 Bench-free tests for the inbox channel layer (WhatsApp + Messenger):
 
     inbox_channels.channels_for_roles / manager_channels_for_roles / caps_for
+    / messenger_recipients / reaches_assignee (WhatsApp half)
     / window_state / channel_sql / agents_with_channels / conv_channel
 
     python3 opportunity_management/opportunity_management/tests/test_inbox_channels_pure.py
@@ -54,16 +55,21 @@ class TestAccess(unittest.TestCase):
         roles = {"Messenger Manager", "WhatsApp Agent"}
         self.assertEqual(IC.channels_for_roles(roles, WA_ROLES), ["WhatsApp", "Messenger"])
 
-    def test_system_manager_all(self):
-        self.assertEqual(IC.channels_for_roles({"System Manager"}, WA_ROLES), ["WhatsApp", "Messenger"])
+    def test_system_manager_is_whatsapp_only(self):
+        # Messenger never follows from System Manager — only explicit roles.
+        self.assertEqual(IC.channels_for_roles({"System Manager"}, WA_ROLES), ["WhatsApp"])
+        self.assertEqual(IC.manager_channels_for_roles({"System Manager"}), ["WhatsApp"])
 
-    def test_system_manager_messenger_only_when_enabled(self):
-        # Until Messenger is switched on, a System Manager's inbox is WhatsApp's.
-        self.assertEqual(IC.channels_for_roles({"System Manager"}, WA_ROLES, False), ["WhatsApp"])
-        self.assertEqual(IC.manager_channels_for_roles({"System Manager"}, False), ["WhatsApp"])
-        # An explicit Messenger role is honoured either way.
-        self.assertEqual(IC.channels_for_roles({"Messenger Agent"}, WA_ROLES, False), ["Messenger"])
-        self.assertEqual(IC.manager_channels_for_roles({"Messenger Manager"}, False), ["Messenger"])
+    def test_system_manager_with_messenger_role(self):
+        roles = {"System Manager", "Messenger Agent"}
+        self.assertEqual(IC.channels_for_roles(roles, WA_ROLES), ["WhatsApp", "Messenger"])
+        self.assertEqual(IC.manager_channels_for_roles(roles), ["WhatsApp"])
+        roles = {"System Manager", "Messenger Manager"}
+        self.assertEqual(IC.manager_channels_for_roles(roles), ["WhatsApp", "Messenger"])
+
+    def test_messenger_manager_is_messenger(self):
+        self.assertEqual(IC.channels_for_roles({"Messenger Manager"}, WA_ROLES), ["Messenger"])
+        self.assertEqual(IC.manager_channels_for_roles({"Messenger Manager"}), ["Messenger"])
 
     def test_nobody(self):
         self.assertEqual(IC.channels_for_roles({"Employee"}, WA_ROLES), [])
@@ -72,7 +78,25 @@ class TestAccess(unittest.TestCase):
         self.assertEqual(IC.manager_channels_for_roles({"WhatsApp Manager", "Messenger Agent"}), ["WhatsApp"])
         self.assertEqual(IC.manager_channels_for_roles({"Messenger Manager"}), ["Messenger"])
         self.assertEqual(IC.manager_channels_for_roles({"WhatsApp Agent"}), [])
-        self.assertEqual(IC.manager_channels_for_roles({"System Manager"}), ["WhatsApp", "Messenger"])
+        self.assertEqual(IC.manager_channels_for_roles({"System Manager"}), ["WhatsApp"])
+
+
+class TestMessengerRecipients(unittest.TestCase):
+    def test_skips_seen_and_system_users(self):
+        holders = ["m1@x", "Administrator", "m2@x", "", None, "Guest", "m1@x"]
+        self.assertEqual(IC.messenger_recipients(holders, {"m2@x"}), ["m1@x"])
+
+    def test_every_manager_when_nobody_seen(self):
+        self.assertEqual(IC.messenger_recipients(["a@x", "b@x"]), ["a@x", "b@x"])
+
+    def test_does_not_mutate_seen(self):
+        seen = {"a@x"}
+        IC.messenger_recipients(["a@x", "b@x"], seen)
+        self.assertEqual(seen, {"a@x"})
+
+    def test_reaches_assignee_whatsapp_always(self):
+        self.assertTrue(IC.reaches_assignee({"channel": "", "assigned_to": "sm@x"}))
+        self.assertFalse(IC.reaches_assignee({"channel": "WhatsApp", "assigned_to": ""}))
 
 
 class TestCaps(unittest.TestCase):
