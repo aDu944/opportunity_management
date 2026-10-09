@@ -166,9 +166,15 @@ override_doctype_class = {
 # from Meta (frappe_whatsapp on_trash). See whatsapp_templates.py.
 permission_query_conditions = {
     "WhatsApp Templates": "opportunity_management.opportunity_management.whatsapp_templates.template_query_conditions",
+    # Channel scoping: a Messenger-only agent never lists WhatsApp rows (and
+    # vice versa) through Desk or /api/resource — the inbox API already does.
+    "WhatsApp Conversation": "opportunity_management.opportunity_management.inbox_permissions.conversation_query_conditions",
+    "WhatsApp Message": "opportunity_management.opportunity_management.inbox_permissions.message_query_conditions",
 }
 has_permission = {
     "WhatsApp Templates": "opportunity_management.opportunity_management.whatsapp_templates.template_has_permission",
+    "WhatsApp Conversation": "opportunity_management.opportunity_management.inbox_permissions.conversation_has_permission",
+    "WhatsApp Message": "opportunity_management.opportunity_management.inbox_permissions.message_has_permission",
 }
 
 # ============================================================================
