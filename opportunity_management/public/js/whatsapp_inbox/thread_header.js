@@ -13,6 +13,9 @@
 import * as api from "./api.js";
 import { avatar_html } from "./avatar.js";
 import { agents_for, badge_html, is_manager_of } from "./channels.js";
+import { flag_tooltip } from "./conversation_list.js";
+
+const FLAG_NOTE_MAX = 140;
 
 function esc(value) {
 	return frappe.utils.escape_html(value == null ? "" : String(value));
@@ -58,6 +61,9 @@ export class ThreadHeader {
 			conv.handle || "",
 			conv.avatar_url || "",
 			conv.channel || "",
+			!!conv.is_flagged,
+			conv.flagged_by || "",
+			conv.flag_note || "",
 		]);
 	}
 
@@ -119,6 +125,15 @@ export class ThreadHeader {
 		)}</button>`)
 			.on("click", () => this.set_status(resolved ? "Open" : "Resolved"))
 			.appendTo($actions);
+		// Shared team flag — anyone on the channel; a Resolved thread can't carry one.
+		if (conv.is_flagged || !resolved) {
+			$(`<button class="btn btn-xs btn-default wa-flag-btn ${conv.is_flagged ? "active" : ""}"
+				title="${esc(conv.is_flagged ? flag_tooltip(conv) : __("Flag for the team"))}">⚑ ${esc(
+				conv.is_flagged ? __("Unflag") : __("Flag")
+			)}</button>`)
+				.on("click", () => (conv.is_flagged ? this.set_flag(false) : this.prompt_flag()))
+				.appendTo($actions);
+		}
 
 		// `focusout` fires before focus lands, so let it settle first.
 		this.$header.find(".wa-head-controls, .wa-head-tags").on("focusout", () => {
@@ -282,6 +297,38 @@ export class ThreadHeader {
 
 	set_status(status) {
 		api.set_status(this.conversation.name, status)
+			.then((row) => this.apply_conversation(row))
+			.catch((err) => this.inbox.report(err));
+	}
+
+	/** Flagging asks for an optional short note ("why"); unflagging does not. */
+	prompt_flag() {
+		const dialog = new frappe.ui.Dialog({
+			title: __("Flag conversation"),
+			fields: [
+				{
+					fieldtype: "Small Text",
+					fieldname: "note",
+					label: __("Note (optional)"),
+					description: __("Max {0} characters", [FLAG_NOTE_MAX]),
+				},
+			],
+			primary_action_label: __("Flag"),
+			primary_action: (values) => {
+				const note = ((values && values.note) || "").trim();
+				if (note.length > FLAG_NOTE_MAX) {
+					frappe.msgprint(__("Max {0} characters", [FLAG_NOTE_MAX]));
+					return;
+				}
+				dialog.hide();
+				this.set_flag(true, note);
+			},
+		});
+		dialog.show();
+	}
+
+	set_flag(flagged, note) {
+		api.set_flag(this.conversation.name, flagged, note)
 			.then((row) => this.apply_conversation(row))
 			.catch((err) => this.inbox.report(err));
 	}

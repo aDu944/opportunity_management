@@ -14,13 +14,12 @@ from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management import inbox_referrals as IR
 from opportunity_management.opportunity_management import whatsapp_assign_rules as AR
 from opportunity_management.opportunity_management import whatsapp_chat_state as CS
+from opportunity_management.opportunity_management import whatsapp_flags as FL
 from opportunity_management.opportunity_management import whatsapp_hooks
 from opportunity_management.opportunity_management import whatsapp_serializers as S
 from opportunity_management.opportunity_management.whatsapp_audio import ffmpeg_path
 from opportunity_management.opportunity_management.whatsapp_payloads import MAX_VIDEO_MB
-from opportunity_management.opportunity_management.whatsapp_identity import (
-    normalize_wa_identifier,
-)
+from opportunity_management.opportunity_management.whatsapp_identity import normalize_wa_identifier
 from opportunity_management.opportunity_management.whatsapp_templates import (
     effective_reengage_template,
 )
@@ -107,10 +106,10 @@ def list_conversations(
 ):
     """Paged conversation list.
 
-    scope: mine | unassigned | all | expired | resolved | waiting. `all` hides Resolved
+    scope: mine | unassigned | all | expired | resolved | waiting | flagged. `all` hides Resolved
     threads — the resolved pile is its own tab, not noise in the working list.
     `expired` = not Resolved and the 24h customer-service window has closed
-    (only a template can reach the customer). `waiting`: CS.WAITING_CLAUSES.
+    (only a template can reach the customer). waiting / flagged: CS.SCOPE_CLAUSES.
 
     `tag` (one name) and `tags` (JSON list or comma string) both filter on the
     conversation's tags; when several are given the conversation must carry
@@ -139,8 +138,8 @@ def list_conversations(
     elif scope == "unassigned":
         clauses.append("(c.assigned_to IS NULL OR c.assigned_to = '')")
         clauses.append("c.status != 'Resolved'")
-    elif scope == "waiting":
-        clauses.extend(CS.WAITING_CLAUSES)
+    elif scope in CS.SCOPE_CLAUSES:  # waiting | flagged — queues, own ORDER BY
+        clauses.extend(CS.SCOPE_CLAUSES[scope])
     elif scope == "resolved":
         clauses.append("c.status = 'Resolved'")
     elif scope == "expired":
@@ -195,7 +194,7 @@ def list_conversations(
         )
 
     where = " AND ".join(clauses) or "1 = 1"
-    # Pinned first (waiting: longest wait first) — in SQL, so OFFSET paging holds.
+    # Pinned first (waiting / flagged: oldest first) — in SQL, so OFFSET paging holds.
     state_select, state_join, order_by, state_params = CS.list_fragments(frappe.session.user)
     params.update(state_params)
     order_by = CS.scope_order(scope, order_by)
@@ -206,7 +205,7 @@ def list_conversations(
                c.last_message_preview, c.last_message_direction, c.unread_count,
                c.contact, c.lead, c.customer, c.opportunity, c.customer_language,
                c.notes_count, c.first_response_seconds, c.wa_username, c.wa_user_id,
-               c.is_blocked, {IC.list_select("c")}{IR.list_select("c")}{state_select}
+               c.is_blocked, {IC.list_select("c")}{IR.list_select("c")}{FL.list_select("c")}{state_select}
         FROM `tabWhatsApp Conversation` c
         {state_join}
         WHERE {where}
@@ -412,6 +411,7 @@ def set_status(conversation, status):
         values["resolved_at"] = now_datetime()
         values["resolved_by"] = frappe.session.user
         values["awaiting_reply_since"] = None
+        values.update(FL.CLEARED if FL.has_columns() else {})  # resolving clears the team flag
     else:
         values["resolved_at"] = None
         values["resolved_by"] = None

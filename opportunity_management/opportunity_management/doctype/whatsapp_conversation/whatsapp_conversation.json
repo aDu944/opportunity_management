@@ -20,6 +20,12 @@
   "assigned_to",
   "assigned_at",
   "assigned_by",
+  "section_break_flag",
+  "is_flagged",
+  "flagged_by",
+  "column_break_flag",
+  "flagged_at",
+  "flag_note",
   "section_break_tags",
   "tags",
   "customer_language",
@@ -161,6 +167,46 @@
    "label": "Assigned By",
    "options": "User",
    "read_only": 1
+  },
+  {
+   "fieldname": "section_break_flag",
+   "fieldtype": "Section Break",
+   "label": "Flag",
+   "collapsible": 1,
+   "depends_on": "eval:doc.is_flagged"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_flagged",
+   "fieldtype": "Check",
+   "label": "Flagged",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "description": "Shared team flag (set_flag). Any agent of the channel may set or clear it; resolving the conversation clears it."
+  },
+  {
+   "fieldname": "flagged_by",
+   "fieldtype": "Link",
+   "label": "Flagged By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_flag",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "flagged_at",
+   "fieldtype": "Datetime",
+   "label": "Flagged At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "flag_note",
+   "fieldtype": "Small Text",
+   "label": "Flag Note",
+   "read_only": 1,
+   "description": "Optional, at most 140 characters."
   },
   {
    "fieldname": "section_break_tags",
@@ -387,7 +433,7 @@
    "link_fieldname": "conversation"
   }
  ],
- "modified": "2026-10-05 18:00:00.000000",
+ "modified": "2026-10-14 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Opportunity Management",
  "name": "WhatsApp Conversation",

@@ -1,7 +1,7 @@
 /**
  * Left pane — the conversation queue.
  *
- * Owns the All / Mine / Unassigned / Expired / Resolved segmented control, the debounced
+ * Owns the All / Mine / Unassigned / Flagged / Expired / Resolved segmented control, the debounced
  * search box, the tag filter and the infinite scroll pager. Rows are patched
  * in place by the realtime handler in `inbox.js` (`upsert`), never re-fetched
  * wholesale, so an incoming message does not reset the reader's scroll.
@@ -16,11 +16,15 @@ import { preview_text } from "./message_info.js";
 
 // "expired" = not Resolved and the 24h customer-service window has closed
 // (only a template reaches the customer) — server scope of the same name.
-const SCOPES = ["all", "mine", "unassigned", "expired", "resolved"];
+// "flagged" = open threads carrying the shared team flag, oldest flag first.
+const SCOPES = ["all", "mine", "unassigned", "flagged", "expired", "resolved"];
+// Scopes whose chip shows the server's open count (`get_unread_count`).
+const COUNT_KEYS = { mine: "mine", unassigned: "unassigned", flagged: "flagged_open" };
 const SCOPE_LABELS = {
 	all: "All",
 	mine: "Mine",
 	unassigned: "Unassigned",
+	flagged: "Flagged",
 	expired: "Expired",
 	resolved: "Resolved",
 };
@@ -43,6 +47,19 @@ function is_newer(candidate, current) {
 	return String(candidate) > String(current);
 }
 
+/** "Flagged by Sara · 2h ago — call back after 4" */
+export function flag_tooltip(row) {
+	const who = row.flagged_by_name || row.flagged_by || "";
+	let text = who ? __("Flagged by {0}", [who]) : __("Flagged");
+	if (row.flagged_at) {
+		text += " · " + relative_time(row.flagged_at);
+	}
+	if (row.flag_note) {
+		text += " — " + row.flag_note;
+	}
+	return text;
+}
+
 export class ConversationList {
 	constructor(opts) {
 		this.$container = opts.container;
@@ -58,7 +75,7 @@ export class ConversationList {
 		this.has_more = false;
 		this.loading = false;
 		this.active = null;
-		this.counts = { mine: 0, unassigned: 0 };
+		this.counts = { mine: 0, unassigned: 0, flagged: 0 };
 		this.make();
 	}
 
@@ -176,7 +193,7 @@ export class ConversationList {
 			const scope = $el.data("scope");
 			$el.toggleClass("active", scope === this.scope);
 			let count = "";
-			if (scope === "mine" || scope === "unassigned") {
+			if (COUNT_KEYS[scope]) {
 				count = this.counts[scope] ? String(this.counts[scope]) : "";
 			} else if (scope === this.scope) {
 				count = this.rows.length + (this.has_more ? "+" : "");
@@ -186,10 +203,10 @@ export class ConversationList {
 	}
 
 	set_counts(counts) {
-		this.counts = {
-			mine: (counts && counts.mine) || 0,
-			unassigned: (counts && counts.unassigned) || 0,
-		};
+		this.counts = {};
+		Object.keys(COUNT_KEYS).forEach((scope) => {
+			this.counts[scope] = (counts && counts[COUNT_KEYS[scope]]) || 0;
+		});
 		this.render_scopes();
 	}
 
@@ -274,6 +291,9 @@ export class ConversationList {
 			row.muted ? "🔕" : "🔔"
 		}</button>
 			</span>`;
+		const flag = row.is_flagged
+			? `<span class="wa-row-flag" title="${esc(flag_tooltip(row))}">⚑</span>`
+			: "";
 		const blocked = row.is_blocked
 			? `<span class="wa-chip wa-chip-muted">${esc(__("Blocked"))}</span>`
 			: "";
@@ -283,13 +303,14 @@ export class ConversationList {
 		return `
 			<div class="wa-row ${row.name === this.active ? "active" : ""} ${
 			row.unread_count > 0 ? "unread" : ""
-		} ${row.pinned ? "pinned" : ""}" data-name="${esc(row.name)}">
+		} ${row.pinned ? "pinned" : ""} ${row.is_flagged ? "flagged" : ""}" data-name="${esc(row.name)}">
 				${avatar_html(row)}
 				<div class="wa-row-main">
 					<div class="wa-row-top">
 						${badge_html(this.inbox.meta, row)}
 						<span class="wa-row-name" dir="auto">${esc(row.display_name || row.handle || "")}</span>
 						${toggles}
+						${flag}
 						<span class="wa-row-time">${esc(relative_time(row.last_message_at))}</span>
 					</div>
 					<div class="wa-row-sub">
@@ -324,14 +345,26 @@ export class ConversationList {
 			if (!this.belongs_here(row)) {
 				return;
 			}
+			if (this.scope === "flagged") {
+				// Newest flag goes to the end of the queue (unless more pages follow).
+				if (!this.has_more) {
+					this.$body.find(".wa-empty").remove();
+					this.append(row);
+					this.render_scopes();
+				}
+				return;
+			}
 			this.prepend(row);
 			return;
 		}
 
 		const existing = this.rows[index];
-		if (this.scope === "expired" && (row.status === "Resolved" || row.window_open)) {
-			// The customer wrote back (window reopened) or it was resolved —
-			// an expired-only list must let it go rather than repaint it.
+		const gone =
+			(this.scope === "expired" && (row.status === "Resolved" || row.window_open)) ||
+			(this.scope === "flagged" && (row.status === "Resolved" || !row.is_flagged));
+		if (gone) {
+			// The customer wrote back (window reopened), it was resolved or
+			// unflagged — a filtered list must let it go rather than repaint it.
 			this.rows.splice(index, 1);
 			this.$body.find(`.wa-row[data-name="${row.name}"]`).remove();
 			this.render_scopes();
@@ -341,7 +374,8 @@ export class ConversationList {
 			row = Object.assign({}, row, { unread_count: existing.unread_count });
 		}
 		const $existing = this.$body.find(`.wa-row[data-name="${row.name}"]`);
-		if (is_newer(row.last_message_at, existing.last_message_at)) {
+		// The flagged queue is ordered by flag age, not activity: repaint in place.
+		if (this.scope !== "flagged" && is_newer(row.last_message_at, existing.last_message_at)) {
 			this.rows.splice(index, 1);
 			$existing.remove();
 			this.prepend(row);
@@ -391,6 +425,9 @@ export class ConversationList {
 		}
 		if (this.scope === "expired") {
 			return row.status !== "Resolved" && !row.window_open;
+		}
+		if (this.scope === "flagged") {
+			return row.status !== "Resolved" && !!row.is_flagged;
 		}
 		if (this.scope === "resolved") {
 			return row.status === "Resolved";

@@ -12,6 +12,7 @@ from frappe.utils import cint, now_datetime
 
 from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management import whatsapp_chat_state as CS
+from opportunity_management.opportunity_management import whatsapp_flags as FL
 from opportunity_management.opportunity_management import whatsapp_hooks
 from opportunity_management.opportunity_management import whatsapp_payloads as P
 from opportunity_management.opportunity_management import whatsapp_reactions as R
@@ -229,6 +230,8 @@ def _set_blocked(conversation, blocked):
                 "awaiting_reply_since": None,
             }
         )
+        if FL.has_columns():
+            values.update(FL.CLEARED)  # blocking resolves, and a Resolve clears the flag
     for field, value in values.items():
         conv.set(field, value)
     frappe.db.set_value("WhatsApp Conversation", conv.name, values, update_modified=False)

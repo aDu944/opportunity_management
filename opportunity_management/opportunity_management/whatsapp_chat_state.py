@@ -49,11 +49,23 @@ WAITING_CLAUSES = (
 )
 WAITING_ORDER = "c.awaiting_reply_since ASC, c.modified DESC"
 
+# `list_conversations(scope="flagged")`: open threads carrying the shared team
+# flag (whatsapp_flags), oldest flag first.
+FLAGGED_CLAUSES = (
+    "c.status != 'Resolved'",
+    "COALESCE(c.is_flagged, 0) = 1",
+)
+FLAGGED_ORDER = "c.flagged_at ASC, c.modified DESC"
+
+# The queue scopes: their own WHERE clauses and their own ORDER BY.
+SCOPE_CLAUSES = {"waiting": WAITING_CLAUSES, "flagged": FLAGGED_CLAUSES}
+SCOPE_ORDERS = {"waiting": WAITING_ORDER, "flagged": FLAGGED_ORDER}
+
 
 def scope_order(scope, order):
-    """ORDER BY for a list scope: `waiting` is a queue (oldest wait first,
-    pins do not jump it); every other scope keeps `order`."""
-    return WAITING_ORDER if scope == "waiting" else order
+    """ORDER BY for a list scope: `waiting` and `flagged` are queues (oldest
+    first, pins do not jump them); every other scope keeps `order`."""
+    return SCOPE_ORDERS.get(scope, order)
 
 
 def list_fragments(user):

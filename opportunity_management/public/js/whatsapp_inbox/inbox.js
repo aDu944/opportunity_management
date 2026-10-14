@@ -262,6 +262,12 @@ export class WhatsAppInbox {
 		}
 
 		if (payload.event === "conversation") {
+			// A flag set / cleared by a teammate (or a Resolve) moves the
+			// Flagged count; a row not on screen may have changed too.
+			const before = this.list.get_row(conv.name);
+			if (!before || !!before.is_flagged !== !!conv.is_flagged) {
+				this.refresh_counts();
+			}
 			this.list.upsert(conv, { keep_unread: true });
 			if (is_open) {
 				Object.assign(this.current, conv);

@@ -78,6 +78,10 @@ from opportunity_management.opportunity_management.whatsapp_api_chat import (  #
     unblock_contact,
 )
 
+from opportunity_management.opportunity_management.whatsapp_api_flags import (  # noqa: F401
+    set_flag,
+)
+
 from opportunity_management.opportunity_management.whatsapp_api_crm import (  # noqa: F401
     create_lead_from_conversation,
     get_inbox_stats,
@@ -130,6 +134,8 @@ __all__ = [
     "block_contact",
     "unblock_contact",
     "set_chat_state",
+    # shared team flag
+    "set_flag",
     # CRM
     "link_crm",
     "unlink_crm",

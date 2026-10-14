@@ -18,6 +18,7 @@ from frappe.utils import get_datetime, now_datetime
 
 from opportunity_management.opportunity_management import ad_referrals as AR
 from opportunity_management.opportunity_management import inbox_channels as IC
+from opportunity_management.opportunity_management import whatsapp_flags as FL
 from opportunity_management.opportunity_management.whatsapp_payloads import decorate_item
 from opportunity_management.opportunity_management.whatsapp_identity import (
     clean_username,
@@ -183,10 +184,10 @@ def _guess_mime(file_url):
 
 # ── ConvRow ──────────────────────────────────────────────────────────────────
 
-def conv_row(conv, tags=None, assignee_name=None, now=None, images=None, state=None):
+def conv_row(conv, tags=None, assignee_name=None, now=None, images=None, state=None, flagger_name=None):
     """Serialize one conversation. `tags` / `assignee_name` / `images` /
-    `state` are injectable so `conv_rows()` can resolve a whole page in a
-    few queries. `state` is the session user's {pinned, muted}."""
+    `state` / `flagger_name` are injectable so `conv_rows()` can resolve a
+    whole page in a few queries. `state` is the session user's {pinned, muted}."""
     if isinstance(conv, str):
         conv = frappe.get_doc("WhatsApp Conversation", conv)
     if state is None:
@@ -252,6 +253,7 @@ def conv_row(conv, tags=None, assignee_name=None, now=None, images=None, state=N
         "channel": channel,
         "caps": IC.caps_for(channel),
         "ad": AR.public_ad(_g(conv, "ad_referral")),  # latest ad / post / link
+        **FL.flag_fields(conv, flagger_name, _iso),  # the shared team flag (whatsapp_flags)
     }
     if messenger:
         # PSID `FB.<id>`: no phone, no handle; the window has a 7-day tier;
@@ -286,7 +288,7 @@ def conv_rows(rows):
         return []
     names = [_g(r, "name") for r in rows]
     tag_map = _tags_for(names)
-    name_map = _full_names([_g(r, "assigned_to") for r in rows])
+    name_map = _full_names([_g(r, f) for r in rows for f in ("assigned_to", "flagged_by")])
     images = _avatar_map(rows)
     now = now_datetime()
     if isinstance(rows[0], dict) and "pinned" in rows[0]:
@@ -301,6 +303,7 @@ def conv_rows(rows):
             r,
             tags=tag_map.get(_g(r, "name"), []),
             assignee_name=name_map.get(_g(r, "assigned_to"), ""),
+            flagger_name=name_map.get(_g(r, "flagged_by"), ""),
             now=now,
             images=images,
             state=state_of(r),

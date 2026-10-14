@@ -15,3 +15,4 @@ opportunity_management.patches.seed_shareholder_settings
 opportunity_management.patches.seed_checkin_exempt
 opportunity_management.patches.seed_review_accounts
 opportunity_management.patches.seed_saturday_hours
+opportunity_management.patches.add_whatsapp_flag_fields

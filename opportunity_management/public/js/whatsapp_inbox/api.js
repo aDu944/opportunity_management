@@ -114,6 +114,9 @@ export const block_contact = (conversation) => call("block_contact", { conversat
 export const unblock_contact = (conversation) => call("unblock_contact", { conversation });
 // `pinned` / `muted`: 0 | 1, or omitted to leave as is.
 export const set_chat_state = (args) => call("set_chat_state", args);
+// The shared team flag: `flagged` 0 | 1, optional `note` (≤ 140 chars).
+export const set_flag = (conversation, flagged, note) =>
+	call("set_flag", { conversation, flagged: flagged ? 1 : 0, note: note || undefined });
 export const link_crm = (conversation, doctype, name) =>
 	call("link_crm", { conversation, doctype, name });
 export const unlink_crm = (conversation, doctype) => call("unlink_crm", { conversation, doctype });

@@ -9,6 +9,7 @@ import frappe
 from frappe.utils import cint
 
 from opportunity_management.opportunity_management import inbox_channels as IC
+from opportunity_management.opportunity_management import whatsapp_flags as FL
 from opportunity_management.opportunity_management.whatsapp_api_common import (
     _require_inbox_access,
 )
@@ -29,7 +30,8 @@ def get_unread_count():
 
     The totals cover every channel the caller may use; `by_channel` splits
     them ({"WhatsApp": {mine, unassigned, waiting_mine, waiting_unassigned,
-    mine_open, unassigned_open}}).
+    mine_open, unassigned_open, flagged_open}}). `flagged_open`: open chats
+    carrying the shared team flag (whatsapp_flags), whoever they belong to.
     """
     _require_inbox_access()
     channels = IC.user_channels()
@@ -51,11 +53,13 @@ def get_unread_count():
                       AND COALESCE(is_blocked, 0) = 0
                      THEN 1 ELSE 0 END) AS waiting_unassigned,
             SUM(CASE WHEN assigned_to = %(me)s THEN 1 ELSE 0 END) AS mine_open,
-            SUM(CASE WHEN assigned_to IS NULL OR assigned_to = '' THEN 1 ELSE 0 END) AS unassigned_open
+            SUM(CASE WHEN assigned_to IS NULL OR assigned_to = '' THEN 1 ELSE 0 END) AS unassigned_open,
+            {flagged}
         FROM `tabWhatsApp Conversation`
         WHERE status != 'Resolved' {where}
         {group}
         """.format(
+            flagged=FL.count_select(),
             channel="COALESCE(NULLIF(channel, ''), 'WhatsApp') AS channel," if grouped else "",
             where="AND " + where if where else "",
             group="GROUP BY COALESCE(NULLIF(channel, ''), 'WhatsApp')" if grouped else "",
@@ -63,7 +67,8 @@ def get_unread_count():
         {"me": frappe.session.user},
         as_dict=True,
     )
-    keys = ("mine", "unassigned", "waiting_mine", "waiting_unassigned", "mine_open", "unassigned_open")
+    keys = ("mine", "unassigned", "waiting_mine", "waiting_unassigned", "mine_open", "unassigned_open",
+            "flagged_open")
     by_channel = {ch: dict.fromkeys(keys, 0) for ch in channels}
     for r in rows:
         ch = IC.channel_of(r.get("channel"))
@@ -80,5 +85,6 @@ def get_unread_count():
         # filter chips show these so "My Chats (2)" means two chats.
         "mine_open": out["mine_open"],
         "unassigned_open": out["unassigned_open"],
+        "flagged_open": out["flagged_open"],
         "by_channel": by_channel,
     }
