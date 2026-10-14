@@ -262,6 +262,18 @@ class TestPagingOrderingAndDecoration(unittest.TestCase):
         select, join, order = CS.list_sql(False)
         self.assertEqual((join, order), ("", "c.last_message_at DESC, c.modified DESC"))
 
+    def test_waiting_scope_where_and_order(self):
+        self.assertEqual(set(CS.WAITING_CLAUSES), {
+            "c.status != 'Resolved'",
+            "COALESCE(c.is_blocked, 0) = 0",
+            "c.awaiting_reply_since IS NOT NULL",
+        })
+        self.assertEqual(CS.scope_order("waiting", "X"), "c.awaiting_reply_since ASC, c.modified DESC")
+        _, _, pinned = CS.list_sql(True)
+        for scope in ("all", "mine", "unassigned", "expired", "resolved"):
+            self.assertEqual(CS.scope_order(scope, pinned), pinned)
+        self.assertNotIn("%", " ".join(CS.WAITING_CLAUSES) + CS.WAITING_ORDER)
+
     def test_decorate_location_row(self):
         row = {"custom_payload": json.dumps({"kind": "location", "location": {"latitude": 1.0}}),
                "custom_read_at": "2026-10-03 10:00:00.123456", "custom_error": ""}

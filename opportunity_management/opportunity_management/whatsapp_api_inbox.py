@@ -107,10 +107,10 @@ def list_conversations(
 ):
     """Paged conversation list.
 
-    scope: mine | unassigned | all | expired | resolved. `all` hides Resolved
+    scope: mine | unassigned | all | expired | resolved | waiting. `all` hides Resolved
     threads — the resolved pile is its own tab, not noise in the working list.
     `expired` = not Resolved and the 24h customer-service window has closed
-    (only a template can reach the customer).
+    (only a template can reach the customer). `waiting`: CS.WAITING_CLAUSES.
 
     `tag` (one name) and `tags` (JSON list or comma string) both filter on the
     conversation's tags; when several are given the conversation must carry
@@ -139,6 +139,8 @@ def list_conversations(
     elif scope == "unassigned":
         clauses.append("(c.assigned_to IS NULL OR c.assigned_to = '')")
         clauses.append("c.status != 'Resolved'")
+    elif scope == "waiting":
+        clauses.extend(CS.WAITING_CLAUSES)
     elif scope == "resolved":
         clauses.append("c.status = 'Resolved'")
     elif scope == "expired":
@@ -193,13 +195,14 @@ def list_conversations(
         )
 
     where = " AND ".join(clauses) or "1 = 1"
-    # The caller's pinned threads first — in SQL, so OFFSET paging holds.
+    # Pinned first (waiting: longest wait first) — in SQL, so OFFSET paging holds.
     state_select, state_join, order_by, state_params = CS.list_fragments(frappe.session.user)
     params.update(state_params)
+    order_by = CS.scope_order(scope, order_by)
     rows = frappe.db.sql(
         f"""
         SELECT c.name, c.phone, c.display_name, c.whatsapp_account, c.status,
-               c.assigned_to, c.last_message_at, c.last_inbound_at,
+               c.assigned_to, c.last_message_at, c.last_inbound_at, c.awaiting_reply_since,
                c.last_message_preview, c.last_message_direction, c.unread_count,
                c.contact, c.lead, c.customer, c.opportunity, c.customer_language,
                c.notes_count, c.first_response_seconds, c.wa_username, c.wa_user_id,

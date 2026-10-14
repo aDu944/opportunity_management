@@ -225,6 +225,7 @@ def conv_row(conv, tags=None, assignee_name=None, now=None, images=None, state=N
         "tags": tags or [],
         "last_message_at": _iso(_g(conv, "last_message_at")),
         "last_inbound_at": _iso(_g(conv, "last_inbound_at")),
+        "awaiting_reply_since": _iso(_g(conv, "awaiting_reply_since")),
         "last_message_preview": _g(conv, "last_message_preview", "") or "",
         "last_message_direction": _g(conv, "last_message_direction", "") or "",
         "unread_count": int(_g(conv, "unread_count", 0) or 0),

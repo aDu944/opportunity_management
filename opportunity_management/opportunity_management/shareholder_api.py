@@ -321,19 +321,43 @@ def get_chat_oversight():
     where = IC.list_channel_sql("", channels)
     ch = " AND " + where if where else ""
 
+    today = f"{nowdate()} 00:00:00"
+
     def _counts():
         r = frappe.db.sql(
             """SELECT
                  SUM(CASE WHEN awaiting_reply_since IS NOT NULL
                            AND COALESCE(is_blocked, 0) = 0 THEN 1 ELSE 0 END) AS waiting,
                  SUM(CASE WHEN assigned_to IS NULL OR assigned_to = ''
-                          THEN 1 ELSE 0 END) AS unassigned
+                          THEN 1 ELSE 0 END) AS unassigned,
+                 SUM(CASE WHEN awaiting_reply_since >= %(today)s
+                           AND COALESCE(is_blocked, 0) = 0 THEN 1 ELSE 0 END) AS waiting_today,
+                 MIN(CASE WHEN COALESCE(is_blocked, 0) = 0
+                          THEN awaiting_reply_since END) AS oldest
                FROM `tabWhatsApp Conversation`
                WHERE status != 'Resolved'""" + ch,
+            {"today": today},
             as_dict=True,
         )
         r = r[0] if r else {}
-        return cint(r.get("waiting")), cint(r.get("unassigned"))
+        longest = 0
+        if r.get("oldest"):
+            longest = max(0, int((now_datetime() - get_datetime(r["oldest"])).total_seconds()))
+        return {"waiting": cint(r.get("waiting")), "unassigned": cint(r.get("unassigned")),
+                "waiting_today": cint(r.get("waiting_today")), "longest_wait_seconds": longest}
+
+    def _replied_today():
+        # Threads a human answered today: an Outgoing message with
+        # custom_sent_by set (inbox sends) that is not an auto-reply.
+        mch = IC.list_channel_sql("c", channels)
+        return cint(frappe.db.sql(
+            """SELECT COUNT(DISTINCT m.custom_conversation)
+               FROM `tabWhatsApp Message` m
+               JOIN `tabWhatsApp Conversation` c ON c.name = m.custom_conversation
+               WHERE m.type = 'Outgoing' AND m.creation >= %(today)s
+                 AND COALESCE(m.custom_sent_by, '') != ''
+                 AND COALESCE(m.custom_is_auto, 0) = 0""" + (" AND " + mch if mch else ""),
+            {"today": today})[0][0])
 
     def _median_reply():
         since = f"{add_days(nowdate(), -7)} 00:00:00"
@@ -361,10 +385,14 @@ def get_chat_oversight():
         out.sort(key=lambda a: (-a["open_count"], str(a["full_name"]).lower()))
         return out
 
-    waiting, unassigned = _safe("oversight counts", _counts, (0, 0))
+    counts = _safe("oversight counts", _counts, {
+        "waiting": 0, "unassigned": 0, "waiting_today": 0, "longest_wait_seconds": 0})
     return {
-        "waiting": waiting,
-        "unassigned": unassigned,
+        "waiting": counts["waiting"],
+        "unassigned": counts["unassigned"],
+        "waiting_today": counts["waiting_today"],
+        "longest_wait_seconds": counts["longest_wait_seconds"],
+        "replied_today": _safe("replied today", _replied_today, 0),
         "median_first_response_seconds": _safe("median first reply", _median_reply, 0),
         "agents": _safe("agents", _agents, []),
     }

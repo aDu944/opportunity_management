@@ -40,6 +40,22 @@ def list_sql(ready):
     )
 
 
+# `list_conversations(scope="waiting")`: open threads whose customer is owed a
+# reply (same rule as get_unread_count's waiting_* counts), longest wait first.
+WAITING_CLAUSES = (
+    "c.status != 'Resolved'",
+    "COALESCE(c.is_blocked, 0) = 0",
+    "c.awaiting_reply_since IS NOT NULL",
+)
+WAITING_ORDER = "c.awaiting_reply_since ASC, c.modified DESC"
+
+
+def scope_order(scope, order):
+    """ORDER BY for a list scope: `waiting` is a queue (oldest wait first,
+    pins do not jump it); every other scope keeps `order`."""
+    return WAITING_ORDER if scope == "waiting" else order
+
+
 def list_fragments(user):
     select, join, order = list_sql(_ready())
     return select, join, order, {"state_user": user}
