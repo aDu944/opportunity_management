@@ -87,6 +87,10 @@ from opportunity_management.opportunity_management.whatsapp_api_crm import (  # 
     unlink_crm,
 )
 
+from opportunity_management.opportunity_management.whatsapp_api_customer import (  # noqa: F401
+    get_customer_info,
+)
+
 # The endpoint names of plan §1.7 + §5, plus `react` and the round-3 additions
 # (wa_round3_contract.md). Anything not listed here is not
 # part of the contract.
@@ -132,6 +136,8 @@ __all__ = [
     "search_crm",
     "create_lead_from_conversation",
     "list_conversations_for_crm",
+    # customer info screen
+    "get_customer_info",
     # analytics
     "get_inbox_stats",
 ]
