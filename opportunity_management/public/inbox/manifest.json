@@ -1,16 +1,36 @@
 {
-    "name": "ALKHORA Team Inbox",
-    "short_name": "Team Inbox",
-    "start_url": ".",
-    "display": "standalone",
-    "background_color": "#0E2647",
-    "theme_color": "#0E2647",
-    "description": "ALKHORA ESS — WhatsApp and Messenger team inbox.",
-    "prefer_related_applications": false,
-    "icons": [
-        {"src": "icons/Icon-192.png", "sizes": "192x192", "type": "image/png"},
-        {"src": "icons/Icon-512.png", "sizes": "512x512", "type": "image/png"},
-        {"src": "icons/Icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
-        {"src": "icons/Icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
-    ]
+  "name": "ALKHORA Team Inbox",
+  "short_name": "Team Inbox",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#0E2647",
+  "theme_color": "#0E2647",
+  "description": "ALKHORA ESS — WhatsApp and Messenger team inbox.",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icons/Icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/Icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/Icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/Icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "scope": "./",
+  "id": "alkhora-team-inbox"
 }
