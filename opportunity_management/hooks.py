@@ -240,8 +240,27 @@ website_route_rules = [
 # Team Inbox web app (Flutter web build committed to public/inbox/, served
 # from the app's public symlink). Flutter uses the hash URL strategy, so deep
 # links like /inbox#/chats/WAC-00012 keep their fragment through the redirect.
+
+
+def _inbox_index():
+    """`/inbox` → the current versioned web build. Everything under /assets is
+    cached for a year (nginx + Cloudflare), so each build lives in its own
+    folder and `public/inbox/CURRENT` names the live one (written by
+    mobile/tool/build_inbox_web.sh). Read at import: a new build needs a web
+    restart. Falls back to the placeholder index when CURRENT is missing."""
+    import os
+
+    base = "/assets/opportunity_management/inbox"
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "public", "inbox", "CURRENT")) as fh:
+            version = fh.read().strip()
+        return f"{base}/{version}/index.html" if version else f"{base}/index.html"
+    except OSError:
+        return f"{base}/index.html"
+
+
 website_redirects = [
-    {"source": "/inbox", "target": "/assets/opportunity_management/inbox/index.html"},
+    {"source": "/inbox", "target": _inbox_index()},
 ]
 
 # ============================================================================

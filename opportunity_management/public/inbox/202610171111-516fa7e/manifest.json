@@ -1,7 +1,7 @@
 {
   "name": "ALKHORA Team Inbox",
   "short_name": "Team Inbox",
-  "start_url": "index.html",
+  "start_url": "/inbox",
   "display": "standalone",
   "background_color": "#0E2647",
   "theme_color": "#0E2647",
@@ -31,6 +31,6 @@
       "purpose": "maskable"
     }
   ],
-  "scope": "./",
-  "id": "alkhora-team-inbox"
+  "scope": "/",
+  "id": "/inbox"
 }
