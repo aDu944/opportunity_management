@@ -1,8 +1,8 @@
 """Server-side shim for the `whatsapp-inbox` Desk page.
 
-Deliberately empty. Unlike `page/employee_team_assignment/`, this page owns
-no endpoints of its own: every call the bundle makes goes to the shared
-inbox contract in
+Deliberately empty. The page is now only a card forwarding to the `/inbox`
+web app (the three-pane Desk UI was retired). The inbox endpoints live in the
+shared contract in
 `opportunity_management.opportunity_management.whatsapp_api` (plan §1.7),
 which mobile binds to as well. Adding a whitelisted method here would fork
 that contract, so new endpoints belong in `whatsapp_api` (and its

@@ -237,6 +237,13 @@ website_route_rules = [
     {"from_route": "/opportunity-kpi", "to_route": "Opportunity KPI"},
 ]
 
+# Team Inbox web app (Flutter web build committed to public/inbox/, served
+# from the app's public symlink). Flutter uses the hash URL strategy, so deep
+# links like /inbox#/chats/WAC-00012 keep their fragment through the redirect.
+website_redirects = [
+    {"source": "/inbox", "target": "/assets/opportunity_management/inbox/index.html"},
+]
+
 # ============================================================================
 # Fixtures (Optional - for exporting custom fields, etc.)
 # ============================================================================
@@ -368,9 +375,10 @@ doctype_js = {
     "Lead": "public/js/whatsapp_crm_form.js",
     "Customer": "public/js/whatsapp_crm_form.js",
 }
+# The three-pane Desk inbox was retired for the /inbox web app; only the CRM
+# form section and the `whatsapp-inbox` page's forwarding card need styles.
 app_include_css = [
-    "/assets/opportunity_management/css/whatsapp_inbox.css",
-    "/assets/opportunity_management/css/whatsapp_inbox_panes.css",
+    "/assets/opportunity_management/css/whatsapp_crm_form.css",
 ]
 
 # ============================================================================

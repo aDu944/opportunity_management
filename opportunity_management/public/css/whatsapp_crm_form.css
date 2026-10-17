@@ -1,0 +1,85 @@
+/*
+ * Desk styles still needed after the three-pane Desk inbox was retired
+ * (the inbox now lives at /inbox, see public/inbox/README.md):
+ *   - the "WhatsApp" dashboard section on Contact / Lead / Customer forms
+ *     (public/js/whatsapp_crm_form.js)
+ *   - the forwarding card on the `whatsapp-inbox` Desk page.
+ * Built on Frappe's CSS variables so it follows the Desk light/dark theme.
+ */
+
+:root {
+	--wa-green: #25d366;
+}
+
+/* ── CRM form dashboard section ─────────────────────────────────────────── */
+
+.wa-crm-section .wa-crm-conv {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	justify-content: space-between;
+	padding: 4px 0;
+	border-bottom: 1px solid var(--border-color);
+}
+
+.wa-crm-section .wa-crm-conv:last-child { border-bottom: none; }
+
+.wa-unread-pill {
+	flex: none;
+	min-width: 18px;
+	padding: 0 5px;
+	text-align: center;
+	font-size: var(--text-xs, 11px);
+	line-height: 18px;
+	color: #fff;
+	background: var(--wa-green);
+	border-radius: 9px;
+}
+
+.wa-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0 6px;
+	font-size: var(--text-xs, 11px);
+	color: var(--text-color);
+	background: var(--control-bg);
+	border-radius: 10px;
+}
+
+.wa-link {
+	color: var(--primary);
+	cursor: pointer;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+/* ── whatsapp-inbox Desk page: "moved" card ─────────────────────────────── */
+
+.wa-moved {
+	display: flex;
+	justify-content: center;
+	padding: 64px 16px;
+}
+
+.wa-moved-card {
+	width: 100%;
+	max-width: 440px;
+	padding: 32px 28px;
+	text-align: center;
+	background: var(--card-bg, var(--fg-color));
+	border: 1px solid var(--border-color);
+	border-radius: var(--border-radius-lg, 12px);
+	box-shadow: var(--card-shadow, none);
+}
+
+.wa-moved-card h3 { margin: 0 0 8px; font-weight: 600; }
+
+.wa-moved-card p { margin: 0 0 20px; color: var(--text-muted); }
+
+.wa-moved-url {
+	margin-top: 16px;
+	font-size: var(--text-sm, 12px);
+	color: var(--text-muted);
+	overflow-wrap: anywhere;
+}

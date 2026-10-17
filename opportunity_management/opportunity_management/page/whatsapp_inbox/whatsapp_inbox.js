@@ -1,48 +1,52 @@
-frappe.provide("opportunity_management");
+/**
+ * The three-pane Desk inbox was retired: the Team Inbox is now a web app at
+ * `/inbox` (hooks.py `website_redirects` → public/inbox/). This page keeps its
+ * name and roles so existing links, the workspace shortcut and the "Open in
+ * Inbox" buttons on CRM / Conversation forms still land somewhere, and just
+ * forwards to the new screen. Styles live in public/css/whatsapp_crm_form.css.
+ */
 
 frappe.pages["whatsapp-inbox"].on_page_load = function (wrapper) {
-	const page = frappe.ui.make_app_page({
+	frappe.ui.make_app_page({
 		parent: wrapper,
-		title: __("WhatsApp Inbox"),
+		title: __("Team Inbox"),
 		single_column: true,
 	});
 
-	// The app lives in a bundle so the seven ES modules ship as one asset and
-	// are only fetched when somebody actually opens the inbox.
-	frappe.require("whatsapp_inbox.bundle.js").then(() => {
-		wrapper.whatsapp_inbox = new opportunity_management.WhatsAppInbox(page, wrapper);
-		open_routed_conversation(wrapper);
+	const $card = $(`
+		<div class="wa-moved">
+			<div class="wa-moved-card">
+				<h3>${__("Team Inbox")}</h3>
+				<p>${__("The inbox has moved to its own screen.")}</p>
+				<button class="btn btn-primary btn-open-inbox">${__("Open the Team Inbox")}</button>
+				<div class="wa-moved-url"></div>
+			</div>
+		</div>
+	`);
+	$(wrapper).find(".layout-main-section").append($card);
+	$card.find(".btn-open-inbox").on("click", () => {
+		window.open(wrapper.inbox_target || "/inbox", "_blank");
 	});
+	update_target(wrapper, false);
 };
 
 frappe.pages["whatsapp-inbox"].on_page_show = function (wrapper) {
-	// Re-read on every show: the CRM form button (`whatsapp_crm_form.js`) and
-	// the Conversation form button both set `frappe.route_options` and then
-	// route here, which does not re-run `on_page_load` for a page already
-	// built.
-	open_routed_conversation(wrapper);
-	if (wrapper.whatsapp_inbox) {
-		wrapper.whatsapp_inbox.on_show();
-	}
+	// The CRM form button (`whatsapp_crm_form.js`) and the Conversation form
+	// button set `frappe.route_options.conversation` before routing here;
+	// carry it over as the web app's hash deep link.
+	update_target(wrapper, true);
 };
 
-frappe.pages["whatsapp-inbox"].on_page_hide = function (wrapper) {
-	if (wrapper.whatsapp_inbox) {
-		wrapper.whatsapp_inbox.on_hide();
-	}
-};
-
-function open_routed_conversation(wrapper) {
+function update_target(wrapper, consume) {
 	const options = frappe.route_options || {};
 	const conversation = options.conversation;
-	if (!conversation) {
-		return;
+	wrapper.inbox_target = conversation
+		? `/inbox#/chats/${encodeURIComponent(conversation)}`
+		: "/inbox";
+	if (conversation && consume) {
+		delete frappe.route_options.conversation;
 	}
-	delete frappe.route_options.conversation;
-	if (wrapper.whatsapp_inbox) {
-		wrapper.whatsapp_inbox.open_conversation(conversation, { scroll_into_view: true });
-	} else {
-		// The bundle has not resolved yet; stash it for the constructor.
-		wrapper.whatsapp_pending_conversation = conversation;
-	}
+	$(wrapper)
+		.find(".wa-moved-url")
+		.text(window.location.origin + wrapper.inbox_target);
 }
