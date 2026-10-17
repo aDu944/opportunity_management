@@ -3,3 +3,7 @@ Do not edit by hand; rebuild and commit the whole folder. One versioned build fo
 lives here; `CURRENT` names it and `/inbox` (hooks.py `website_redirects`) points at
 `/assets/opportunity_management/inbox/<CURRENT>/index.html`. A new build needs a web
 restart on the server so the redirect target is re-read.
+`firebase-messaging-sw.js` + `firebase-config.js` (Web Push) stay at this root,
+un-versioned: one service worker (scope /assets/opportunity_management/inbox/)
+serves every build. Paste the Firebase values into mobile/web/firebase-config.js,
+bump its `version` (the worker's cache key) and rebuild.

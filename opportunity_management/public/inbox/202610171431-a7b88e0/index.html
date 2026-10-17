@@ -3,7 +3,7 @@
 <head>
   <!-- Served from /assets/opportunity_management/inbox/ (set by
        `flutter build web --base-href …`, see tool/build_inbox_web.sh). -->
-  <base href="/assets/opportunity_management/inbox/202610171111-516fa7e/">
+  <base href="/assets/opportunity_management/inbox/202610171431-a7b88e0/">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
@@ -33,6 +33,10 @@
 </head>
 <body>
   <div id="boot"><div><img src="icons/Icon-192.png" alt=""><div>ALKHORA Team Inbox</div></div></div>
+  <!-- Web Push settings, un-versioned next to the build folders (see
+       web/firebase-config.js); `?b=` is the build version, set by
+       tool/build_inbox_web.sh so a new build re-reads it past the cache. -->
+  <script src="../firebase-config.js?b=202610171431-a7b88e0"></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
