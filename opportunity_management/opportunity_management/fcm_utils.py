@@ -170,9 +170,9 @@ def _unread_badge_for_token(token: str) -> int:
             """,
             (token,),
         )
-        if not user or not user[0][0]:
+        email = user[0][0] if user and user[0][0] else _device_user(token)
+        if not email:
             return 1
-        email = user[0][0]
         count = frappe.db.count(
             "Notification Log",
             {"for_user": email, "read": 0},
@@ -182,6 +182,17 @@ def _unread_badge_for_token(token: str) -> int:
         return int(count) + 1
     except Exception:
         return 1
+
+
+_DEVICE_DT = "ESS Push Device"
+
+
+def _device_user(token: str):
+    """User owning `token` as an `ESS Push Device` row, or None."""
+    try:
+        return frappe.db.get_value(_DEVICE_DT, {"token": token}, "user")
+    except Exception:
+        return None
 
 
 def _describe_token(token: str) -> str:
@@ -204,6 +215,10 @@ def _describe_token(token: str) -> str:
         if row:
             emp, emp_name, plat, ver = row[0]
             return f"{emp} ({emp_name}) {plat or '?'} {ver or '?'} token={prefix}…"
+        dev = frappe.db.get_value(_DEVICE_DT, {"token": token}, ["name", "user", "platform", "label"])
+        if dev:
+            name, user, plat, label = dev
+            return f"{_DEVICE_DT} {name} {user} {plat or '?'} {label or ''} token={prefix}…"
     except Exception:
         pass
     return f"<no Employee holds this token> token={prefix}…"
@@ -243,8 +258,15 @@ def apply_private_keys(message: dict, private: dict) -> dict:
     return message
 
 
-def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
+def send_fcm(token: str, title: str, body: str, data: dict = None, platform: str = None) -> bool:
     """Send an FCM notification to a single device token. Returns True on success.
+    `platform="web"` adds a `webpush` block (see `fcm_webpush`)."""
+    return _send_fcm_result(token, title, body, data, platform)[0]
+
+
+def _send_fcm_result(token, title, body, data=None, platform=None):
+    """`send_fcm` returning `(ok, bad_token, error_text)`; `bad_token` is True
+    only when FCM said the token itself is dead (UNREGISTERED / invalid).
 
     Uses google-auth directly to obtain an OAuth token for the explicit
     `firebase.messaging` scope, then POSTs to the FCM v1 endpoint. The
@@ -259,7 +281,7 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
             title="FCM Setup Error",
             message="firebase_service_account key not found in site config.",
         )
-        return False
+        return False, False, "no firebase_service_account"
     account_info = json.loads(raw) if isinstance(raw, str) else raw
     project_id = account_info.get("project_id")
     if not project_id:
@@ -267,7 +289,7 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
             title="FCM Setup Error",
             message="project_id missing from firebase_service_account",
         )
-        return False
+        return False, False, "no project_id"
 
     badge = _unread_badge_for_token(token)
     # Optional private keys (see `_PRIVATE_KEYS`) — lifted into the
@@ -300,6 +322,10 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
         }
     }
     apply_private_keys(payload["message"], private)
+    if platform == "web":
+        from opportunity_management.opportunity_management.fcm_webpush import build_webpush
+
+        payload["message"]["webpush"] = build_webpush(title, body, data, _site_url())
 
     try:
         from google.oauth2 import service_account
@@ -316,7 +342,7 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
         url = f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send"
         resp = session.post(url, json=payload, timeout=15)
         if resp.status_code == 200:
-            return True
+            return True, False, None
         # Frappe's log_error title is capped at 140 chars — keep title constant
         # and put the identifying detail in the body. Without the recipient
         # here a recurring UNREGISTERED 404 is unattributable: you can see a
@@ -330,7 +356,10 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
                 f"body={resp.text[:600]}"
             ),
         )
-        return False
+        from opportunity_management.opportunity_management.fcm_webpush import is_bad_token_response
+
+        bad = is_bad_token_response(resp.status_code, resp.text)
+        return False, bad, f"status={resp.status_code} {resp.text[:300]}"
     except Exception as e:
         try:
             tb = frappe.get_traceback()
@@ -344,25 +373,83 @@ def send_fcm(token: str, title: str, body: str, data: dict = None) -> bool:
                 f"traceback:\n{tb}"
             ),
         )
-        return False
+        return False, False, f"{type(e).__name__}: {str(e)[:300]}"
+
+
+def _site_url() -> str:
+    try:
+        return frappe.utils.get_url()
+    except Exception:
+        return ""
+
+
+def _enabled_devices(user):
+    """The user's enabled `ESS Push Device` rows (newest first); [] when the
+    doctype is not migrated yet."""
+    if not user:
+        return []
+    try:
+        return frappe.get_all(
+            _DEVICE_DT,
+            filters={"user": user, "enabled": 1},
+            fields=["name", "token", "platform"],
+            order_by="modified desc",
+        )
+    except Exception:
+        return []
+
+
+def _disable_device(name: str, error: str) -> None:
+    """FCM rejected this device's token for good: stop sending to it."""
+    try:
+        from frappe.utils import now
+
+        frappe.db.set_value(
+            _DEVICE_DT, name,
+            {"enabled": 0, "last_error": f"{now()} {error or ''}"[:1000]},
+            update_modified=False,
+        )
+        frappe.db.commit()
+    except Exception:
+        frappe.log_error(title="FCM Device Disable Error", message=frappe.get_traceback())
+
+
+def _fan_out(user, primary_token, title, body, data) -> bool:
+    """Send to the Employee's own token (if any) plus every enabled device of
+    `user`, each token once. True if any send succeeded. Only device rows are
+    ever disabled on a dead-token response — never Employee.custom_fcm_token."""
+    from opportunity_management.opportunity_management.fcm_webpush import merge_targets
+
+    any_ok = False
+    for target in merge_targets(primary_token, _enabled_devices(user)):
+        ok, bad, error = _send_fcm_result(target["token"], title, body, data, target["platform"])
+        any_ok = any_ok or ok
+        if not ok and bad and target["device"]:
+            _disable_device(target["device"], error)
+    return any_ok
 
 
 def send_fcm_to_employee(employee_id: str, title: str, body: str, data: dict = None) -> bool:
-    """Look up the employee's FCM token and send a notification."""
-    token = frappe.db.get_value("Employee", employee_id, "custom_fcm_token")
-    if not token:
+    """Push to the employee's phone token plus their user's registered devices."""
+    row = frappe.db.get_value("Employee", employee_id, ["custom_fcm_token", "user_id"], as_dict=True)
+    if not row:
         return False
-    ok = send_fcm(token, title, body, data)
-    if ok:
-        user = frappe.db.get_value("Employee", employee_id, "user_id")
-        if user:
-            _create_notification_log(user, title, body)
+    user = row.get("user_id")
+    ok = _fan_out(user, row.get("custom_fcm_token"), title, body, data)
+    if ok and user:
+        _create_notification_log(user, title, body)
     return ok
 
 
 def send_fcm_to_user(user_email: str, title: str, body: str, data: dict = None) -> bool:
-    """Look up the employee by user_id and send a notification."""
-    employee_id = frappe.db.get_value("Employee", {"user_id": user_email}, "name")
-    if not employee_id:
+    """Via the user's Employee when there is one; otherwise straight to the
+    user's registered devices (web tokens of non-employee System Managers)."""
+    if not user_email:
         return False
-    return send_fcm_to_employee(employee_id, title, body, data)
+    employee_id = frappe.db.get_value("Employee", {"user_id": user_email}, "name")
+    if employee_id:
+        return send_fcm_to_employee(employee_id, title, body, data)
+    ok = _fan_out(user_email, None, title, body, data)
+    if ok:
+        _create_notification_log(user_email, title, body)
+    return ok
