@@ -77,11 +77,13 @@ self.addEventListener("push", (event) => {
     (async () => {
       const m = parse(event);
       const clients = await inboxClients();
+      console.log("[inbox push] received", m.title, "| clients:", clients.map((c) => `${c.visibilityState}/${c.focused ? "focused" : "unfocused"}`).join(",") || "none");
       // Every open inbox tab refreshes its lists; the system banner is
       // skipped only when one of them is visible AND focused — an open tab
       // behind another app still gets the banner.
       clients.forEach((c) => c.postMessage({ type: "push", route: m.route, data: m.data }));
       if (clients.some((c) => c.visibilityState === "visible" && c.focused)) return;
+      console.log("[inbox push] showing banner", m.tag);
       await self.registration.showNotification(m.title, {
         body: m.body,
         icon: m.icon,
