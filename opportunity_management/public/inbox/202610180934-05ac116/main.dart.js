@@ -59653,39 +59653,47 @@ o.m(0,"X-Frappe-CSRF-Token",p)}case 3:b.lq(0,a)
 return A.k(null,r)}})
 return A.l($async$ol,r)},
 jV(a,b,c){return this.aVF(0,b,c)},
-aVF(a,b,c){var s=0,r=A.m(t.H),q,p=2,o=[],n=this,m,l,k,j,i,h,g,f
-var $async$jV=A.n(function(d,e){if(d===1){o.push(e)
-s=p}for(;;)switch(s){case 0:i=b.a
-h=b.b
-if((h==null?null:h.c)===417&&B.c.p(J.b0(h),"CSRFTokenError")){l=i.y
-l===$&&A.b()
-l=J.f(l.i(0,"csrf_retry"),!0)}else l=!0
-if(l){c.lq(0,b)
+aVF(a,b,a0){var s=0,r=A.m(t.H),q,p=2,o=[],n=this,m,l,k,j,i,h,g,f,e,d,c
+var $async$jV=A.n(function(a1,a2){if(a1===1){o.push(a2)
+s=p}for(;;)switch(s){case 0:h=b.a
+g=b.b
+f=g==null
+e=f?null:g.k(0)
+if(e==null)e=""
+if((f?null:g.c)!==400){l=(f?null:g.c)===417
+f=l}else f=!0
+if(f)k=B.c.p(e,"CSRFTokenError")||B.c.p(e,"Invalid Request")
+else k=!1
+if(k){f=h.y
+f===$&&A.b()
+f=J.f(f.i(0,"csrf_retry"),!0)}else f=!0
+if(f){a0.lq(0,b)
 s=1
-break}s=3
+break}n.b=null
+s=3
 return A.d(n.rQ(0),$async$jV)
-case 3:k=e
-if(k==null){c.lq(0,b)
+case 3:j=a2
+if(j==null){a0.lq(0,b)
 s=1
-break}l=i.y
-l===$&&A.b()
-l.m(0,"csrf_retry",!0)
-l=i.b
-l===$&&A.b()
-l.m(0,"X-Frappe-CSRF-Token",k)
+break}f=h.y
+f===$&&A.b()
+f.m(0,"csrf_retry",!0)
+f=h.b
+f===$&&A.b()
+f.m(0,"X-Frappe-CSRF-Token",j)
 p=5
-f=c
+c=a0
 s=8
-return A.d(n.a.yc(0,i,t.z),$async$jV)
-case 8:f.a_(e)
+return A.d(n.a.yc(0,h,t.z),$async$jV)
+case 8:c.a_(a2)
 p=2
 s=7
 break
 case 5:p=4
-g=o.pop()
-l=A.a1(g)
-if(l instanceof A.fC){m=l
-c.lq(0,m)}else throw g
+d=o.pop()
+f=A.a1(d)
+if(f instanceof A.fC){m=f
+a0.lq(0,m)}else throw d
 s=7
 break
 case 4:s=2
@@ -59699,7 +59707,7 @@ var $async$$0=A.n(function(a,b){if(a===1){o.push(b)
 s=p}for(;;)switch(s){case 0:p=4
 i=m.a
 s=7
-return A.d(i.a.q1(0,"/api/method/frappe.sessions.get_csrf_token",t.z),$async$$0)
+return A.d(i.a.q1(0,"/api/method/opportunity_management.opportunity_management.web_session.get_csrf_token",t.z),$async$$0)
 case 7:l=b
 k=l.a
 j=t.f.b(k)?J.as(k,"message"):null
