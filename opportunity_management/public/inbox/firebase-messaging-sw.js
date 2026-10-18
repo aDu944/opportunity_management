@@ -8,10 +8,9 @@
 //
 // Our `push` / `notificationclick` listeners are added BEFORE the Firebase
 // SDK's and stop the SDK's copies, so a message is shown exactly once:
-//   • an inbox tab is visible → no system notification; the payload is
-//     posted to the tab ({type:'push'}) which refreshes the lists and plays
-//     the in-app sound;
-//   • otherwise → showNotification(title, {body, icon, badge,
+//   • every open inbox tab gets the payload ({type:'push'}) and refreshes;
+//   • unless an inbox tab is visible AND focused, a system notification is
+//     shown too → showNotification(title, {body, icon, badge,
 //     tag: conversation, renotify, data}).
 // A click focuses an open inbox tab and posts {type:'open', route:
 // '/chats/<id>'}; with no inbox tab it opens the message's link. The Firebase
@@ -78,11 +77,11 @@ self.addEventListener("push", (event) => {
     (async () => {
       const m = parse(event);
       const clients = await inboxClients();
-      const visible = clients.filter((c) => c.visibilityState === "visible");
-      if (visible.length) {
-        visible.forEach((c) => c.postMessage({ type: "push", route: m.route, data: m.data }));
-        return;
-      }
+      // Every open inbox tab refreshes its lists; the system banner is
+      // skipped only when one of them is visible AND focused — an open tab
+      // behind another app still gets the banner.
+      clients.forEach((c) => c.postMessage({ type: "push", route: m.route, data: m.data }));
+      if (clients.some((c) => c.visibilityState === "visible" && c.focused)) return;
       await self.registration.showNotification(m.title, {
         body: m.body,
         icon: m.icon,

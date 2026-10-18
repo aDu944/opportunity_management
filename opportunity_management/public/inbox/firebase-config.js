@@ -12,7 +12,7 @@
 // push code stays dormant and the inbox works exactly as before (polling +
 // in-tab notifications).
 self.__ALKHORA_FIREBASE__ = {
-  version: "2",
+  version: "3",
   config: {
     apiKey: "AIzaSyAZWoOC8Pm3WTJFkwIgRMG5Ty-m8WytHfQ",
     authDomain: "alkhora-ess.firebaseapp.com",
