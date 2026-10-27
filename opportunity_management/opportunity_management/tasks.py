@@ -26,7 +26,12 @@ def send_opportunity_reminders():
     opportunities = frappe.get_all(
         "Opportunity",
         filters={
-            "status": ["not in", ["Lost", "Closed", "Converted"]],
+            # Quotation is EXCLUDED: once a quotation is out, the live deadline is the
+            # quotation's valid_till, not the inquiry's expected_closing, so chasing
+            # the owner about the opportunity is noise. send_manager_weekly_digest
+            # already excluded it; these two did not, and 544 of the 552
+            # Quotation-stage opportunities carry a date (Ahmed, 2026-10-26).
+            "status": ["not in", ["Lost", "Closed", "Converted", "Quotation"]],
             "expected_closing": ["is", "set"]
         },
         fields=["name", "expected_closing", "party_name", "status"]
@@ -37,8 +42,8 @@ def send_opportunity_reminders():
             process_opportunity_reminders(opp, today)
         except Exception as e:
             frappe.log_error(
-                f"Error processing reminders for {opp.name}: {str(e)}",
-                "Opportunity Reminder Error"
+                title="Opportunity Reminder Error",
+                message=f"Error processing reminders for {opp.name}: {str(e)}",
             )
     
     frappe.db.commit()
@@ -94,15 +99,23 @@ def send_reminder_to_all_engineers(doc, days_remaining):
     1. Responsible engineers assigned to the opportunity
     2. Managers/System Managers from the department of the assigner
     """
-    # Get all recipients (engineers + managers)
-    recipients = get_all_recipients(doc)
+    # To = the responsible parties, Cc = their department managers. ONE addressed
+    # email, where this used to send a separate message to every address - which is
+    # why INQ-520 arrived twice yesterday (Ahmed, 2026-10-25).
+    from opportunity_management.opportunity_management.notification_utils import (
+        split_opportunity_recipients,
+    )
 
-    if not recipients:
+    to, cc = split_opportunity_recipients(doc)
+    if not to and not cc:
         frappe.logger().warning(f"No recipients found for Opportunity {doc.name}")
         return
 
-    for user_id in recipients:
-        send_reminder_email(doc, user_id, days_remaining)
+    send_reminder_email(doc, to, cc, days_remaining)
+
+    # The push is per device, so it stays per person - everyone who got the email.
+    for user_id in list(to) + list(cc):
+        push_reminder(doc, user_id, days_remaining)
 
 
 def get_assigned_engineers(doc):
@@ -151,8 +164,8 @@ def get_all_recipients(doc):
 
     except Exception as e:
         frappe.log_error(
-            f"Error getting department managers for {doc.name}: {str(e)}",
-            "Get All Recipients Error"
+            title="Get All Recipients Error",
+            message=f"Error getting department managers for {doc.name}: {str(e)}",
         )
         # Continue with just engineers if manager lookup fails
         pass
@@ -265,15 +278,21 @@ def get_urgency_config(days_remaining):
         }
 
 
-def send_reminder_email(doc, user_id, days_remaining):
-    """Send a reminder email with color-coded urgency level."""
+def send_reminder_email(doc, to_emails, cc_emails, days_remaining):
+    """One reminder email, addressed: To the responsible parties, Cc their managers."""
     try:
-        user = frappe.get_doc("User", user_id)
-        if not user.email:
+        if not to_emails and not cc_emails:
             return
-        
-        # Get user's first name for greeting
-        user_name = user.first_name or user.full_name or user_id
+
+        # Greeting for however many people are in To. Named, because "Dear Haider,
+        # Abdulaziz" still reads correctly where a single %s would not.
+        # FULL name. There are three Ayas in the office, so a first name names
+        # nobody (Ahmed, 2026-10-26).
+        names = []
+        for addr in (to_emails or cc_emails):
+            full = frappe.db.get_value("User", addr, "full_name")
+            names.append(full or (addr or "").split("@")[0])
+        user_name = ", ".join(names) or "colleague"
         
         # Format closing date
         closing_date_formatted = format_date(doc.expected_closing, "dd/MM/yyyy") if doc.expected_closing else "Not set"
@@ -281,19 +300,29 @@ def send_reminder_email(doc, user_id, days_remaining):
         # Get urgency configuration
         config = get_urgency_config(days_remaining)
         
-        # Build subject
+        # Subject leads with the EVENT, then who it is for, then the reference - so a
+        # phone preview is useful before anything is opened (Ahmed, 2026-10-25).
+        _cust = doc.get("customer_name") or doc.get("party_name") or ""
         if days_remaining == 0:
             days_text = "today"
-            subject = f"{config['subject_prefix']} Opportunity {doc.name} Closing TODAY"
+            _when = "Closing TODAY"
         elif days_remaining == 1:
             days_text = "1 day"
-            subject = f"{config['subject_prefix']} Opportunity {doc.name} Closing in {days_text}"
+            _when = "Closing tomorrow"
         else:
             days_text = f"{days_remaining} days"
-            subject = f"{config['subject_prefix']} Opportunity {doc.name} Closing in {days_text}"
+            _when = f"Closing in {days_text}"
+        subject = "{0} · {1} — {2}".format(_when, _cust, doc.name) if _cust else \
+            "{0} — {1}".format(_when, doc.name)
         
         # Get company name
-        company_name = frappe.db.get_single_value("System Settings", "company") or frappe.db.get_default("Company") or "ALKHORA for General Trading Ltd"
+        # The opportunity's own company first - the email is about that document.
+        # NOT System Settings: it has no `company` field, and get_single_value raises
+        # on an unknown fieldname rather than returning None, so the `or` chain that
+        # used to follow it never ran. This is what broke the 08:00 job every day
+        # from 2026-10-18 (Ahmed, 2026-10-24).
+        company_name = (doc.get("company") or frappe.db.get_default("Company")
+                        or "ALKHORA for General Trading Ltd")
         
         # Get site URL
         site_url = frappe.utils.get_url()
@@ -304,160 +333,106 @@ def send_reminder_email(doc, user_id, days_remaining):
         else:
             intro_html = f'<p style="margin: 0 0 25px 0; color: #333333; font-size: 16px;">{config["intro_message"]}</p>'
         
-        message = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f5f5f5;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 20px 0;">
-        <tr>
-            <td align="center">
-                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-                    
-                    <!-- Colored Header -->
-                    <tr>
-                        <td style="background-color: {config['header_color']}; padding: 30px; text-align: center;">
-                            <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold;">{config['header_title']}</h1>
-                            <p style="margin: 10px 0 0 0; color: #ffffff; font-size: 14px;">Opportunity ID: #{doc.name}</p>
-                        </td>
-                    </tr>
-                    
-                    <!-- Body Content -->
-                    <tr>
-                        <td style="padding: 30px 40px;">
-                            
-                            <!-- Greeting -->
-                            <p style="margin: 0 0 20px 0; color: #333333; font-size: 16px;">Dear {user_name},</p>
-                            
-                            {intro_html}
-                            
-                            <!-- Alert Box -->
-                            <div style="background-color: {config['alert_bg']}; border-left: 4px solid {config['alert_border']}; padding: 15px 20px; margin-bottom: 25px;">
-                                <p style="margin: 0; color: {config['alert_text_color']}; font-size: 15px; font-weight: 600;">
-                                    {config['alert_message']}
-                                </p>
-                            </div>
-                            
-                            <!-- Details Table -->
-                            <table width="100%" cellpadding="0" cellspacing="0" style="border-left: 4px solid {config['alert_border']}; margin-bottom: 25px;">
-                                <tr>
-                                    <td style="padding: 12px 20px; border-bottom: 1px solid #eeeeee; width: 40%; color: #666666; font-size: 14px;">Opportunity No.</td>
-                                    <td style="padding: 12px 20px; border-bottom: 1px solid #eeeeee; color: {config['link_color']}; font-size: 14px; font-weight: 600;">
-                                        <a href="{site_url}/app/opportunity/{doc.name}" style="color: {config['link_color']}; text-decoration: none;">{doc.name}</a>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 12px 20px; border-bottom: 1px solid #eeeeee; color: #666666; font-size: 14px;">Customer</td>
-                                    <td style="padding: 12px 20px; border-bottom: 1px solid #eeeeee; color: #333333; font-size: 14px; font-weight: 600;">{doc.party_name or 'N/A'}</td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 12px 20px; border-bottom: 1px solid #eeeeee; color: #666666; font-size: 14px;">Opportunity Type</td>
-                                    <td style="padding: 12px 20px; border-bottom: 1px solid #eeeeee; color: #333333; font-size: 14px; font-weight: 600;">{doc.opportunity_type or 'N/A'}</td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 12px 20px; border-bottom: 1px solid #eeeeee; color: #666666; font-size: 14px;">Tender No.</td>
-                                    <td style="padding: 12px 20px; border-bottom: 1px solid #eeeeee; color: #333333; font-size: 14px; font-weight: 600;">{doc.get('custom_tender_no') or 'N/A'}</td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 12px 20px; border-bottom: 1px solid #eeeeee; color: #666666; font-size: 14px;">Tender Title</td>
-                                    <td style="padding: 12px 20px; border-bottom: 1px solid #eeeeee; color: #333333; font-size: 14px; font-weight: 600;">{doc.get('custom_tender_title') or doc.get('title') or 'N/A'}</td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 12px 20px; border-bottom: 1px solid #eeeeee; color: #666666; font-size: 14px;">Expected Closing</td>
-                                    <td style="padding: 12px 20px; border-bottom: 1px solid #eeeeee; color: {config['link_color']}; font-size: 14px; font-weight: 600;">{closing_date_formatted}</td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 12px 20px; color: #666666; font-size: 14px;">Status</td>
-                                    <td style="padding: 12px 20px; color: #333333; font-size: 14px; font-weight: 600;">{doc.status or 'Open'}</td>
-                                </tr>
-                            </table>
-                            
-                            <p style="margin: 0 0 25px 0; color: #333333; font-size: 16px;">
-                                Please ensure you complete your quotation and follow up accordingly.
-                            </p>
-                            
-                            <!-- Action Button -->
-                            <table width="100%" cellpadding="0" cellspacing="0">
-                                <tr>
-                                    <td align="center" style="padding: 10px 0 25px 0;">
-                                        <a href="{site_url}/app/opportunity/{doc.name}" 
-                                           style="background-color: {config['button_color']}; color: #ffffff; padding: 14px 35px; 
-                                                  text-decoration: none; border-radius: 25px; font-size: 16px; 
-                                                  font-weight: bold; display: inline-block;">
-                                            Take Action Now
-                                        </a>
-                                    </td>
-                                </tr>
-                            </table>
-                            
-                            <!-- Signature -->
-                            <p style="margin: 0; color: #333333; font-size: 16px;">Best regards,</p>
-                            <p style="margin: 5px 0 0 0; color: #333333; font-size: 16px; font-weight: 600;">{company_name}</p>
-                            
-                        </td>
-                    </tr>
-                    
-                    <!-- Footer -->
-                    <tr>
-                        <td style="background-color: #f8f8f8; padding: 20px; text-align: center; border-top: 1px solid #eeeeee;">
-                            <p style="margin: 0; color: #999999; font-size: 12px;">
-                                This is an automated reminder from your ERP system.<br>
-                                Please do not reply to this email.
-                            </p>
-                        </td>
-                    </tr>
-                    
-                </table>
-            </td>
-        </tr>
-    </table>
-</body>
-</html>
-        """
+        from opportunity_management.opportunity_management import email_design as D
+
+        # Tiers. Today and tomorrow get a SOLID band; the calmer reminders get the 4px
+        # rule, so the band still means "a deadline" when one lands (Ahmed, 2026-10-25).
+        if days_remaining == 0:
+            accent, band, eyebrow = D.URGENT, True, "Closing today"
+        elif days_remaining == 1:
+            accent, band, eyebrow = "#b5531d", True, "Closing tomorrow"
+        else:
+            accent, band, eyebrow = D.QTN, False, f"Closing in {days_text}"
+
+        customer = doc.get("customer_name") or doc.get("party_name") or doc.name
+        opp_url = f"{site_url}/app/opportunity/{doc.name}"
+
+        rows = [
+            D.row(D.label("Opportunity", "الفرصة"),
+                  D.link(doc.name, opp_url, accent if not band else D.QTN, mono=True)),
+            D.row(D.label("Closing date", "تاريخ الإغلاق"),
+                  f'<strong>{D.esc(closing_date_formatted)}</strong>'),
+            # The people actually answerable for it, which the old template never named.
+            D.row(D.label("Responsible", "المسؤول"), D.name_cell(user_name)),
+        ]
+        amount = doc.get("opportunity_amount")
+        if amount:
+            rows.append(D.row(D.label("Value", "القيمة"),
+                              D.esc(D.money(amount, doc.get("currency")))))
+        if doc.get("status"):
+            rows.append(D.row(D.label("Stage", "المرحلة"), D.esc(doc.get("status"))))
+
+        message = D.envelope(
+            accent=accent,
+            band=band,
+            eyebrow=eyebrow,
+            headline=customer,
+            subline=(config.get("intro_message_plain")
+                     or ("This is the final reminder." if days_remaining == 0 else None)),
+            rows=rows,
+            actions=[D.button("Open the opportunity", opp_url, accent)],
+            # envelope() already signs off with the company; naming it here too
+            # printed it twice.
+            footnote="You are responsible for this opportunity.",
+        )
         
+        from opportunity_management.opportunity_management.notification_utils import (
+            notification_reply_to,
+        )
+
         frappe.sendmail(
-            recipients=[user.email],
+            recipients=to_emails or cc_emails,
+            cc=cc_emails if to_emails else None,
+            # Without this Frappe writes "<!--recipient-->" into To and substitutes
+            # each person's OWN address on their copy, so a manager in Cc sees
+            # "To: themselves" and cannot tell who is actually responsible - which is
+            # the whole point of the To/Cc split (Ahmed, 2026-10-26).
+            expose_recipients="header",
+            # Sent From the unattended notification mailbox, so without this every
+            # Reply-All would mail a box nobody reads.
+            reply_to=notification_reply_to(to_emails or cc_emails),
             subject=subject,
             message=message,
             reference_doctype="Opportunity",
             reference_name=doc.name,
-            now=True
+            now=True,
         )
-
-        # Mobile push — mirror the email as an FCM notification so the
-        # assigned engineer sees the reminder on their phone too. Silent
-        # on any error so email delivery isn't affected.
-        try:
-            from opportunity_management.opportunity_management.fcm_utils import (
-                send_fcm_to_user,
-            )
-            party = doc.customer_name or doc.party_name or ""
-            if days_remaining == 0:
-                fcm_title = "🚨 يغلق اليوم • Closes today"
-            elif days_remaining == 1:
-                fcm_title = "⏰ يغلق غداً • Closes tomorrow"
-            elif days_remaining <= 3:
-                fcm_title = f"⏳ يغلق خلال {days_remaining} أيام • Closes in {days_remaining} days"
-            else:
-                fcm_title = f"📅 يغلق خلال {days_remaining} يوماً • Closes in {days_remaining} days"
-            fcm_body = f"{doc.name} • {party}".strip(" •")
-            send_fcm_to_user(user.name, title=fcm_title, body=fcm_body, data={
-                "type": "opportunity_closing",
-                "doctype": "Opportunity",
-                "name": doc.name,
-                "days_remaining": days_remaining,
-            })
-        except Exception:
-            pass
 
     except Exception as e:
         frappe.log_error(
-            f"Error sending reminder to {user_id} for {doc.name}: {str(e)}",
-            "Opportunity Reminder Email Error"
+            title="Opportunity Reminder Email Error",
+            message=f"Error emailing {to_emails}/{cc_emails} for {doc.name}: {str(e)}",
         )
+
+
+def push_reminder(doc, user_id, days_remaining):
+    """Mirror the reminder to one person's phone. Silent on any error, so a failed
+    push never affects email delivery."""
+    # Mobile push — mirror the email as an FCM notification so the
+    # assigned engineer sees the reminder on their phone too. Silent
+    # on any error so email delivery isn't affected.
+    try:
+        from opportunity_management.opportunity_management.fcm_utils import (
+            send_fcm_to_user,
+        )
+        party = doc.customer_name or doc.party_name or ""
+        if days_remaining == 0:
+            fcm_title = "🚨 يغلق اليوم • Closes today"
+        elif days_remaining == 1:
+            fcm_title = "⏰ يغلق غداً • Closes tomorrow"
+        elif days_remaining <= 3:
+            fcm_title = f"⏳ يغلق خلال {days_remaining} أيام • Closes in {days_remaining} days"
+        else:
+            fcm_title = f"📅 يغلق خلال {days_remaining} يوماً • Closes in {days_remaining} days"
+        fcm_body = f"{doc.name} • {party}".strip(" •")
+        send_fcm_to_user(user_id, title=fcm_title, body=fcm_body, data={
+            "type": "opportunity_closing",
+            "doctype": "Opportunity",
+            "name": doc.name,
+            "days_remaining": days_remaining,
+        })
+    except Exception:
+        pass
 
 
 def reset_reminder_flags(opportunity_name):
@@ -651,74 +626,73 @@ def send_manager_weekly_digest():
         overdue.sort(key=lambda x: x["days_remaining"])
         due_soon.sort(key=lambda x: x["days_remaining"])
 
-        def build_rows(items, limit=10):
-            rows = ""
+        from opportunity_management.opportunity_management import email_design as D
+
+        def build_rows(items, overdue_view, limit=15):
+            out = []
             for opp in items[:limit]:
-                rows += f"""
-                    <tr>
-                        <td><a href="{site_url}/app/opportunity/{opp['name']}">{opp['name']}</a></td>
-                        <td>{opp['party_name'] or '-'}</td>
-                        <td>{format_date(opp['expected_closing'], 'dd/MM/yyyy')}</td>
-                        <td style="text-align:right; white-space:nowrap;">{_fmt_amount(opp.get('amount'), opp.get('currency') or 'IQD')}</td>
-                        <td style="text-align:center;">{opp['days_remaining']}</td>
-                    </tr>
-                """
-            return rows
+                days = opp["days_remaining"]
+                # Overdue counts UP in red; due-soon counts DOWN in the normal ink.
+                when = ('<strong style="color:%s">%s</strong>' % (D.URGENT, abs(days))
+                        if overdue_view else D.esc(days))
+                out.append([
+                    D.link(opp["name"], f"{site_url}/app/opportunity/{opp['name']}",
+                           D.QTN, mono=True),
+                    D.name_cell(opp["party_name"] or "-"),
+                    D.esc(format_date(opp["expected_closing"], "dd/MM/yyyy")),
+                    '<span style="white-space:nowrap">%s</span>'
+                    % D.esc(_fmt_amount(opp.get("amount"), opp.get("currency") or "IQD")),
+                    when,
+                ])
+            return out
 
-        overdue_rows = build_rows(overdue)
-        due_rows = build_rows(due_soon)
+        HEAD = ["Opportunity", "Customer", "Closing", "Value", "Days"]
+        ALIGN = ["left", "left", "left", "right", "center"]
 
-        message = f"""
-        <div style="font-family: Arial, sans-serif;">
-            <h2>Weekly Opportunity Digest - {department}</h2>
-            <p>Summary for the next 7 days:</p>
-            <ul>
-                <li>Total open: {len(opp_list)} · Value: {_fmt_totals(_totals_by_ccy(opp_list))}</li>
-                <li>Overdue: {len(overdue)} · Value: {_fmt_totals(_totals_by_ccy(overdue))}</li>
-                <li>Due in 7 days: {len(due_soon)} · Value: {_fmt_totals(_totals_by_ccy(due_soon))}</li>
-            </ul>
+        body = D.stat_strip([
+            ("%d" % len(opp_list), "Open"),
+            ('<span style="color:%s">%d</span>' % (D.URGENT, len(overdue)), "Overdue"),
+            ("%d" % len(due_soon), "Due in 7 days"),
+        ], D.QTN)
+        body += (
+            '<p style="margin:10px 0 0;font-size:12.5px;color:%s">%s</p>'
+            % (D.MUTED, D.esc("Open value %s · overdue %s"
+                              % (_fmt_totals(_totals_by_ccy(opp_list)),
+                                 _fmt_totals(_totals_by_ccy(overdue)))))
+        )
+        body += D.section("Overdue", D.URGENT)
+        body += D.data_table(HEAD, build_rows(overdue, True), ALIGN,
+                             empty="Nothing overdue.")
+        body += D.section("Due in the next 7 days", D.QTN)
+        body += D.data_table(HEAD, build_rows(due_soon, False), ALIGN,
+                             empty="Nothing closing this week.")
+        if len(overdue) > 15 or len(due_soon) > 15:
+            body += ('<p style="margin:12px 0 0;font-size:12px;color:%s">'
+                     'Longest lists are cut at 15 rows - open the list for the rest.</p>'
+                     % D.FAINT)
 
-            <h3>Overdue Opportunities</h3>
-            <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%;">
-                <thead>
-                    <tr>
-                        <th>Opportunity</th>
-                        <th>Customer</th>
-                        <th>Closing Date</th>
-                        <th>Value</th>
-                        <th>Days Overdue</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {overdue_rows or '<tr><td colspan="5">None</td></tr>'}
-                </tbody>
-            </table>
+        message = D.envelope(
+            accent=D.QTN,
+            eyebrow="Weekly digest",
+            headline=department,
+            subline="Week of %s" % format_date(getdate(nowdate()), "d MMMM yyyy"),
+            extra_html=body,
+            actions=[D.button("Open the opportunity list",
+                              f"{site_url}/app/opportunity", D.QTN)],
+            footnote="You manage this department.",
+        )
 
-            <h3>Due in 7 Days</h3>
-            <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%;">
-                <thead>
-                    <tr>
-                        <th>Opportunity</th>
-                        <th>Customer</th>
-                        <th>Closing Date</th>
-                        <th>Value</th>
-                        <th>Days Remaining</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {due_rows or '<tr><td colspan="5">None</td></tr>'}
-                </tbody>
-            </table>
-        </div>
-        """
-
-        subject = f"Weekly Opportunity Digest - {department}"
+        # Event first, then who, then the one number worth acting on - the same
+        # shape as every other notification subject.
+        subject = "Weekly digest · {0} · {1} overdue".format(department, len(overdue))
         try:
-            frappe.sendmail(recipients=managers, subject=subject, message=message, now=True)
+            frappe.sendmail(recipients=managers, subject=subject, message=message,
+                            reply_to=", ".join(managers),
+                            expose_recipients="header", now=True)
         except Exception as e:
             frappe.log_error(
-                f"Digest email failed for {department}: {str(e)}",
-                "Manager Digest Error"
+                title="Manager Digest Error",
+                message=f"Digest email failed for {department}: {str(e)}",
             )
 
 
@@ -732,7 +706,12 @@ def send_management_daily_closing_summary():
     closings = frappe.get_all(
         "Opportunity",
         filters={
-            "status": ["not in", ["Lost", "Closed", "Converted"]],
+            # Quotation is EXCLUDED: once a quotation is out, the live deadline is the
+            # quotation's valid_till, not the inquiry's expected_closing, so chasing
+            # the owner about the opportunity is noise. send_manager_weekly_digest
+            # already excluded it; these two did not, and 544 of the 552
+            # Quotation-stage opportunities carry a date (Ahmed, 2026-10-26).
+            "status": ["not in", ["Lost", "Closed", "Converted", "Quotation"]],
             "expected_closing": today
         },
         fields=["name", "party_name", "status", "expected_closing"]
@@ -752,145 +731,41 @@ def send_management_daily_closing_summary():
         frappe.logger().warning("No recipients found for Management role")
         return
 
-    def build_rows(items):
-        rows = ""
-        for opp in items:
-            rows += f"""
-                <tr>
-                    <td style="padding: 8px 10px; border-bottom: 1px solid #e9ecef;">
-                        <a href="{site_url}/app/opportunity/{opp.name}" style="color: #ff9800; text-decoration: none; font-weight: 600;">{opp.name}</a>
-                    </td>
-                    <td style="padding: 8px 10px; border-bottom: 1px solid #e9ecef;">{opp.party_name or '-'}</td>
-                    <td style="padding: 8px 10px; border-bottom: 1px solid #e9ecef; color: #FF0000; font-weight: 700;">
-                        {format_date(opp.expected_closing, 'dd/MM/yyyy')}
-                    </td>
-                    <td style="padding: 8px 10px; border-bottom: 1px solid #e9ecef;">{opp.status or 'Open'}</td>
-                </tr>
-            """
-        return rows
+    from opportunity_management.opportunity_management import email_design as D
 
-    rows = build_rows(closings)
+    rows = [[
+        D.link(o.name, f"{site_url}/app/opportunity/{o.name}", D.URGENT, mono=True),
+        D.name_cell(o.party_name or "-"),
+        D.esc(o.status or "Open"),
+    ] for o in closings]
 
-    message = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Closing Summary</title>
-    <!--[if mso]>
-    <style type="text/css">
-    body, table, td {{font-family: Arial, Helvetica, sans-serif !important;}}
-    </style>
-    <![endif]-->
-</head>
-<body style="margin: 0; padding: 0; min-width: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; background-color: #f5f7fa; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;">
-    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #f5f7fa;">
-        <tr>
-            <td align="center" style="padding: 20px 15px;">
-                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 650px; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px rgba(255,193,7,0.15); overflow: hidden;">
-                    <!-- Header Banner -->
-                    <tr>
-                        <td align="center" style="background-color: #ffc107; padding: 25px 20px;">
-                            <h1 style="color: #ffffff; margin: 0; font-weight: 600; font-size: 24px;">Daily Closing Summary</h1>
-                            <p style="color: #fff3cd; margin: 10px 0 0 0; font-size: 16px;">Date: {format_date(today, 'dd/MM/yyyy')}</p>
-                        </td>
-                    </tr>
+    body = D.data_table(
+        ["Opportunity", "Customer", "Stage"], rows, ["left", "left", "left"],
+        empty="Nothing closes today.")
 
-                    <!-- Content Area -->
-                    <tr>
-                        <td style="padding: 30px 20px;">
-                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
-                                <tr>
-                                    <td style="color: #444; font-size: 16px; padding-bottom: 20px;">
-                                        Here is today's summary of opportunities closing <strong>today</strong>.
-                                    </td>
-                                </tr>
+    message = D.envelope(
+        accent=D.URGENT,
+        # A band, like the closing-today reminder: this IS a deadline, and the two
+        # should read as the same kind of event from the same system.
+        band=True,
+        eyebrow="Closing today",
+        headline="%d opportunit%s" % (len(closings), "y" if len(closings) == 1 else "ies"),
+        subline=format_date(today, "EEEE d MMMM yyyy"),
+        extra_html=body,
+        actions=[D.button("Open the opportunity list",
+                          f"{site_url}/app/opportunity", D.URGENT)],
+        footnote="You hold the Management role.",
+    )
 
-                                <!-- Alert Box -->
-                                <tr>
-                                    <td style="padding: 0 0 25px 0;">
-                                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #fff3cd; border-left: 4px solid #ffc107; border-radius: 6px;">
-                                            <tr>
-                                                <td style="padding: 15px 20px;">
-                                                    <p style="color: #856404; margin: 0; font-weight: 700; font-size: 16px;">⏰ Closing Today - {len(closings)} Opportunity(ies)</p>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-
-                                <!-- Opportunity Info Card -->
-                                <tr>
-                                    <td style="padding: 0 0 25px 0;">
-                                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #f8f9fa; border-left: 4px solid #ffc107; border-radius: 6px;">
-                                            <tr>
-                                                <td style="padding: 20px;">
-                                                    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
-                                                        <thead>
-                                                            <tr>
-                                                                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #e9ecef; color: #555; font-size: 14px; width: 30%;">Opportunity</th>
-                                                                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #e9ecef; color: #555; font-size: 14px;">Customer</th>
-                                                                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #e9ecef; color: #555; font-size: 14px;">Closing Date</th>
-                                                                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #e9ecef; color: #555; font-size: 14px;">Status</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {rows or '<tr><td colspan="4" style="padding: 10px;">None</td></tr>'}
-                                                        </tbody>
-                                                    </table>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </td>
-                                </tr>
-
-                                <!-- CTA Button -->
-                                <tr>
-                                    <td align="center" style="padding: 10px 0 25px 0;">
-                                        <!--[if mso]>
-                                        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{site_url}/app/opportunity" style="height:45px;v-text-anchor:middle;width:230px;" arcsize="50%" stroke="f" fillcolor="#ff9800">
-                                        <w:anchorlock/>
-                                        <center>
-                                        <![endif]-->
-                                        <a href="{site_url}/app/opportunity" style="display: inline-block; background-color: #ff9800; color: #ffffff; font-weight: 600; text-decoration: none; padding: 12px 25px; border-radius: 50px; font-size: 16px; box-shadow: 0 4px 10px rgba(255,152,0,0.3); mso-padding-alt: 0; text-underline-color: #ff9800;"><!--[if mso]><i style="letter-spacing: 25px;mso-font-width:-100%;mso-text-raise:20pt">&nbsp;</i><![endif]--><span style="mso-text-raise:10pt;">Open Opportunities</span><!--[if mso]><i style="letter-spacing: 25px;mso-font-width:-100%">&nbsp;</i><![endif]--></a>
-                                        <!--[if mso]>
-                                        </center>
-                                        </v:roundrect>
-                                        <![endif]-->
-                                    </td>
-                                </tr>
-
-                                <tr>
-                                    <td style="padding-top: 10px;">
-                                        <p style="color: #444; margin: 0 0 5px 0; font-size: 16px;">Best regards,</p>
-                                        <p style="color: #444; font-weight: 600; margin: 0; font-size: 16px;">ALKHORA for General Trading Ltd</p>
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-
-                    <!-- Footer -->
-                    <tr>
-                        <td style="background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e9ecef;">
-                            <p style="color: #6c757d; margin: 0; font-size: 13px;">This is an automated summary from your ERP system.</p>
-                            <p style="color: #6c757d; margin: 5px 0 0 0; font-size: 13px;">Please do not reply to this email.</p>
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-    </table>
-</body>
-</html>
-    """
-
-    subject = f"Daily Closing Summary - {format_date(today, 'dd/MM/yyyy')}"
+    subject = "Closing today · {0} opportunit{1} — {2}".format(
+        len(closings), "y" if len(closings) == 1 else "ies",
+        format_date(today, "dd/MM/yyyy"))
     try:
-        frappe.sendmail(recipients=recipients, subject=subject, message=message, now=True)
+        frappe.sendmail(recipients=recipients, subject=subject, message=message,
+                        reply_to=", ".join(recipients),
+                        expose_recipients="header", now=True)
     except Exception as e:
         frappe.log_error(
-            f"Daily closing summary failed: {str(e)}",
-            "Management Daily Closing Summary Error"
+            title="Management Daily Closing Summary Error",
+            message=f"Daily closing summary failed: {str(e)}",
         )

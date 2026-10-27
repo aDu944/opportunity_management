@@ -74,6 +74,68 @@ def get_department_managers(user_email):
         return []
 
 
+# The unattended notification mailbox. It belongs in From and nowhere else: if it
+# reaches To or Cc, every Reply-All in the thread mails a box nobody reads.
+NOTIFICATION_MAILBOX = "erp@alkhora.com"
+
+
+def split_opportunity_recipients(doc):
+    """(to, cc) for an opportunity email: parties in To, their managers in Cc.
+
+    Everything used to go into one set and the caller then sent ONE EMAIL PER ADDRESS,
+    so an opportunity with two interested people produced two separate messages and
+    neither reader could see who else had been told (Ahmed, 2026-10-25).
+
+    To is whoever has to act - the responsible parties on the opportunity. Cc is
+    whoever is watching - the department managers of those parties and of the person
+    who created it. Nobody is listed twice, and the notification mailbox is in neither.
+    """
+    to, cc = [], []
+    seen = set()
+
+    def _add(bucket, email):
+        email = (email or "").strip()
+        if not email or "@" not in email:
+            return
+        low = email.lower()
+        if low == NOTIFICATION_MAILBOX.lower() or low in seen:
+            return
+        seen.add(low)
+        bucket.append(email)
+
+    party_users = []
+    for party in _get_opportunity_party_rows(doc):
+        info = _get_responsible_party_info(party) or {}
+        user_id = info.get("user_id")
+        if user_id:
+            party_users.append(user_id)
+            _add(to, user_id)
+
+    if not to:
+        # No responsible party named yet. Fall back to whoever is assigned so the mail
+        # still reaches a person instead of nobody.
+        for email in get_opportunity_assignee_recipients_for_notification(doc) or []:
+            _add(to, email)
+
+    for user_id in party_users + [getattr(doc, "owner", None)]:
+        if not user_id:
+            continue
+        for mgr in get_department_managers(user_id) or []:
+            _add(cc, mgr)
+
+    return to, cc
+
+
+def notification_reply_to(to):
+    """What Reply and Reply-All should target, or None.
+
+    These are sent From the unattended notification mailbox, so without a Reply-To a
+    reply goes nowhere anyone reads. Pointing it at the To list keeps the conversation
+    among the responsible parties and their managers (Ahmed, 2026-10-25).
+    """
+    return ", ".join(to) if to else None
+
+
 def get_opportunity_notification_recipients(opportunity_name):
     """
     Get all recipients for opportunity notifications:
@@ -357,33 +419,17 @@ def send_closing_date_extended_notification(doc, method=None):
         if not old_date or not new_date or new_date <= old_date:
             return
 
-        recipients = set()
-        custom_recipients = getattr(doc, "custom_notification_recipients", None)
-        if custom_recipients:
-            recipients.update([r.strip() for r in custom_recipients.split(",") if r.strip()])
-
-        if not recipients:
-            recipients.update(get_opportunity_assignee_recipients_for_notification(doc))
-
-        # Ensure department managers for responsible parties and owner are included
-        for party in _get_opportunity_party_rows(doc):
-            info = _get_responsible_party_info(party)
-            user_id = info.get("user_id")
-            if user_id:
-                recipients.update(get_department_managers(user_id))
-
-        if doc.owner:
-            recipients.update(get_department_managers(doc.owner))
-
-        recipients = [r for r in recipients if r]
-        if not recipients:
+        # To = who must act, Cc = who is watching. One addressed email, not one per
+        # person: see split_opportunity_recipients.
+        to, cc = split_opportunity_recipients(doc)
+        if not to and not cc:
             return
 
         template_name = "Opportunity Closing Date Extended"
         if not frappe.db.exists("Email Template", template_name):
             frappe.log_error(
-                f"Email Template '{template_name}' not found. Skipping plain email.",
-                "Closing Date Extended Notification Error"
+                title="Closing Date Extended Notification Error",
+                message=f"Email Template '{template_name}' not found. Skipping plain email.",
             )
             return
 
@@ -393,10 +439,14 @@ def send_closing_date_extended_notification(doc, method=None):
         message = frappe.render_template(message_html, {"doc": doc})
 
         frappe.sendmail(
-            recipients=list(recipients),
+            recipients=to or cc,
+            cc=cc if to else None,
+            reply_to=notification_reply_to(to or cc),
             subject=subject,
             message=message,
-            now=True
+            reference_doctype="Opportunity",
+            reference_name=doc.name,
+            now=True,
         )
     except Exception as e:
         frappe.log_error(
@@ -962,6 +1012,75 @@ def _strip_addrs_from_to_header(message, blocked_addrs):
         count=1,
         flags=re.MULTILINE,
     )
+
+
+def _set_reply_to_header(message, value):
+    """Replace the Reply-To header in a MIME message, or add one after From."""
+    import re
+
+    if re.search(r"^Reply-To:", message, flags=re.MULTILINE):
+        return re.sub(
+            r"^Reply-To:\s*([^\r\n]+(?:\r?\n[ \t]+[^\r\n]+)*)",
+            lambda _m: "Reply-To: " + value,
+            message,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    return re.sub(
+        r"^(From:\s*[^\r\n]+(?:\r?\n[ \t]+[^\r\n]+)*)",
+        lambda m: m.group(1) + "\nReply-To: " + value,
+        message,
+        count=1,
+        flags=re.MULTILINE,
+    )
+
+
+def _addresses_in_header(message, header):
+    """The bare email addresses listed in one MIME header."""
+    import re
+
+    m = re.search(
+        r"^%s:\s*([^\r\n]+(?:\r?\n[ \t]+[^\r\n]+)*)" % header,
+        message,
+        flags=re.MULTILINE,
+    )
+    if not m:
+        return []
+    return re.findall(r"[\w.+-]+@[\w-]+\.[\w.-]+", m.group(1))
+
+
+def redirect_reply_to(doc, method=None):
+    """Email Queue before_insert — point Reply-To at people, not at the robot.
+
+    Frappe falls back to `reply_to or sender`, and its Notification sender never passes
+    reply_to, so a reply to any notification lands in the unattended ERP mailbox. Here
+    the header is pointed at whoever is in To instead, so Reply and Reply-All reach the
+    responsible parties and erp@alkhora.com appears only in From.
+
+    Silent on any failure: a header we could not rewrite must never stop the email.
+    """
+    try:
+        message = getattr(doc, "message", None)
+        if not message:
+            return
+
+        current = _addresses_in_header(message, "Reply-To")
+        mailbox = NOTIFICATION_MAILBOX.lower()
+        # Only touch it where it still points at the unattended mailbox. A sender that
+        # set its own Reply-To deliberately is left alone.
+        if current and not all(a.lower() == mailbox for a in current):
+            return
+
+        targets = [a for a in _addresses_in_header(message, "To")
+                   if a.lower() != mailbox]
+        if not targets:
+            return
+
+        doc.message = _set_reply_to_header(message, ", ".join(targets))
+    except Exception as exc:  # noqa: BLE001
+        frappe.logger().warning(
+            "reply-to rewrite failed for %s: %s" % (getattr(doc, "name", "(new)"), exc)
+        )
 
 
 def filter_invalid_email_recipients(doc, method=None):

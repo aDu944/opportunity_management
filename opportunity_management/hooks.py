@@ -19,6 +19,10 @@ doc_events = {
         "on_cancel": "opportunity_management.opportunity_management.notification_utils.delete_related_notification_logs",
     },
     "Email Queue": {
+        # Reply-To is baked into the MIME blob before it reaches us, and Frappe's
+        # Notification sender never passes reply_to - so it is rewritten here rather
+        # than left pointing at the unattended ERP mailbox.
+        "before_insert": "opportunity_management.opportunity_management.notification_utils.redirect_reply_to",
         "after_insert": "opportunity_management.opportunity_management.notification_utils.log_opportunity_notification_from_email_queue",
         "on_update": "opportunity_management.opportunity_management.notification_utils.update_opportunity_notification_log_status",
     },
@@ -354,10 +358,15 @@ fixtures = [
 # ============================================================================
 # Jinja Environment
 # ============================================================================
-# Add custom jinja methods if needed
-# jinja = {
-#     "methods": "opportunity_management.opportunity_management.utils.jinja_methods"
-# }
+# The six Notification records build their body through this, so the design lives in
+# email_design.py next to every other email instead of as HTML slabs in the database
+# (Ahmed, 2026-10-25). Each record's message is one line:
+#     {{ notification_email(doc, "new_quotation") }}
+jinja = {
+    "methods": [
+        "opportunity_management.opportunity_management.email_jinja.notification_email",
+    ]
+}
 
 # ============================================================================
 # App Includes

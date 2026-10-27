@@ -73,91 +73,90 @@ def on_leave_application_insert(doc, method=None):
     if not recipients:
         return
 
-    is_late_checkin = (doc.description or "").startswith("Auto-submitted: late check-in")
-    late_block = ""
-    if is_late_checkin and doc.get("custom_to_time"):
-        checkin_t = _clock_12h(doc.get("custom_to_time"))
-        checkin_when = f"{_short_date(doc.from_date)}, {checkin_t}"
-        late_block = (
-            "<tr>"
-            "<td style='padding:8px 12px;border:1px solid #ddd;background:#FFF4E5;"
-            "font-weight:bold;color:#E65100'>Actual Check-in Time</td>"
-            "<td style='padding:8px 12px;border:1px solid #ddd;background:#FFF4E5;"
-            f"font-weight:bold;font-size:15px;color:#E65100'>{checkin_when}</td>"
-            "</tr>"
-        )
-        subject = f"تأخير في الحضور — {employee_name} ({checkin_t}) | Late Check-in — {employee_name} ({checkin_t})"
-    else:
-        subject = f"طلب إجازة جديد — {employee_name} | New Leave Request — {employee_name}"
-
-    view_link = f"{frappe.utils.get_url()}/app/leave-application/{doc.name}"
-
     from datetime import timedelta
+
+    from opportunity_management.opportunity_management import email_design as D
+
+    is_late_checkin = (doc.description or "").startswith("Auto-submitted: late check-in")
+    view_link = f"{frappe.utils.get_url()}/app/leave-application/{doc.name}"
     exp = int((frappe.utils.now_datetime() + timedelta(days=14)).timestamp())
 
+    employee_cell = (
+        D.name_cell(employee_name)
+        + f' <span style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;'
+          f'color:{D.FAINT}">{D.esc(doc.employee)}</span>'
+    )
+
+    if is_late_checkin:
+        # Already decided against the balance, so this carries no buttons - and the
+        # design has to SAY so, or an approver sits waiting to act on it. Amber rather
+        # than green: a record, not a request.
+        checkin_t = _clock_12h(doc.get("custom_to_time")) if doc.get("custom_to_time") else ""
+        subject = (f"تأخير في الحضور — {employee_name}"
+                   + (f" ({checkin_t})" if checkin_t else "")
+                   + f" | Late Check-in — {employee_name}"
+                   + (f" ({checkin_t})" if checkin_t else ""))
+        rows = [
+            D.row(D.label("Deducted as", "تُحسب كـ"), D.name_cell(doc.leave_type)),
+            D.row(D.label("Record", "السجل"),
+                  D.link(doc.name, view_link, D.AMBER, mono=True)),
+        ]
+        message = D.envelope(
+            accent=D.AMBER,
+            eyebrow="Late check-in · no action needed",
+            headline=employee_name,
+            figure=D.esc(checkin_t) if checkin_t else None,
+            subline=_short_date(doc.from_date),
+            rows=rows,
+            actions=[D.button("View the record", view_link, D.AMBER, outline=True)],
+            footnote="Recorded automatically by the ESS system against the employee's balance.",
+        )
+        for recipient in recipients:
+            frappe.sendmail(recipients=[recipient], subject=subject, message=message, now=True)
+        return
+
+    subject = f"طلب إجازة جديد — {employee_name} | New Leave Request — {employee_name}"
+
+    if doc.from_date == doc.to_date:
+        dates = _short_date(doc.from_date)
+    else:
+        dates = f"{_short_date(doc.from_date)} → {_short_date(doc.to_date)}"
+    days = frappe.utils.flt(doc.get("total_leave_days"))
+    if doc.get("half_day"):
+        dates += " · half day"
+    elif days:
+        dates += f" · {days:g} day" + ("s" if days != 1 else "")
+
+    rows = [
+        D.row(D.label("Employee", "الموظف"), employee_cell),
+        D.row(D.label("Leave type", "نوع الإجازة"), D.name_cell(doc.leave_type)),
+        D.row(D.label("Dates", "التاريخ"), D.esc(dates)),
+        D.row(D.label("Request", "الطلب"), D.link(doc.name, view_link, D.HR, mono=True)),
+    ]
+    if doc.get("description"):
+        rows.append(D.row(D.label("Reason", "السبب"), D.name_cell(doc.description)))
+
+    # One mail per recipient: the approve/reject links are signed with the RECIPIENT's
+    # own address so the audit log records who acted. A single mail to everyone would
+    # credit whoever happened to be first in the list.
     for recipient in recipients:
-        if is_late_checkin:
-            # Late check-ins are auto-processed against the balance — no HR
-            # decision needed. Show only the View button for record-keeping.
-            action_buttons = (
-                "<p style='margin-top:20px'>"
-                f"  <a href='{view_link}' "
-                "     style='background:#1565C0;color:white;padding:11px 22px;"
-                "     border-radius:6px;text-decoration:none;font-weight:bold;"
-                "     display:inline-block'>View Details</a>"
-                "</p>"
-            )
-        else:
-            approve_url = _leave_action_url(doc.name, "approve", recipient, exp)
-            reject_url = _leave_action_url(doc.name, "reject", recipient, exp)
-            action_buttons = (
-                "<p style='margin-top:20px'>"
-                f"  <a href='{approve_url}' "
-                "     style='background:#2E7D32;color:white;padding:11px 22px;"
-                "     border-radius:6px;text-decoration:none;font-weight:bold;"
-                "     margin-right:8px;display:inline-block'>✓ Approve</a>"
-                f"  <a href='{reject_url}' "
-                "     style='background:#C62828;color:white;padding:11px 22px;"
-                "     border-radius:6px;text-decoration:none;font-weight:bold;"
-                "     margin-right:8px;display:inline-block'>✗ Reject</a>"
-                f"  <a href='{view_link}' "
-                "     style='background:#1565C0;color:white;padding:11px 22px;"
-                "     border-radius:6px;text-decoration:none;font-weight:bold;"
-                "     display:inline-block'>View Details</a>"
-                "</p>"
-            )
-
-        message = f"""
-<p>A new leave application has been submitted and requires your review.</p>
-
-<table style="border-collapse:collapse;width:100%;max-width:500px">
-  <tr>
-    <td style="padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold">Employee</td>
-    <td style="padding:8px 12px;border:1px solid #ddd">{employee_name} ({doc.employee})</td>
-  </tr>
-  <tr>
-    <td style="padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold">Leave Type</td>
-    <td style="padding:8px 12px;border:1px solid #ddd">{doc.leave_type}</td>
-  </tr>
-  <tr>
-    <td style="padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold">From</td>
-    <td style="padding:8px 12px;border:1px solid #ddd">{doc.from_date}</td>
-  </tr>
-  <tr>
-    <td style="padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold">To</td>
-    <td style="padding:8px 12px;border:1px solid #ddd">{doc.to_date}</td>
-  </tr>
-  {late_block}
-  {"<tr><td style='padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold'>Half Day</td><td style='padding:8px 12px;border:1px solid #ddd'>Yes</td></tr>" if doc.get("half_day") else ""}
-  {"<tr><td style='padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;font-weight:bold'>Reason</td><td style='padding:8px 12px;border:1px solid #ddd'>" + (doc.description or "") + "</td></tr>" if doc.get("description") else ""}
-</table>
-
-{action_buttons}
-
-<p style="color:#888;font-size:12px;margin-top:24px">
-  {"This notification was sent automatically by the ALKHORA ESS system." if is_late_checkin else "Approve / Reject buttons work in one click and expire in 14 days.<br>This notification was sent automatically by the ALKHORA ESS system."}
-</p>
-"""
+        approve_url = _leave_action_url(doc.name, "approve", recipient, exp)
+        reject_url = _leave_action_url(doc.name, "reject", recipient, exp)
+        message = D.envelope(
+            accent=D.HR,
+            eyebrow="Leave request · awaiting approval",
+            headline=employee_name,
+            subline=dates,
+            rows=rows,
+            actions=[
+                D.button("Approve", approve_url, D.HR, ar="موافقة"),
+                # Not demoted to a link: an approver must not have to hunt for it.
+                D.button("Reject", reject_url, "#c0352c", outline=True, ar="رفض"),
+            ],
+            post_actions=D.link("Open the request in the ERP", view_link, D.HR),
+            footnote=("Both buttons act in one click and stop working after 14 days. "
+                      "You are an approver for this employee."),
+        )
         frappe.sendmail(recipients=[recipient], subject=subject, message=message, now=True)
 
 

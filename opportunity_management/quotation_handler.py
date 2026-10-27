@@ -47,7 +47,10 @@ def on_quotation_save(doc, method):
                 f"Status: Open -> Quotation (draft Quotation {doc.name} created)",
             )
         except Exception as e:
-            frappe.log_error(f"Failed to advance Opportunity {opportunity_name} to Quotation: {e}")
+            frappe.log_error(
+                title="Opportunity Advance Error",
+                message=f"Could not advance {opportunity_name} to Quotation: {e}",
+            )
 
     # Notify + log only on the FIRST quotation per opportunity — skip if
     # another non-cancelled quotation already exists.
@@ -111,7 +114,10 @@ def on_sales_order_save(doc, method):
                 f"Status: {current} -> Converted (Won) — Sales Order {doc.name} created ({stage})",
             )
         except Exception as e:
-            frappe.log_error(f"Failed to mark Opportunity {opp_name} Won from SO {doc.name}: {e}")
+            frappe.log_error(
+                title="Opportunity Won Error",
+                message=f"Could not mark {opp_name} Won from SO {doc.name}: {e}",
+            )
 
 
 def find_linked_opportunity(doc):
@@ -154,7 +160,10 @@ def close_opportunity(opportunity_name, quotation_name):
         )
 
     except Exception as e:
-        frappe.log_error(f"Failed to close Opportunity {opportunity_name}: {str(e)}")
+        frappe.log_error(
+            title="Opportunity Close Error",
+            message=f"Could not close {opportunity_name}: {str(e)}",
+        )
         frappe.msgprint(
             _(f"Warning: Could not close Opportunity {opportunity_name}. Please check manually."),
             alert=True,
@@ -175,30 +184,66 @@ def notify_opportunity_assignees(opportunity_name, quotation_name):
         if not recipients:
             return
 
-        subject = f"Opportunity Converted: {opportunity_name}"
-        message = f"""
-        <h3>Opportunity converted to Quotation</h3>
+        from opportunity_management.opportunity_management import email_design as D
 
-        <p>The Opportunity <b>{opportunity_name}</b> has been converted to a Quotation.</p>
+        qtn = frappe.get_doc("Quotation", quotation_name)
+        base = frappe.utils.get_url()
+        customer = (qtn.get("customer_name") or qtn.get("party_name")
+                    or opp.get("customer_name") or opp.get("party_name") or "")
 
-        <p><b>Quotation:</b> {quotation_name}</p>
+        rows = [
+            D.row(D.label("Opportunity", "الفرصة"),
+                  D.link(opportunity_name, f"{base}/app/opportunity/{opportunity_name}",
+                         D.QTN, mono=True)),
+            D.row(D.label("Quotation", "العرض"),
+                  D.link(quotation_name, f"{base}/app/quotation/{quotation_name}",
+                         D.QTN, mono=True)),
+        ]
+        # Only when the inquiry actually carried an estimate - a zero would read as a
+        # real figure and invite the wrong comparison.
+        if opp.get("opportunity_amount"):
+            rows.append(D.row(
+                D.label("Original estimate", "التقدير الأولي"),
+                D.esc(D.money(opp.get("opportunity_amount"), opp.get("currency")))))
+        owner = frappe.db.get_value("User", qtn.get("owner"), "full_name") or qtn.get("owner")
+        rows.append(D.row(D.label("Converted by", "حوّلها"), D.name_cell(owner)))
 
-        <p>
-            <a href=\"{frappe.utils.get_url()}/app/quotation/{quotation_name}\"
-               style=\"background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;\">
-                View Quotation
-            </a>
-        </p>
-        """
+        subject = "Opportunity converted · {0} · quoted {1} — {2}".format(
+            customer, D.money(qtn.get("grand_total"), qtn.get("currency")), opportunity_name)
+
+        message = D.envelope(
+            accent=D.QTN,
+            chip="Converted",
+            eyebrow="Opportunity → Quotation",
+            headline=customer,
+            figure=D.esc(D.money(qtn.get("grand_total"), qtn.get("currency"))),
+            subline="quoted",
+            rows=rows,
+            actions=[D.button("Open the quotation",
+                              f"{base}/app/quotation/{quotation_name}", D.QTN)],
+            footnote="You were assigned to this opportunity.",
+        )
+
+        # To the people who own the opportunity, Cc their managers, and replies go to
+        # them rather than to the mailbox that sent it.
+        from opportunity_management.opportunity_management.notification_utils import (
+            notification_reply_to,
+        )
 
         frappe.sendmail(
             recipients=recipients,
             subject=subject,
             message=message,
-            now=True
+            reply_to=notification_reply_to(recipients),
+            # Everyone assigned should see who else was told.
+            expose_recipients="header",
+            now=True,
         )
     except Exception as e:
-        frappe.log_error(f"Failed to send conversion email for {opportunity_name}: {str(e)}")
+        frappe.log_error(
+            title="Opportunity Converted Email Error",
+            message=f"Could not email {opportunity_name} -> {quotation_name}: {str(e)}",
+        )
 
 
 def update_assignment_log(opportunity_name, quotation_name):
