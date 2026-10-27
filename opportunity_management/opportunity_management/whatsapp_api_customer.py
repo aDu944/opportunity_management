@@ -18,6 +18,7 @@ from frappe.utils import cint
 
 from opportunity_management.opportunity_management import customer_info_pure as P
 from opportunity_management.opportunity_management import inbox_channels as IC
+from opportunity_management.opportunity_management import whatsapp_api_opportunity as O
 from opportunity_management.opportunity_management import whatsapp_serializers as S
 from opportunity_management.opportunity_management.whatsapp_api_common import (
     _get_conv,
@@ -134,6 +135,14 @@ def _opportunities(conv, state):
     return out[:OPPORTUNITY_LIMIT]
 
 
+def _attachments_count(conv):
+    try:
+        return len(O.conversation_attachments(conv.name))
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Inbox customer info: attachments failed")
+        return 0
+
+
 def _crm(conv):
     state = {"restricted": False}
     lead = _crm_record("Lead", conv.lead, state)
@@ -145,6 +154,9 @@ def _crm(conv):
         # link_crm / create_lead need inbox access only (already checked).
         "can_link": True,
         "can_create_lead": not conv.lead,
+        # "Create opportunity" / "Parse attachments" (whatsapp_api_opportunity).
+        "can_create_opportunity": O.can_create_opportunity(),
+        "opportunity_attachments_count": _attachments_count(conv),
         "restricted": state["restricted"],
     }
 

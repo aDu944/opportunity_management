@@ -54,19 +54,16 @@ def search_crm(query, limit=10, doctype=None):
     return whatsapp_crm.search_crm(query, limit=cint(limit) or 10, doctype=doctype or None)
 
 
-@frappe.whitelist()
-def create_lead_from_conversation(
-    conversation, lead_name=None, company_name=None, email_id=None, source=None
-):
-    """Turn an unknown number into a Lead without leaving the inbox."""
-    _require_inbox_access()
-    conv = _get_conv(conversation)
-    if conv.lead:
-        frappe.throw(_("This conversation is already linked to Lead {0}").format(conv.lead))
+def insert_lead_for_conversation(conv, lead_name=None, company_name=None, email_id=None,
+                                 source=None, extra=None):
+    """Insert a Lead for `conv` (not linked here). Shared by "Create lead"
+    and "Create opportunity" (whatsapp_api_opportunity).
 
-    # A hidden-number customer has a BSUID, not a phone: never default the
-    # name to it, and leave the Lead's phone fields empty. (ERPNext's Lead has
-    # no plain free-text field for the @username, so it is not copied.)
+    A hidden-number customer has a BSUID, not a phone: never default the
+    name to it, and leave the Lead's phone fields empty. (ERPNext's Lead has
+    no plain free-text field for the @username, so it is not copied.)
+    The Lead is a CRM note of the chat, so permissions are ignored for it.
+    """
     real_phone = conv.phone if has_phone(conv.phone) else None
     fallback_name = display_label(conv.display_name, conv.phone, conv.get("wa_username"), "")
     lead_name = (lead_name or fallback_name or "").strip()
@@ -83,9 +80,27 @@ def create_lead_from_conversation(
     }
     if source and frappe.db.exists("Lead Source", source):
         payload["source"] = source
+    meta = frappe.get_meta("Lead")
+    for field, value in (extra or {}).items():
+        if meta.has_field(field):
+            payload[field] = value
     lead = frappe.get_doc({k: v for k, v in payload.items() if v is not None})
     lead.flags.ignore_permissions = True
     lead.insert(ignore_permissions=True)
+    return lead
+
+
+@frappe.whitelist()
+def create_lead_from_conversation(
+    conversation, lead_name=None, company_name=None, email_id=None, source=None
+):
+    """Turn an unknown number into a Lead without leaving the inbox."""
+    _require_inbox_access()
+    conv = _get_conv(conversation)
+    if conv.lead:
+        frappe.throw(_("This conversation is already linked to Lead {0}").format(conv.lead))
+
+    lead = insert_lead_for_conversation(conv, lead_name, company_name, email_id, source)
 
     whatsapp_crm.link_conversation_to_crm(conv, "Lead", lead.name)
     _note(conv.name, _("Lead {0} created by {1}").format(lead.name, frappe.session.user))
