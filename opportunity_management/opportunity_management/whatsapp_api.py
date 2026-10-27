@@ -95,6 +95,12 @@ from opportunity_management.opportunity_management.whatsapp_api_customer import 
     get_customer_info,
 )
 
+from opportunity_management.opportunity_management.whatsapp_api_opportunity import (  # noqa: F401
+    create_opportunity_from_conversation,
+    get_opportunity_defaults,
+    parse_attachments_into_opportunity,
+)
+
 # The endpoint names of plan §1.7 + §5, plus `react` and the round-3 additions
 # (wa_round3_contract.md). Anything not listed here is not
 # part of the contract.
@@ -144,6 +150,10 @@ __all__ = [
     "list_conversations_for_crm",
     # customer info screen
     "get_customer_info",
+    # opportunity from a chat
+    "get_opportunity_defaults",
+    "create_opportunity_from_conversation",
+    "parse_attachments_into_opportunity",
     # analytics
     "get_inbox_stats",
 ]
