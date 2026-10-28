@@ -228,8 +228,11 @@ def owns(state, start) -> bool:
 
 
 def takeover_values(state) -> dict:
-    """An agent's own reply while the menu runs: the menu is done."""
-    return {"menu_state": DONE} if parse_state(state)[0] in ACTIVE else {}
+    """An agent's own (non-auto) message, a template included, parks the menu
+    for this chat whatever its state: the menu stays out of a conversation an
+    agent is already holding until the idle rule (`should_start`) applies again.
+    Writes nothing when the chat is already parked."""
+    return {} if parse_state(state)[0] == DONE else {"menu_state": DONE}
 
 
 def resolve_verdict(due, now, last_inbound_at, completed_at):

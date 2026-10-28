@@ -125,9 +125,9 @@ def reply_kind(conv, kind):
 
 
 def agent_took_over(conv) -> dict:
-    """An agent's own (non-auto) reply ends the menu for this chat."""
+    """An agent's own (non-auto) message ends / pre-empts the menu for this chat."""
     try:
-        if conv.get("menu_state") and ready():
+        if ready():
             return P.takeover_values(conv.get("menu_state"))
     except Exception:
         pass

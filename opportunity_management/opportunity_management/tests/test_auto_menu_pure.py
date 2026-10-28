@@ -291,10 +291,17 @@ class TestMenuState(unittest.TestCase):
         self.assertEqual(P.resolve_verdict(NOW - H, NOW, NOW - 2 * H, NOW - 25 * H), "clear")
 
     def test_agent_takeover(self):
-        for s in ("lang", "menu:root", "form:r:name", "request:r"):
+        # Running, or never started (a Resolved chat an agent follows up by
+        # template): the agent's message parks the menu either way.
+        for s in ("lang", "menu:root", "form:r:name", "request:r", "", None):
             self.assertEqual(P.takeover_values(s), {"menu_state": "done"})
-        for s in ("", "done", None):
-            self.assertEqual(P.takeover_values(s), {})
+        self.assertEqual(P.takeover_values("done"), {})
+
+    def test_template_reply_after_takeover_gets_no_menu(self):
+        # Resolved legacy chat, agent sends a template (state -> done, stamps
+        # refreshed), customer answers 2h later: no menu. 25h later: idle, menu.
+        self.assertFalse(P.should_start("done", NOW - 30 * H, NOW - 2 * H, "a@x", "Resolved", NOW, 24))
+        self.assertTrue(P.should_start("done", NOW - 50 * H, NOW - 25 * H, "a@x", "Resolved", NOW, 24))
 
     def test_conv_fields(self):
         row = {"menu_state": "menu:nano", "menu_path": "1"}
