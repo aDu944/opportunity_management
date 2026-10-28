@@ -409,11 +409,15 @@ class _Flow:
 
     def request_prompt(self, o):
         text = _text_of(o, "question", self.lang) or T.DEFAULT_QUESTION[self.lang]
-        self.effects.append({"do": "send_text", "text": text, "prompt": True})
+        self.effects.append({"do": "send_buttons", "body": text[:MAX_BODY],
+                             "buttons": [F.main_menu_button(self.lang)], "prompt": True})
+
+    def to_main(self):
+        return self.kw == "menu" or self.tap == T.MAIN_MENU_ID
 
     def in_form(self, row, step):
         _key, o = self.option(row)
-        if o is None or self.kw == "menu":
+        if o is None or self.to_main():
             return self.show_root()
         if self.kw == "lang":
             self.set_lang(_flip(self.lang))
@@ -449,7 +453,7 @@ class _Flow:
 
     def in_request(self, row):
         _key, o = self.option(row)
-        if o is None or self.kw == "menu":
+        if o is None or self.to_main():
             return self.show_root()
         if self.kw == "lang":
             self.set_lang(_flip(self.lang))

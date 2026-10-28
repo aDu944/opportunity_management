@@ -49,16 +49,22 @@ class TestValidate(unittest.TestCase):
         self.assertEqual(F.validate("email", {"kind": "tap", "text": "form:no_email", "fresh": True}), (True, ""))
 
     def test_question_buttons(self):
+        main = {"id": "menu:root", "title": "Main menu"}
         q = F.question("mobile", "en", PHONE)
         self.assertEqual(q["do"], "send_buttons")
-        self.assertEqual(q["buttons"], [{"id": "form:same_number", "title": "Same as this number"}])
-        self.assertEqual(F.question("mobile", "ar", "")["do"], "send_text")  # hidden number: no button
-        self.assertEqual(F.question("name", "ar")["text"], T.QUESTIONS["name"]["ar"])
+        self.assertEqual(q["buttons"], [{"id": "form:same_number", "title": "Same as this number"}, main])
+        # Hidden number: no "same number" button, Main menu still there.
+        self.assertEqual(F.question("mobile", "ar", "")["buttons"], [{"id": "menu:root", "title": "القائمة الرئيسية"}])
+        self.assertEqual(F.question("name", "ar")["body"], T.QUESTIONS["name"]["ar"])
+        self.assertEqual(F.question("name", "en")["buttons"], [main])
         hinted = F.question("email", "en", hint=True)
         self.assertTrue(hinted["body"].startswith(T.HINTS["email"]["en"]))
-        self.assertTrue(F.question("address", "en", hint=True)["text"].startswith(T.TEXT_HINT["en"]))
-        buttons = [b for rows in T.FORM_BUTTONS.values() for b in rows] + T.RETURNING_BUTTONS
+        self.assertTrue(F.question("address", "en", hint=True)["body"].startswith(T.TEXT_HINT["en"]))
+        self.assertEqual([b["id"] for b in F.returning_prompt("en")["buttons"]], ["form:keep", "form:update", "menu:root"])
+        buttons = [b for rows in T.FORM_BUTTONS.values() for b in rows] + T.RETURNING_BUTTONS + [T.MAIN_MENU_BUTTON]
         self.assertTrue(all(len(t) <= 20 for b in buttons for t in b["title"].values()))
+        for step in ("name", "company", "address", "mobile", "email"):
+            self.assertLessEqual(len(F.question(step, "en", PHONE)["buttons"]), 3)
 
     def test_summary_and_lead_fields(self):
         form = {"name": "Ali Hassan", "company": "", "individual": True, "address": "Baghdad",
@@ -77,18 +83,18 @@ class TestFormFlow(unittest.TestCase):
         self.assertEqual(state(effects)["menu_state"], "form:oilgas-1:name")
         self.assertEqual(state(effects)["menu_path"], "3 › 1")
         self.assertEqual(of(effects, "tag")[0]["tag"], "Oil & Gas")
-        self.assertEqual(of(effects, "send_text")[-1]["text"], T.QUESTIONS["name"]["en"])
+        self.assertEqual(of(effects, "send_buttons")[-1]["body"], T.QUESTIONS["name"]["en"])
 
     def test_training_sends_reply_first(self):
         effects = run("menu:oilgas", text("2"), path="3")
-        texts = [e["text"] for e in of(effects, "send_text")]
-        self.assertIn("VCAT II", texts[0])
-        self.assertEqual(texts[1], T.QUESTIONS["name"]["en"])
+        self.assertIn("VCAT II", of(effects, "send_text")[0]["text"])
+        self.assertEqual(of(effects, "send_buttons")[0]["body"], T.QUESTIONS["name"]["en"])
+        self.assertLess(effects.index(of(effects, "send_text")[0]), effects.index(of(effects, "send_buttons")[0]))
 
     def test_returning_customer(self):
         effects = run("menu:oilgas", text("1"), path="3", has_crm=True)
         self.assertEqual(state(effects)["menu_state"], "form:oilgas-1:confirm")
-        self.assertEqual([b["id"] for b in effects[-2]["buttons"]], ["form:keep", "form:update"])
+        self.assertEqual([b["id"] for b in effects[-2]["buttons"]], ["form:keep", "form:update", "menu:root"])
         keep = run("form:oilgas-1:confirm", tap("form:keep"), has_crm=True, path="3 › 1")
         self.assertFalse(of(keep, "create_lead"))
         self.assertIn("kept the saved details", of(keep, "note")[0]["text"])
@@ -104,7 +110,7 @@ class TestFormFlow(unittest.TestCase):
         effects = run("form:oilgas-1:name", text("Ali"))
         self.assertEqual(state(effects)["menu_retries"], 1)
         self.assertEqual(state(effects)["menu_state"], "form:oilgas-1:name")
-        self.assertTrue(of(effects, "send_text")[0]["text"].startswith(T.HINTS["name"]["en"]))
+        self.assertTrue(of(effects, "send_buttons")[0]["body"].startswith(T.HINTS["name"]["en"]))
         effects = run("form:oilgas-1:name", MEDIA, retries=1)
         self.assertEqual(state(effects)["menu_retries"], 2)
         effects = run("form:oilgas-1:name", text("Ali"), retries=2)
@@ -130,12 +136,14 @@ class TestFormFlow(unittest.TestCase):
         lead = of(effects, "create_lead")[0]["fields"]
         self.assertEqual(lead, {"lead_name": "Ali Hassan", "city": "Baghdad, Mansour", "mobile_no": PHONE})
         self.assertIn("Mobile: " + PHONE, of(effects, "note")[0]["text"])
-        self.assertTrue(of(effects, "send_text")[-1]["prompt"])
+        self.assertTrue(of(effects, "send_buttons")[-1]["prompt"])
 
     def test_short_form(self):
         effects = run("form:info-5:company", text("ACME"), form={"name": "Ali Hassan"}, path="0 › 5")
         self.assertEqual(state(effects)["menu_state"], "request:info-5")
-        self.assertEqual(of(effects, "send_text")[-1]["text"], "How can we help you?")
+        ask = of(effects, "send_buttons")[-1]
+        self.assertEqual(ask["body"], "How can we help you?")
+        self.assertEqual([b["id"] for b in ask["buttons"]], ["menu:root"])
 
     def test_keywords_inside_form(self):
         effects = run("form:oilgas-1:mobile", text("lang"))
@@ -143,6 +151,19 @@ class TestFormFlow(unittest.TestCase):
         self.assertEqual(effects[0]["body"], T.QUESTIONS["mobile"]["ar"])  # re-asked, no hint
         self.assertNotIn("menu_retries", state(effects))
         effects = run("form:oilgas-1:mobile", text("menu"))
+        self.assertEqual(state(effects)["menu_state"], "menu:root")
+
+    def test_main_menu_button_inside_form(self):
+        # Tapping the Main menu button on a question drops the half-filled
+        # form and shows the root list in the customer's language.
+        effects = run("form:oilgas-1:address", tap("menu:root"), form={"name": "Ali Hassan", "company": "ACME"}, lang="ar")
+        self.assertEqual(state(effects)["menu_state"], "menu:root")
+        self.assertEqual(state(effects)["menu_path"], "")
+        self.assertEqual(of(effects, "send_list")[0]["menu"], "root")
+        self.assertFalse(of(effects, "create_lead"))
+        self.assertFalse(of(effects, "note"))
+        # Same on the returning-customer prompt.
+        effects = run("form:oilgas-1:confirm", tap("menu:root"), has_crm=True)
         self.assertEqual(state(effects)["menu_state"], "menu:root")
 
 
@@ -170,6 +191,9 @@ class TestRequest(unittest.TestCase):
 
     def test_keywords_in_request(self):
         self.assertEqual(state(run("request:info-2", text("menu")))["menu_state"], "menu:root")
+        effects = run("request:info-2", tap("menu:root"))
+        self.assertEqual(state(effects)["menu_state"], "menu:root")
+        self.assertFalse(of(effects, "handoff"))
         effects = run("request:info-2", text("lang"))
         self.assertEqual(state(effects)["menu_language"], "ar")
         self.assertFalse(of(effects, "handoff"))

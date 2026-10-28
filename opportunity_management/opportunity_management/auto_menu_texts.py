@@ -21,6 +21,9 @@ MAIN_MENU = {"ar": "القائمة الرئيسية", "en": "Main menu"}
 LANG_TOGGLE = {"ar": "🌐 English", "en": "🌐 العربية"}
 MAIN_MENU_ID = "menu:root"
 LANG_TOGGLE_ID = "lang:toggle"
+# Reply button closing every form / request prompt (≤20 chars): a way out of
+# a half-filled form without knowing the typed keyword.
+MAIN_MENU_BUTTON = {"id": MAIN_MENU_ID, "title": MAIN_MENU}
 
 # Strict-menu resend line, prepended to the prompt body.
 PLEASE_CHOOSE = {

@@ -107,12 +107,18 @@ def validate(step, inbound, phone=""):
     return False, None
 
 
+def main_menu_button(lang):
+    return {"id": T.MAIN_MENU_BUTTON["id"], "title": T.pick(T.MAIN_MENU_BUTTON["title"], lang)}
+
+
 def _buttons(step, lang, phone):
+    """The step's own buttons, then Main menu (always; ≤3 per Meta's limit)."""
     rows = []
     for button in T.FORM_BUTTONS.get(step, ()):
         if button["id"] == SAME_NUMBER_ID and not phone:
             continue  # WhatsApp with a real number only
         rows.append({"id": button["id"], "title": T.pick(button["title"], lang)})
+    rows.append(main_menu_button(lang))
     return rows
 
 
@@ -122,10 +128,7 @@ def question(step, lang, phone="", hint=False):
     if hint:
         line = T.pick(T.HINTS.get(step) or T.TEXT_HINT, lang)
         body = line + "\n" + body
-    buttons = _buttons(step, lang, phone)
-    if buttons:
-        return {"do": "send_buttons", "body": body, "buttons": buttons, "prompt": True}
-    return {"do": "send_text", "text": body, "prompt": True}
+    return {"do": "send_buttons", "body": body, "buttons": _buttons(step, lang, phone), "prompt": True}
 
 
 def returning_prompt(lang, please=False):
@@ -133,6 +136,7 @@ def returning_prompt(lang, please=False):
     if please:
         body = T.pick(T.PLEASE_CHOOSE, lang) + "\n" + body
     buttons = [{"id": b["id"], "title": T.pick(b["title"], lang)} for b in T.RETURNING_BUTTONS]
+    buttons.append(main_menu_button(lang))
     return {"do": "send_buttons", "body": body, "buttons": buttons, "prompt": True}
 
 
