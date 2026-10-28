@@ -9,7 +9,10 @@ No frappe import: auto_menu_pure / auto_menu_form_pure use them bench-free.
 LANGS = ("ar", "en")
 
 # Language step (state `lang`): one bilingual body, two reply buttons.
-GREETING = "أهلاً بك في الخورة. اختر اللغة / Welcome to AL KHORA. Choose your language:"
+GREETING = (
+    "شكراً لتواصلكم مع شركة الخورة، يرجى اختيار لغتك المفضلة للمتابعة:\n"
+    "Thank you for contacting ALKHORA, please choose your language to proceed:"
+)
 LANG_BUTTONS = [{"id": "lang:ar", "title": "العربية"}, {"id": "lang:en", "title": "English"}]
 
 # Fixed rows closing every list (ids are what the customer's tap sends back).
