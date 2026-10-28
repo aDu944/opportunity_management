@@ -299,11 +299,30 @@ class _Flow:
     def show(self, key, please=False, path=None):
         if key not in self.menus:
             key, path = self.root, ""
+        if please and self.strikes():
+            return self.escape()
         self.effects.append(list_prompt(dict(self.menus[key], key=key), self.lang, please))
         self.values["menu_state"] = MENU + ":" + key
-        self.values["menu_retries"] = 0
+        self.values["menu_retries"] = 0 if not please else int(self.ctx.get("retries") or 0) + 1
         if path is not None:
             self.values["menu_path"] = path
+
+    def strikes(self) -> bool:
+        """One more unmatched message: is it time to stop sending lists?"""
+        limit = int(self.settings.get("escape_after") or T.STRICT_ESCAPE_AFTER)
+        return int(self.ctx.get("retries") or 0) + 1 >= limit
+
+    def escape(self):
+        """Hand an unmatched conversation to the escape group with the
+        customer's own words instead of yet another list."""
+        group = self.settings.get("escape_group") or None
+        self.done()
+        self.effects.append({"do": "handoff", "group": group, "last_handler": False, "escape": True})
+        text = T.ESCAPE[self.lang].format(group=group or T.NO_GROUP[self.lang])
+        ooh = (self.settings.get("ooh_text") or {}).get(self.lang) or ""
+        if ooh and not self.settings.get("in_hours", True):
+            text += "\n\n" + ooh
+        self.effects.append({"do": "send_text", "text": text})
 
     def show_root(self):
         self.show(self.root, path="")
@@ -323,7 +342,11 @@ class _Flow:
         if self.kw == "menu" or (self.kw is None and self.tap is None and self.inbound.get("lang")):
             self.set_lang(self.inbound.get("lang") or self.lang)
             return self.show_root()
+        if self.kw != "lang" and self.strikes():
+            return self.escape()
         self.effects.append(greeting(please=self.kw != "lang"))
+        if self.kw != "lang":
+            self.values["menu_retries"] = int(self.ctx.get("retries") or 0) + 1
 
     def in_menu(self, key):
         if key not in self.menus:

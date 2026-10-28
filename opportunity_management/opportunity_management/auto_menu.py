@@ -210,6 +210,15 @@ def _inbound(msg):
             "lang": detect_language(text) if kind == "text" else ""}
 
 
+def _escape_group(settings):
+    """Group taking chats the strict menu could not place: the setting if
+    any, else the seeded General information group; None when neither exists."""
+    for name in ((settings.get("menu_escape_group") or "").strip(), "General information"):
+        if name and frappe.db.exists("WhatsApp Agent Group", {"name": name, "is_active": 1}):
+            return name
+    return None
+
+
 def engine_settings(settings):
     from opportunity_management.opportunity_management.whatsapp_jobs import BUSINESS_HOURS_PLACEHOLDER
 
@@ -222,6 +231,7 @@ def engine_settings(settings):
         "max_retries": cint(settings.get("form_max_retries")) or 3,
         "auto_resolve_hours": cint(settings.get("auto_resolve_menu_hours")) or 24,
         "in_hours": is_business_hours(settings=settings), "hours_label": hours, "ooh_text": ooh,
+        "escape_group": _escape_group(settings),
     }
 
 

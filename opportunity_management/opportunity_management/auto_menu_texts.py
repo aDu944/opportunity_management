@@ -81,6 +81,13 @@ CONFIRMATION = {
 }
 # {group} when the option names no group.
 NO_GROUP = {"ar": "الخورة", "en": "AL KHORA"}
+# Escape hatch: after STRICT_ESCAPE_AFTER unmatched messages in one menu the
+# chat goes to the escape group with the customer's words (no more lists).
+STRICT_ESCAPE_AFTER = 2
+ESCAPE = {
+    "ar": "لم نتمكن من مطابقة رسالتك مع خيارات القائمة، لذا تم تحويل محادثتك إلى فريق {group} وسيرد عليك أحد موظفينا خلال ساعات العمل.",
+    "en": "We could not match your message to the menu, so your chat has been passed to our {group} team. A colleague will reply during business hours.",
+}
 
 # `{{business_hours}}` in option replies renders from Inbox Settings.
 BUSINESS_HOURS_PLACEHOLDER = "{{business_hours}}"

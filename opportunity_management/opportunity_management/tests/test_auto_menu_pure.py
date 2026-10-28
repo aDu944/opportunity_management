@@ -37,6 +37,7 @@ SETTINGS = {
     "max_retries": 3, "auto_resolve_hours": 24, "in_hours": True,
     "hours_label": {"en": "Sat 9:00 AM – 3:00 PM", "ar": "السبت 9:00 ص – 3:00 م"},
     "ooh_text": {"en": "We are closed now.", "ar": "نحن مغلقون الآن."},
+    "escape_group": "General information",
 }
 
 
@@ -145,8 +146,9 @@ class TestLanguageStep(unittest.TestCase):
     def test_undetectable_and_media_resend_greeting(self):
         for inbound in (text("👍"), MEDIA, tap("opt:root-1")):
             effects = run("lang", inbound)
-            self.assertEqual(len(effects), 1)
+            self.assertEqual(len(effects), 2)  # the greeting + the strike count
             self.assertTrue(effects[0]["body"].startswith(T.PLEASE_CHOOSE_BOTH))
+            self.assertEqual(state(effects), {"menu_retries": 1})
 
     def test_keywords(self):
         self.assertEqual(state(run("lang", text("  MENU ", lang="en")))["menu_state"], "menu:root")
@@ -232,8 +234,32 @@ class TestMenuState(unittest.TestCase):
             self.assertEqual(lst["menu"], "nano")
             self.assertTrue(lst["body"].startswith(T.PLEASE_CHOOSE["en"] + "\n\n"))
             self.assertEqual(state(effects)["menu_state"], "menu:nano")
+            self.assertEqual(state(effects)["menu_retries"], 1)
             self.assertNotIn("menu_path", state(effects))
             self.assertFalse(of(effects, "handoff"))
+
+    def test_strict_escape(self):
+        # Second unmatched message in the same menu: no third list, the chat
+        # goes to General information with the customer's words.
+        effects = run("menu:root", text("do you offer ICP? price and time?"), retries=1)
+        self.assertFalse(of(effects, "send_list"))
+        self.assertEqual(of(effects, "handoff")[0], {"do": "handoff", "group": "General information",
+                                                     "last_handler": False, "escape": True})
+        self.assertIn("General information", of(effects, "send_text")[0]["text"])
+        self.assertEqual(state(effects)["menu_state"], "done")
+        self.assertEqual(state(effects)["menu_completed_at"], P.NOW)
+        # A valid choice resets the count; a resend after a success starts at 1.
+        self.assertEqual(state(run("menu:root", text("3"), retries=1))["menu_retries"], 0)
+        # Limit from settings; no group configured → handoff without a group.
+        custom = dict(SETTINGS, escape_after=3, escape_group=None)
+        self.assertTrue(of(run("menu:root", MEDIA, retries=1, settings=custom), "send_list"))
+        esc = run("menu:root", MEDIA, retries=2, settings=custom)
+        self.assertIsNone(of(esc, "handoff")[0]["group"])
+        self.assertIn("AL KHORA", of(esc, "send_text")[0]["text"])
+        # Language step: two voice notes → same escape; a typed question moves on instead.
+        self.assertEqual(state(run("lang", MEDIA))["menu_retries"], 1)
+        self.assertTrue(of(run("lang", MEDIA, retries=1), "handoff"))
+        self.assertEqual(state(run("lang", text("hello", lang="en")))["menu_state"], "menu:root")
 
     def test_fixed_rows(self):
         effects = run("menu:nano", tap("menu:root", row="OLD"), path="1")
