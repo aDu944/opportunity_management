@@ -338,7 +338,11 @@ class _Flow:
             self.set_lang(self.tap[5:])
             return self.show(key)
         chosen = None
-        if self.tap and self.tap.startswith("opt:") and self.inbound["fresh"]:
+        if self.tap and self.tap.startswith("opt:"):
+            # Any tap naming an option of THIS menu counts, fresh or not: the
+            # prompt row can be lost after Meta delivered it (a send that
+            # failed on insert), and a tap on another menu's list misses here
+            # anyway and gets the strict resend.
             chosen = next((o for o in menu.get("options") or [] if "opt:" + o.get("row", "") == self.tap), None)
         elif self.inbound.get("kind") == "text":
             digit = parse_digit(self.inbound.get("text"))

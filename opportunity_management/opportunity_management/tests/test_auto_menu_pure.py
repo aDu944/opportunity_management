@@ -213,9 +213,14 @@ class TestMenuState(unittest.TestCase):
         self.assertEqual(state(run("menu:root", tap("opt:root-4")))["menu_state"], "menu:festo")
         by_wamid = {"kind": "tap", "text": "opt:root-4", "reply_to_id": "wamid.P"}
         self.assertEqual(state(run("menu:root", by_wamid))["menu_state"], "menu:festo")
+        # A tap on an option of the current menu counts even when the prompt
+        # row is unknown (lost after Meta delivered it); one from another
+        # menu's list gets the strict resend.
         stale = run("menu:root", tap("opt:root-4", row="OLD"))
-        self.assertTrue(of(stale, "send_list")[0]["body"].startswith(T.PLEASE_CHOOSE["en"]))
-        self.assertEqual(state(stale)["menu_state"], "menu:root")
+        self.assertEqual(state(stale)["menu_state"], "menu:festo")
+        other = run("menu:oilgas", tap("opt:root-4", row="OLD"), path="3")
+        self.assertTrue(of(other, "send_list")[0]["body"].startswith(T.PLEASE_CHOOSE["en"]))
+        self.assertEqual(state(other)["menu_state"], "menu:oilgas")
         # an option of another menu is not valid here
         other = run("menu:root", tap("opt:nano-1"))
         self.assertTrue(of(other, "send_list")[0]["body"].startswith(T.PLEASE_CHOOSE["en"]))

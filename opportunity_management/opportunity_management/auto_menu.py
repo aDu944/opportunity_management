@@ -154,6 +154,12 @@ def run_menu(conversation, message, start=0):
                 return frappe.db.commit()  # a burst: the latest message answers
         tree = load_tree(root_menu(settings))
         effects = P.next_step(_ctx(conv, settings, start), _inbound(msg), tree, engine_settings(settings))
+        # Release the row lock before talking to Meta. Holding it while the
+        # outgoing row is inserted deadlocked against the next webhook
+        # (which inserts its inbound row, then wants this row) on 2026-10-28.
+        # Jobs for one chat already serialize on the short queue and the
+        # burst guard above.
+        frappe.db.commit()
         _apply(conv, effects, msg)
         frappe.db.commit()
     except Exception:
@@ -268,7 +274,16 @@ def _send_effect(conv, e):
 
 
 def _apply(conv, effects, msg):
+    """Run the effects, each committed on its own. frappe_whatsapp sends inside
+    `before_insert` and a failed insert rolls the transaction back, so the
+    new state is written FIRST (the customer may hold a list whose row we
+    lost) and no earlier effect can be undone by a later failure."""
     now = now_datetime()
+    state = {}
+    for e in effects:
+        if e["do"] == "set_state":
+            state.update(e["values"])
+    _write(conv, state, now)
     values, sending = {}, True
     for e in effects:
         try:
@@ -278,7 +293,7 @@ def _apply(conv, effects, msg):
                     values.update({"menu_last_prompt_row": item.get("id"),
                                    "menu_last_prompt_id": item.get("message_id") or None})
             elif e["do"] == "set_state":
-                values.update(e["values"])
+                continue
             elif e["do"] == "tag":
                 add_tag(conv, e["tag"])
             elif e["do"] == "note":
@@ -289,22 +304,33 @@ def _apply(conv, effects, msg):
                 values["menu_auto_resolve_at"] = add_to_date(now, hours=e["hours"])
             elif e["do"] == "handoff":
                 values.update(_handoff(conv, e, msg, now))
+            frappe.db.commit()
         except Exception:
+            frappe.db.rollback()
             sending = sending and not e["do"].startswith("send_")  # Meta refused: stop talking
             frappe.log_error(title="WhatsApp auto menu: effect {0} failed".format(e.get("do")),
                              message="{0}\n{1}".format(conv.name, frappe.get_traceback()))
-    if not values:
-        return
+            frappe.db.commit()
+    _write(conv, values, now, publish="menu_state" in state)
+
+
+def _write(conv, values, now, publish=False):
+    """Conversation values, committed; `publish` refreshes the inbox lists."""
+    values = dict(values or {})
     for field, value in list(values.items()):
         if value == P.NOW:
             values[field] = now
         elif isinstance(value, dict):
             values[field] = json.dumps(value, ensure_ascii=False)
-    frappe.db.set_value(CONV, conv.name, values, update_modified=False)
-    if "menu_state" in values:
+    if values:
+        frappe.db.set_value(CONV, conv.name, values, update_modified=False)
+        for field, value in values.items():
+            conv.set(field, value)
+    if publish:
         from opportunity_management.opportunity_management import whatsapp_hooks
 
         whatsapp_hooks.publish_inbox_event("conversation", frappe.get_doc(CONV, conv.name))
+    frappe.db.commit()
 
 
 def add_tag(conv, tag):
