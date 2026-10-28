@@ -99,7 +99,7 @@ class TestFormFlow(unittest.TestCase):
         self.assertFalse(of(keep, "create_lead"))
         self.assertIn("kept the saved details", of(keep, "note")[0]["text"])
         self.assertEqual(state(keep)["menu_state"], "request:oilgas-1")
-        self.assertIn("part numbers", of(keep, "send_text")[0]["text"])
+        self.assertIn("part numbers", of(keep, "send_buttons")[0]["body"])
         update = run("form:oilgas-1:confirm", text("Update"), has_crm=True)
         self.assertEqual(state(update)["menu_state"], "form:oilgas-1:name")
         other = run("form:oilgas-1:confirm", text("what?"), has_crm=True)
