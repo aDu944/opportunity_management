@@ -1,0 +1,146 @@
+{
+ "actions": [],
+ "creation": "2026-10-28 13:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "menu_key",
+  "is_root",
+  "column_break_head",
+  "title_en",
+  "title_ar",
+  "button_en",
+  "button_ar",
+  "section_break_body",
+  "body_en",
+  "column_break_body",
+  "body_ar",
+  "section_break_options",
+  "options"
+ ],
+ "fields": [
+  {
+   "fieldname": "menu_key",
+   "fieldtype": "Data",
+   "label": "Menu Key",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "Stable id, e.g. root, nano. Tapped rows send opt:<option row>."
+  },
+  {
+   "fieldname": "is_root",
+   "fieldtype": "Check",
+   "label": "Is Root",
+   "default": "0",
+   "in_list_view": 1,
+   "description": "Used when Inbox Settings › Root Menu is empty."
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "title_en",
+   "fieldtype": "Data",
+   "label": "Title (EN)",
+   "length": 24,
+   "in_list_view": 1,
+   "description": "List section title, at most 24 characters."
+  },
+  {
+   "fieldname": "title_ar",
+   "fieldtype": "Data",
+   "label": "Title (AR)",
+   "length": 24
+  },
+  {
+   "fieldname": "button_en",
+   "fieldtype": "Data",
+   "label": "List Button (EN)",
+   "length": 20,
+   "description": "The button that opens the list (default Choose)."
+  },
+  {
+   "fieldname": "button_ar",
+   "fieldtype": "Data",
+   "label": "List Button (AR)",
+   "length": 20
+  },
+  {
+   "fieldname": "section_break_body",
+   "fieldtype": "Section Break",
+   "label": "Body"
+  },
+  {
+   "fieldname": "body_en",
+   "fieldtype": "Small Text",
+   "label": "Body (EN)",
+   "description": "At most 1024 characters."
+  },
+  {
+   "fieldname": "column_break_body",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "body_ar",
+   "fieldtype": "Small Text",
+   "label": "Body (AR)"
+  },
+  {
+   "fieldname": "section_break_options",
+   "fieldtype": "Section Break",
+   "label": "Options",
+   "description": "At most 8; \"Main menu\" and the language switch are added to every list."
+  },
+  {
+   "fieldname": "options",
+   "fieldtype": "Table",
+   "label": "Options",
+   "options": "WhatsApp Menu Option"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-28 13:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Opportunity Management",
+ "name": "WhatsApp Menu",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "WhatsApp Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "WhatsApp Agent"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1,
+ "autoname": "field:menu_key",
+ "title_field": "title_en"
+}

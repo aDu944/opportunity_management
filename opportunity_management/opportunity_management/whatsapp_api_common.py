@@ -243,3 +243,22 @@ def _resolve_account(whatsapp_account=None):
     frappe.throw(
         _("No WhatsApp Account is set as the default outgoing account — pick one in WhatsApp Account.")
     )
+
+
+def _profile_name(phone):
+    """The raw WhatsApp profile name Meta sent for this number.
+
+    `display_name` on the conversation is overwritten the moment the thread is
+    linked to a Contact/Lead/Customer, so the name the customer set on their
+    own handset is only recoverable from frappe_whatsapp's `WhatsApp Profiles`.
+    Looked up here rather than in the shared serializer so list queries stay
+    one-shot — this is a single-conversation detail.
+    """
+    if not phone:
+        return None
+    try:
+        return frappe.db.get_value("WhatsApp Profiles", {"number": phone}, "profile_name") or None
+    except Exception:
+        # The profiles doctype is frappe_whatsapp's, not ours; a build without
+        # it must not take the whole conversation payload down.
+        return None

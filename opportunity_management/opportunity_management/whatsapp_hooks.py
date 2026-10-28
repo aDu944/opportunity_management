@@ -22,6 +22,8 @@ which also owns the two `*/5` cron sweeps.
 import frappe
 from frappe.utils import add_to_date, cint, get_datetime, now_datetime
 
+from opportunity_management.opportunity_management import agent_groups as AG
+from opportunity_management.opportunity_management import auto_menu as AM
 from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management import whatsapp_crm
 from opportunity_management.opportunity_management import whatsapp_jobs
@@ -48,16 +50,6 @@ from opportunity_management.opportunity_management.whatsapp_utils import (
 )
 
 PREVIEW_LENGTH = 120
-
-
-# ── serializer aliases (one implementation, whatsapp_serializers) ────────────
-
-def _conv_row(conv):
-    return S.conv_row(conv)
-
-
-def _thread_item(row, kind="message", **kwargs):
-    return S.thread_item(row, kind=kind, **kwargs)
 
 
 # ── entry points ─────────────────────────────────────────────────────────────
@@ -145,6 +137,7 @@ def on_message_after_insert(doc, method=None):
     except Exception:
         frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: card stamping failed")
 
+    menu = AM.claim_inbound(conv, doc) if incoming else None  # the auto menu owns it?
     try:
         _apply_message_to_conversation(conv, doc, incoming, body_text)
     except Exception:
@@ -167,6 +160,8 @@ def on_message_after_insert(doc, method=None):
     except Exception:
         frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: realtime publish failed")
 
+    if menu:  # in the auto menu: no push, no canned reply — the menu job answers
+        return AM.enqueue(conv, doc, menu)
     if incoming:
         try:
             _push_inbound(conv, doc)
@@ -174,7 +169,7 @@ def on_message_after_insert(doc, method=None):
             frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: FCM dispatch failed")
 
         try:
-            kind = whatsapp_jobs._auto_reply_kind(conv)
+            kind = AM.reply_kind(conv, whatsapp_jobs._auto_reply_kind(conv))
             if kind:
                 frappe.enqueue(
                     "opportunity_management.opportunity_management.whatsapp_jobs.send_auto_reply",
@@ -359,7 +354,7 @@ def _apply_message_to_conversation(conv, doc, incoming, body_text):
     if incoming:
         values["last_inbound_at"] = now
         values["unread_count"] = cint(conv.unread_count) + 1
-        if not conv.awaiting_reply_since:
+        if not conv.awaiting_reply_since and not conv.flags.get("menu_hold"):
             values["awaiting_reply_since"] = now
         if conv.status == "Resolved":
             # The customer came back — a resolved thread must reopen, or it
@@ -381,6 +376,9 @@ def _apply_message_to_conversation(conv, doc, incoming, body_text):
                 delta = (now - get_datetime(conv.awaiting_reply_since)).total_seconds()
                 values["first_response_seconds"] = int(max(delta, 0))
             values["awaiting_reply_since"] = None
+            # A member's first reply on a chat ringing their group claims it.
+            values.update(AG.auto_claim(conv, doc.get("custom_sent_by"), now))
+            values.update(AM.agent_took_over(conv))  # a human took over: menu done
             if conv.status == "Open":
                 values["status"] = "Pending"
 
@@ -481,7 +479,9 @@ def _push_inbound(conv, doc):
         _send_to_users([conv.assigned_to], title, body, data, dedupe_seen=seen)
         return
 
-    if not cint(setting("notify_team_on_unassigned", 1)):
+    # A chat ringing an agent group alerts its members, not the whole team.
+    group_users = AG.inbound_recipients(conv)
+    if not group_users and not cint(setting("notify_team_on_unassigned", 1)):
         return
 
     throttle = cint(setting("team_alert_throttle_minutes", 10))
@@ -491,7 +491,7 @@ def _push_inbound(conv, doc):
             return
 
     title, body, data = build(conv, doc)
-    _send_to_users(IC.channel_users(channel), title, body, data, dedupe_seen=seen)
+    _send_to_users(group_users or IC.channel_users(channel), title, body, data, dedupe_seen=seen)
     stamp = now_datetime()
     conv.last_team_alert_at = stamp
     frappe.db.set_value(

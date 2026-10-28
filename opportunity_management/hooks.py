@@ -232,6 +232,17 @@ scheduler_events = {
     }
 }
 
+# WhatsApp agent groups: email the group's Notify User (and push its members once
+# more) when a ringing chat waits past the first-response timeout. Self-gates on
+# the doctype existing; never reassigns.
+scheduler_events.setdefault("cron", {}).setdefault("*/5 * * * *", []).append(
+    "opportunity_management.opportunity_management.agent_groups.notify_overdue"
+)
+# WhatsApp auto menu: resolve chats whose Auto-resolve option's wait has passed.
+scheduler_events.setdefault("cron", {}).setdefault("*/5 * * * *", []).append(
+    "opportunity_management.opportunity_management.auto_menu.resolve_due"
+)
+
 # ============================================================================
 # Website/Portal Configuration
 # ============================================================================

@@ -105,5 +105,33 @@ class TestMayTransfer(unittest.TestCase):
         self.assertFalse(AR.may_transfer(False, ME, BOB))
 
 
+class TestMayClaim(unittest.TestCase):
+    def test_free_chat_no_group(self):
+        self.assertEqual(AR.may_claim(False, ME, None), (True, AR.CLAIM))
+
+    def test_someone_elses_chat_refused_even_for_manager(self):
+        self.assertEqual(AR.may_claim(False, ME, BOB), (False, AR.CLAIMED_BY_OTHER))
+        self.assertEqual(AR.may_claim(True, ME, BOB, "Lab", {ME}), (False, AR.CLAIMED_BY_OTHER))
+
+    def test_own_chat_reclaim_allowed(self):
+        self.assertEqual(AR.may_claim(False, ME, ME, "Lab", {BOB}), (True, AR.CLAIM))
+
+    def test_group_member_claims(self):
+        self.assertEqual(AR.may_claim(False, ME, "", "Lab", [ME, BOB]), (True, AR.CLAIM))
+
+    def test_outside_group_refused(self):
+        self.assertEqual(AR.may_claim(False, CAROL, None, "Lab", [ME, BOB]), (False, AR.NOT_GROUP_MEMBER))
+        self.assertEqual(AR.may_claim(False, CAROL, None, "Lab", None), (False, AR.NOT_GROUP_MEMBER))
+
+    def test_manager_outside_group_allowed(self):
+        self.assertEqual(AR.may_claim(True, CAROL, None, "Lab", [ME]), (True, AR.CLAIM))
+
+    def test_may_assign_group(self):
+        self.assertTrue(AR.may_assign_group(True, ME, BOB))
+        self.assertTrue(AR.may_assign_group(False, ME, ME))
+        self.assertFalse(AR.may_assign_group(False, ME, None))
+        self.assertFalse(AR.may_assign_group(False, ME, BOB))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

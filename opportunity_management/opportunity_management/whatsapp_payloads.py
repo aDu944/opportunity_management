@@ -246,6 +246,24 @@ def option_buttons(options) -> list:
     return [{"id": f"opt_{i + 1}", "title": title} for i, title in enumerate(options)]
 
 
+def interactive_list(body, button, section, rows) -> dict:
+    """Meta's list `interactive` object; rows are {id, title, description}."""
+    items = []
+    for row in rows:
+        item = {"id": row["id"], "title": row["title"]}
+        if row.get("description"):
+            item["description"] = row["description"]
+        items.append(item)
+    return {"type": "list", "body": {"text": body},
+            "action": {"button": button, "sections": [{"title": section, "rows": items}]}}
+
+
+def interactive_buttons(body, buttons) -> dict:
+    """Meta's reply-button `interactive` object (≤3 buttons {id, title})."""
+    return {"type": "button", "body": {"text": body}, "action": {"buttons": [
+        {"type": "reply", "reply": {"id": b["id"], "title": b["title"]}} for b in buttons[:MAX_BUTTONS]]}}
+
+
 def option_titles(raw):
     """Titles from a stored `buttons` field, or None."""
     if isinstance(raw, str):
@@ -271,6 +289,8 @@ def custom_kind(content_type, is_voice, payload) -> str:
         return "contact"
     if content_type == "audio" and is_voice and kind == "voice":
         return "voice"
+    if content_type == "interactive" and kind == "menu":
+        return "menu"  # auto menu list / buttons (auto_menu): sent as built
     return ""
 
 
@@ -290,6 +310,9 @@ def message_body(kind, to, payload, link=None, reply_to=None) -> dict:
         if payload.get("voice"):
             # Voice-note rendering; Meta requires Ogg/Opus mono for it.
             data["audio"]["voice"] = True
+    elif kind == "menu":
+        data["type"] = "interactive"
+        data["interactive"] = payload["interactive"]
     else:
         raise PayloadError(f"Unknown message kind {kind}")
     if reply_to:

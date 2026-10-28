@@ -35,11 +35,13 @@ from opportunity_management.opportunity_management.whatsapp_api_common import ( 
 from opportunity_management.opportunity_management.whatsapp_api_inbox import (  # noqa: F401
     add_tag,
     assign,
+    assign_to_group,
     claim,
     get_conversation,
     get_inbox_meta,
     get_or_create_conversation,
     get_unread_count,
+    list_agent_groups,
     list_conversations,
     mark_read,
     remove_tag,
@@ -116,6 +118,9 @@ __all__ = [
     "unassign",
     "assign",
     "set_status",
+    # agent groups
+    "assign_to_group",
+    "list_agent_groups",
     "add_tag",
     "remove_tag",
     "mark_read",

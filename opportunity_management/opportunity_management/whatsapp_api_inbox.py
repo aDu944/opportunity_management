@@ -10,11 +10,13 @@ import frappe
 from frappe import _
 from frappe.utils import add_to_date, cint, now_datetime
 
-from opportunity_management.opportunity_management import inbox_channels as IC
+from opportunity_management.opportunity_management import auto_menu as AM, inbox_channels as IC
 from opportunity_management.opportunity_management import inbox_referrals as IR
 from opportunity_management.opportunity_management import whatsapp_assign_rules as AR
 from opportunity_management.opportunity_management import whatsapp_chat_state as CS
 from opportunity_management.opportunity_management import whatsapp_flags as FL
+from opportunity_management.opportunity_management import whatsapp_api_groups as GR
+from opportunity_management.opportunity_management.whatsapp_api_groups import assign_to_group, list_agent_groups  # noqa: F401
 from opportunity_management.opportunity_management import whatsapp_hooks
 from opportunity_management.opportunity_management import whatsapp_serializers as S
 from opportunity_management.opportunity_management.whatsapp_audio import ffmpeg_path
@@ -37,6 +39,7 @@ from opportunity_management.opportunity_management.whatsapp_api_common import (
     _is_manager,
     _note,
     _paging,
+    _profile_name,
     _require_assignee,
     _require_inbox_access,
     _resolve_account,
@@ -75,6 +78,7 @@ def get_inbox_meta():
         "me": frappe.session.user,
         "agents": agents,
         "tags": tags,
+        **GR.meta(frappe.session.user),  # groups + groups_unclaimed
         # ffmpeg present → Ogg voice notes get a playable `audio_url`.
         "voice_transcoding": bool(ffmpeg_path()),
         "settings": {
@@ -106,7 +110,7 @@ def list_conversations(
 ):
     """Paged conversation list.
 
-    scope: mine | unassigned | all | expired | resolved | waiting | flagged. `all` hides Resolved
+    scope: mine | unassigned | all | expired | resolved | waiting | flagged | groups (whatsapp_api_groups) | menu. `all` hides Resolved
     threads — the resolved pile is its own tab, not noise in the working list.
     `expired` = not Resolved and the 24h customer-service window has closed
     (only a template can reach the customer). waiting / flagged: CS.SCOPE_CLAUSES.
@@ -138,6 +142,10 @@ def list_conversations(
     elif scope == "unassigned":
         clauses.append("(c.assigned_to IS NULL OR c.assigned_to = '')")
         clauses.append("c.status != 'Resolved'")
+    elif scope == "groups":
+        clauses.extend(GR.scope_clauses(params, frappe.session.user))
+    elif scope == "menu":  # managers: chats stuck in the auto menu > 24h (auto_menu)
+        clauses.extend(AM.scope_clauses(params, _is_manager()))
     elif scope in CS.SCOPE_CLAUSES:  # waiting | flagged — queues, own ORDER BY
         clauses.extend(CS.SCOPE_CLAUSES[scope])
     elif scope == "resolved":
@@ -197,7 +205,7 @@ def list_conversations(
     # Pinned first (waiting / flagged: oldest first) — in SQL, so OFFSET paging holds.
     state_select, state_join, order_by, state_params = CS.list_fragments(frappe.session.user)
     params.update(state_params)
-    order_by = CS.scope_order(scope, order_by)
+    order_by = GR.order_by() if scope == "groups" else CS.scope_order(scope, order_by)
     rows = frappe.db.sql(
         f"""
         SELECT c.name, c.phone, c.display_name, c.whatsapp_account, c.status,
@@ -205,7 +213,7 @@ def list_conversations(
                c.last_message_preview, c.last_message_direction, c.unread_count,
                c.contact, c.lead, c.customer, c.opportunity, c.customer_language,
                c.notes_count, c.first_response_seconds, c.wa_username, c.wa_user_id,
-               c.is_blocked, {IC.list_select("c")}{IR.list_select("c")}{FL.list_select("c")}{state_select}
+               c.is_blocked, {AM.list_select("c")}{GR.list_select("c")}{IC.list_select("c")}{IR.list_select("c")}{FL.list_select("c")}{state_select}
         FROM `tabWhatsApp Conversation` c
         {state_join}
         WHERE {where}
@@ -218,25 +226,6 @@ def list_conversations(
 
     has_more = len(rows) > length
     return {"rows": S.conv_rows(rows[:length]), "has_more": has_more}
-
-
-def _profile_name(phone):
-    """The raw WhatsApp profile name Meta sent for this number.
-
-    `display_name` on the conversation is overwritten the moment the thread is
-    linked to a Contact/Lead/Customer, so the name the customer set on their
-    own handset is only recoverable from frappe_whatsapp's `WhatsApp Profiles`.
-    Looked up here rather than in the shared serializer so list queries stay
-    one-shot — this is a single-conversation detail.
-    """
-    if not phone:
-        return None
-    try:
-        return frappe.db.get_value("WhatsApp Profiles", {"number": phone}, "profile_name") or None
-    except Exception:
-        # The profiles doctype is frappe_whatsapp's, not ours; a build without
-        # it must not take the whole conversation payload down.
-        return None
 
 
 @frappe.whitelist()
@@ -305,6 +294,9 @@ def claim(conversation):
             ),
             exc=NotAssigneeError,
         )
+    ok, _why = GR.AG.claim_verdict(conv, frappe.session.user, _is_manager(conv))
+    if not ok:  # a chat ringing a group: its members (or a manager) only
+        frappe.throw(_("Only members of {0} can claim this chat").format(conv.get("assigned_group")), exc=NotAssigneeError)
     now = now_datetime()
     values = {
         "assigned_to": frappe.session.user,

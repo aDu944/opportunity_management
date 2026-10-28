@@ -55,7 +55,7 @@ def search_crm(query, limit=10, doctype=None):
 
 
 def insert_lead_for_conversation(conv, lead_name=None, company_name=None, email_id=None,
-                                 source=None, extra=None):
+                                 source=None, extra=None, mobile_no=None, city=None):
     """Insert a Lead for `conv` (not linked here). Shared by "Create lead"
     and "Create opportunity" (whatsapp_api_opportunity).
 
@@ -63,6 +63,8 @@ def insert_lead_for_conversation(conv, lead_name=None, company_name=None, email_
     name to it, and leave the Lead's phone fields empty. (ERPNext's Lead has
     no plain free-text field for the @username, so it is not copied.)
     The Lead is a CRM note of the chat, so permissions are ignored for it.
+    `mobile_no` (the auto-menu form's answer) overrides the chat number for
+    `mobile_no` only; `city` is the form's address.
     """
     real_phone = conv.phone if has_phone(conv.phone) else None
     fallback_name = display_label(conv.display_name, conv.phone, conv.get("wa_username"), "")
@@ -75,8 +77,9 @@ def insert_lead_for_conversation(conv, lead_name=None, company_name=None, email_
         "lead_name": lead_name,
         "company_name": (company_name or "").strip() or None,
         "email_id": (email_id or "").strip() or None,
-        "mobile_no": real_phone,
+        "mobile_no": (mobile_no or "").strip() or real_phone,
         "whatsapp_no": real_phone,
+        "city": (city or "").strip() or None,
     }
     if source and frappe.db.exists("Lead Source", source):
         payload["source"] = source

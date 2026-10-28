@@ -20,6 +20,9 @@
   "assigned_to",
   "assigned_at",
   "assigned_by",
+  "assigned_group",
+  "group_assigned_at",
+  "group_notified_at",
   "section_break_flag",
   "is_flagged",
   "flagged_by",
@@ -58,6 +61,18 @@
   "last_team_alert_at",
   "profile_fetched_at",
   "conversation_key",
+  "section_break_menu",
+  "menu_state",
+  "menu_language",
+  "menu_path",
+  "menu_form_json",
+  "menu_retries",
+  "column_break_menu",
+  "menu_started_at",
+  "menu_completed_at",
+  "menu_auto_resolve_at",
+  "menu_last_prompt_row",
+  "menu_last_prompt_id",
   "section_break_ad",
   "ad_headline",
   "ad_id",
@@ -167,6 +182,28 @@
    "label": "Assigned By",
    "options": "User",
    "read_only": 1
+  },
+  {
+   "fieldname": "assigned_group",
+   "fieldtype": "Link",
+   "label": "Assigned Group",
+   "options": "WhatsApp Agent Group",
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "description": "Agent group the chat rings (agent_groups.assign_to_group). Kept after a member claims it."
+  },
+  {
+   "fieldname": "group_assigned_at",
+   "fieldtype": "Datetime",
+   "label": "Group Assigned At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "group_notified_at",
+   "fieldtype": "Datetime",
+   "label": "Group Notified At",
+   "read_only": 1,
+   "description": "When the group's Notify User was emailed about this chat waiting past the first-response timeout."
   },
   {
    "fieldname": "section_break_flag",
@@ -391,6 +428,85 @@
    "description": "{whatsapp_account}:{phone} — the thread identity."
   },
   {
+   "fieldname": "section_break_menu",
+   "fieldtype": "Section Break",
+   "label": "Auto Menu",
+   "collapsible": 1,
+   "depends_on": "eval:doc.menu_state"
+  },
+  {
+   "fieldname": "menu_state",
+   "fieldtype": "Data",
+   "label": "Menu State",
+   "read_only": 1,
+   "description": "lang | menu:<key> | form:<option row>:<step> | request:<option row> | done (auto_menu)"
+  },
+  {
+   "fieldname": "menu_language",
+   "fieldtype": "Select",
+   "label": "Menu Language",
+   "options": "\nar\nen",
+   "read_only": 1
+  },
+  {
+   "fieldname": "menu_path",
+   "fieldtype": "Data",
+   "label": "Menu Path",
+   "read_only": 1,
+   "description": "Digits chosen, e.g. 3 › 1"
+  },
+  {
+   "fieldname": "menu_form_json",
+   "fieldtype": "JSON",
+   "label": "Menu Form Answers",
+   "read_only": 1
+  },
+  {
+   "fieldname": "menu_retries",
+   "fieldtype": "Int",
+   "label": "Menu Retries",
+   "read_only": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "column_break_menu",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "menu_started_at",
+   "fieldtype": "Datetime",
+   "label": "Menu Started At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "menu_completed_at",
+   "fieldtype": "Datetime",
+   "label": "Menu Completed At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "menu_auto_resolve_at",
+   "fieldtype": "Datetime",
+   "label": "Menu Auto Resolve At",
+   "read_only": 1,
+   "search_index": 1,
+   "description": "An Auto-resolve option resolves the chat then unless the customer wrote again."
+  },
+  {
+   "fieldname": "menu_last_prompt_row",
+   "fieldtype": "Data",
+   "label": "Menu Last Prompt",
+   "read_only": 1,
+   "description": "WhatsApp Message name of the last list / buttons the menu sent; a tap must answer it."
+  },
+  {
+   "fieldname": "menu_last_prompt_id",
+   "fieldtype": "Data",
+   "label": "Menu Last Prompt WAMID",
+   "read_only": 1
+  },
+  {
    "collapsible": 1,
    "fieldname": "section_break_ad",
    "fieldtype": "Section Break",
@@ -433,7 +549,7 @@
    "link_fieldname": "conversation"
   }
  ],
- "modified": "2026-10-14 12:00:00.000000",
+ "modified": "2026-10-28 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Opportunity Management",
  "name": "WhatsApp Conversation",

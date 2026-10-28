@@ -1,0 +1,128 @@
+{
+ "actions": [],
+ "autoname": "field:group_name",
+ "creation": "2026-10-28 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "group_name",
+  "is_active",
+  "strategy",
+  "column_break_main",
+  "first_response_timeout_minutes",
+  "notify_user",
+  "out_of_hours",
+  "round_robin_pointer",
+  "section_break_members",
+  "members"
+ ],
+ "fields": [
+  {
+   "fieldname": "group_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Group Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Is Active"
+  },
+  {
+   "default": "Ring",
+   "description": "Ring: every member is alerted and the first to claim (or reply) takes the chat. Round Robin: the next member gets it directly.",
+   "fieldname": "strategy",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Strategy",
+   "options": "Ring\nRound Robin"
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "30",
+   "description": "Business minutes a ringing chat may wait for a first reply before Notify User is emailed. 0 turns the email off.",
+   "fieldname": "first_response_timeout_minutes",
+   "fieldtype": "Int",
+   "label": "First Response Timeout (minutes)"
+  },
+  {
+   "fieldname": "notify_user",
+   "fieldtype": "Link",
+   "label": "Notify User",
+   "options": "User"
+  },
+  {
+   "default": "Hold",
+   "description": "Hold: outside business hours a Round Robin chat rings the group instead of going to one person. The timeout always counts business minutes only.",
+   "fieldname": "out_of_hours",
+   "fieldtype": "Select",
+   "label": "Out of Hours",
+   "options": "Hold\nRound Robin anyway"
+  },
+  {
+   "default": "0",
+   "fieldname": "round_robin_pointer",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Round Robin Pointer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_members",
+   "fieldtype": "Section Break",
+   "label": "Members"
+  },
+  {
+   "fieldname": "members",
+   "fieldtype": "Table",
+   "label": "Members",
+   "options": "WhatsApp Agent Group Member"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-28 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Opportunity Management",
+ "name": "WhatsApp Agent Group",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "WhatsApp Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "WhatsApp Agent"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

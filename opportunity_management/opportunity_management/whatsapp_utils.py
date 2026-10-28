@@ -437,11 +437,11 @@ def _button_title(msg_doc, fallback_id: str) -> str:
         reply_to = _g(msg_doc, "reply_to_message_id")
         if not reply_to:
             return fallback_id
-        template = frappe.db.get_value(
-            "WhatsApp Message", {"message_id": reply_to}, "template"
-        )
-        if not template:
-            return fallback_id
+        template, stored = frappe.db.get_value("WhatsApp Message", {"message_id": reply_to}, ["template", "buttons"]) or (None, None)
+        from opportunity_management.opportunity_management.auto_menu_pure import stored_title
+        # Our own list / buttons (auto menu): the title stored on the prompt row.
+        if stored_title(stored, fallback_id) or not template:
+            return stored_title(stored, fallback_id) or fallback_id
         buttons = frappe.get_all(
             "WhatsApp Button",
             filters={"parent": template, "parenttype": "WhatsApp Templates"},

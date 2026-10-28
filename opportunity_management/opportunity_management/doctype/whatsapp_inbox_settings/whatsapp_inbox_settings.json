@@ -35,6 +35,15 @@
   "out_of_hours_text_en",
   "out_of_hours_text_ar",
   "out_of_hours_throttle_hours",
+  "menu_section",
+  "enable_menu",
+  "root_menu",
+  "menu_idle_reset_hours",
+  "form_max_retries",
+  "column_break_menu",
+  "menu_reopen_keywords",
+  "menu_language_keywords",
+  "auto_resolve_menu_hours",
   "alerts_section",
   "notify_team_on_unassigned",
   "team_alert_throttle_minutes",
@@ -223,6 +232,65 @@
    "label": "Out Of Hours Throttle (Hours)"
   },
   {
+   "fieldname": "menu_section",
+   "fieldtype": "Section Break",
+   "label": "Menu",
+   "description": "The auto-response menu (WhatsApp only). While a customer is in the menu agents get no push; the chat rings its group when the menu hands it over. The Welcome reply is not sent while the menu is on."
+  },
+  {
+   "fieldname": "enable_menu",
+   "fieldtype": "Check",
+   "label": "Enable Menu",
+   "default": "0"
+  },
+  {
+   "fieldname": "root_menu",
+   "fieldtype": "Link",
+   "label": "Root Menu",
+   "options": "WhatsApp Menu",
+   "depends_on": "enable_menu"
+  },
+  {
+   "fieldname": "menu_idle_reset_hours",
+   "fieldtype": "Int",
+   "label": "Restart Menu After Idle (Hours)",
+   "default": "24",
+   "description": "A chat nobody wrote in for this long starts again at the language step."
+  },
+  {
+   "fieldname": "form_max_retries",
+   "fieldtype": "Int",
+   "label": "Form Max Retries",
+   "default": "3",
+   "description": "Wrong answers to one question before it is skipped and marked missing."
+  },
+  {
+   "fieldname": "column_break_menu",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "menu_reopen_keywords",
+   "fieldtype": "Data",
+   "label": "Main Menu Keywords",
+   "default": "menu,القائمة",
+   "description": "Comma separated; typed alone they reopen the main menu."
+  },
+  {
+   "fieldname": "menu_language_keywords",
+   "fieldtype": "Data",
+   "label": "Language Keywords",
+   "default": "lang,اللغة",
+   "description": "Comma separated; typed alone they switch the menu language."
+  },
+  {
+   "fieldname": "auto_resolve_menu_hours",
+   "fieldtype": "Int",
+   "label": "Auto-resolve Menu Chats After (Hours)",
+   "default": "24",
+   "description": "For Auto-resolve options (suppliers, careers): resolved when the customer stays silent this long."
+  },
+  {
    "fieldname": "alerts_section",
    "fieldtype": "Section Break",
    "label": "Alerts & Housekeeping"
@@ -290,7 +358,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-06 10:00:00.000000",
+ "modified": "2026-10-28 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Opportunity Management",
  "name": "WhatsApp Inbox Settings",

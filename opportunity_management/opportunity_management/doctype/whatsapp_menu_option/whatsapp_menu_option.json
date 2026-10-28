@@ -1,0 +1,221 @@
+{
+ "actions": [],
+ "creation": "2026-10-28 13:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "digit",
+  "title_en",
+  "title_ar",
+  "action",
+  "target_menu",
+  "sort_order",
+  "column_break_option",
+  "description_en",
+  "description_ar",
+  "tag",
+  "assign_group",
+  "short_form",
+  "last_handler",
+  "section_break_reply",
+  "reply_en",
+  "reply_ar",
+  "attachment",
+  "column_break_reply",
+  "question_en",
+  "question_ar",
+  "section_break_location",
+  "location_lat",
+  "location_lng",
+  "column_break_location",
+  "location_name",
+  "location_address_en",
+  "location_address_ar"
+ ],
+ "fields": [
+  {
+   "fieldname": "digit",
+   "fieldtype": "Data",
+   "label": "Digit",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "length": 1,
+   "description": "0–9: what the customer can type instead of tapping. The engine shows it as the \"n. \" prefix."
+  },
+  {
+   "fieldname": "title_en",
+   "fieldtype": "Data",
+   "label": "Title (EN)",
+   "in_list_view": 1,
+   "columns": 2,
+   "length": 24,
+   "description": "At most 24 characters including the \"n. \" prefix."
+  },
+  {
+   "fieldname": "title_ar",
+   "fieldtype": "Data",
+   "label": "Title (AR)",
+   "in_list_view": 1,
+   "columns": 2,
+   "length": 24
+  },
+  {
+   "fieldname": "action",
+   "fieldtype": "Select",
+   "label": "Action",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "default": "Reply",
+   "options": "Reply\nSubmenu\nForm then handoff\nLocation\nHandoff\nAuto-resolve"
+  },
+  {
+   "fieldname": "target_menu",
+   "fieldtype": "Link",
+   "label": "Target Menu",
+   "options": "WhatsApp Menu",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "Submenu: the menu to open. Location: the menu sent after the card (empty = this menu)."
+  },
+  {
+   "fieldname": "sort_order",
+   "fieldtype": "Int",
+   "label": "Sort Order",
+   "default": "0"
+  },
+  {
+   "fieldname": "column_break_option",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "description_en",
+   "fieldtype": "Data",
+   "label": "Description (EN)",
+   "length": 72
+  },
+  {
+   "fieldname": "description_ar",
+   "fieldtype": "Data",
+   "label": "Description (AR)",
+   "length": 72
+  },
+  {
+   "fieldname": "tag",
+   "fieldtype": "Link",
+   "label": "Tag",
+   "options": "WhatsApp Tag"
+  },
+  {
+   "fieldname": "assign_group",
+   "fieldtype": "Link",
+   "label": "Assign Group",
+   "options": "WhatsApp Agent Group"
+  },
+  {
+   "fieldname": "short_form",
+   "fieldtype": "Check",
+   "label": "Ask Only Name And Company",
+   "default": "0"
+  },
+  {
+   "fieldname": "last_handler",
+   "fieldtype": "Check",
+   "label": "Prefer Last Handler",
+   "default": "0",
+   "description": "Hand the chat to the agent who handled it last; the group when there is none."
+  },
+  {
+   "fieldname": "section_break_reply",
+   "fieldtype": "Section Break",
+   "label": "Reply"
+  },
+  {
+   "fieldname": "reply_en",
+   "fieldtype": "Small Text",
+   "label": "Reply (EN)",
+   "description": "{{business_hours}} renders the Inbox Settings hours."
+  },
+  {
+   "fieldname": "reply_ar",
+   "fieldtype": "Small Text",
+   "label": "Reply (AR)"
+  },
+  {
+   "fieldname": "attachment",
+   "fieldtype": "Attach",
+   "label": "Attachment",
+   "description": "Sent after the reply."
+  },
+  {
+   "fieldname": "column_break_reply",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "question_en",
+   "fieldtype": "Small Text",
+   "label": "Request Prompt (EN)",
+   "description": "Form then handoff: asked after the details form, e.g. \"send the items, quantities, photos or PDF\"."
+  },
+  {
+   "fieldname": "question_ar",
+   "fieldtype": "Small Text",
+   "label": "Request Prompt (AR)"
+  },
+  {
+   "fieldname": "section_break_location",
+   "fieldtype": "Section Break",
+   "label": "Location",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "location_lat",
+   "fieldtype": "Float",
+   "label": "Latitude",
+   "precision": "6"
+  },
+  {
+   "fieldname": "location_lng",
+   "fieldtype": "Float",
+   "label": "Longitude",
+   "precision": "6"
+  },
+  {
+   "fieldname": "column_break_location",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "location_name",
+   "fieldtype": "Data",
+   "label": "Location Name"
+  },
+  {
+   "fieldname": "location_address_en",
+   "fieldtype": "Data",
+   "label": "Location Address (EN)"
+  },
+  {
+   "fieldname": "location_address_ar",
+   "fieldtype": "Data",
+   "label": "Location Address (AR)"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-28 13:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Opportunity Management",
+ "name": "WhatsApp Menu Option",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 0,
+ "istable": 1
+}

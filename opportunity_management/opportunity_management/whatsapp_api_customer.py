@@ -16,6 +16,7 @@ chat-side info. The identity matching and the count roll-up are pure
 import frappe
 from frappe.utils import cint
 
+from opportunity_management.opportunity_management import auto_menu as AM
 from opportunity_management.opportunity_management import customer_info_pure as P
 from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management import whatsapp_api_opportunity as O
@@ -288,4 +289,5 @@ def get_customer_info(conversation):
         "ad": ad_block,
         "crm": _crm(conv),
         "other_conversations": others,
+        "menu": AM.info_block(conv),  # auto menu: state, path, language, form answers
     }

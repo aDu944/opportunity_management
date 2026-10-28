@@ -18,7 +18,7 @@ from frappe.utils import get_datetime, now_datetime
 
 from opportunity_management.opportunity_management import ad_referrals as AR
 from opportunity_management.opportunity_management import inbox_channels as IC
-from opportunity_management.opportunity_management import whatsapp_flags as FL
+from opportunity_management.opportunity_management import auto_menu_pure as AMP, whatsapp_flags as FL
 from opportunity_management.opportunity_management.whatsapp_payloads import decorate_item
 from opportunity_management.opportunity_management.whatsapp_identity import (
     clean_username,
@@ -223,6 +223,8 @@ def conv_row(conv, tags=None, assignee_name=None, now=None, images=None, state=N
         "status": _g(conv, "status", "Open"),
         "assigned_to": assigned_to,
         "assigned_to_name": assignee_name or "",
+        "assigned_group": _g(conv, "assigned_group") or None,  # agent group it rings (agent_groups)
+        "group_assigned_at": _iso(_g(conv, "group_assigned_at")),
         "tags": tags or [],
         "last_message_at": _iso(_g(conv, "last_message_at")),
         "last_inbound_at": _iso(_g(conv, "last_inbound_at")),
@@ -253,7 +255,7 @@ def conv_row(conv, tags=None, assignee_name=None, now=None, images=None, state=N
         "channel": channel,
         "caps": IC.caps_for(channel),
         "ad": AR.public_ad(_g(conv, "ad_referral")),  # latest ad / post / link
-        **FL.flag_fields(conv, flagger_name, _iso),  # the shared team flag (whatsapp_flags)
+        **FL.flag_fields(conv, flagger_name, _iso), **AMP.conv_fields(conv, _g),  # team flag; auto menu state
     }
     if messenger:
         # PSID `FB.<id>`: no phone, no handle; the window has a 7-day tier;

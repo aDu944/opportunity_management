@@ -17,3 +17,5 @@ opportunity_management.patches.seed_review_accounts
 opportunity_management.patches.seed_saturday_hours
 opportunity_management.patches.add_whatsapp_flag_fields
 opportunity_management.patches.add_lead_abr_field
+opportunity_management.patches.add_whatsapp_agent_groups
+opportunity_management.patches.seed_auto_menu

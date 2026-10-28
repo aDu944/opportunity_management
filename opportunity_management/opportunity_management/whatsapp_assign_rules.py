@@ -63,3 +63,32 @@ def may_assign(is_manager, caller, current_assignee, target, roster=None):
 def may_transfer(is_manager, caller, current_assignee):
     """`can_transfer` for the clients: a manager, or the chat's current owner."""
     return bool(is_manager) or bool(current_assignee and current_assignee == caller)
+
+
+# Claim refusals (`whatsapp_api_inbox.claim`).
+CLAIMED_BY_OTHER = "claimed_by_other"
+NOT_GROUP_MEMBER = "not_group_member"
+
+
+def may_claim(is_manager, caller, current_assignee, group=None, group_members=None):
+    """Return `(allowed, reason)` for taking a chat with `claim`.
+
+    Someone else's chat is refused for everyone (a manager reassigns with
+    `assign` instead). A chat ringing a group (`group` set) may be claimed by
+    an active member of that group (`group_members`) or a manager; other
+    agents are refused. No group: any inbox agent, as before.
+    """
+    current = (current_assignee or "").strip()
+    if current and current != caller:
+        return False, CLAIMED_BY_OTHER
+    if current:  # already the caller's own chat
+        return True, CLAIM
+    if group and not is_manager and caller not in set(group_members or ()):
+        return False, NOT_GROUP_MEMBER
+    return True, CLAIM
+
+
+def may_assign_group(is_manager, caller, current_assignee):
+    """`assign_to_group`: a manager, or the current owner handing their chat
+    to a group — the same family as `may_transfer`."""
+    return may_transfer(is_manager, caller, current_assignee)
