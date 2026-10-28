@@ -169,7 +169,9 @@ def answer(form, step, inbound, phone, retries, max_retries):
         return form, 0, True
     retries = int(retries or 0) + 1
     if retries >= max(int(max_retries or 0), 1):
-        form[step] = ""
+        # Out of retries: keep what they typed (a one-word name, an odd
+        # address) rather than nothing; `missing` flags it as unverified.
+        form[step] = _text(inbound)[:MAX_TEXT]
         form["missing"] = missing + [step]
         return form, 0, True
     form["missing"] = missing
@@ -196,8 +198,11 @@ def summary(form, path="", kept=False):
             value = "No email"
         lines.append("{0}: {1}".format(label, value or "—"))
     missing = form.get("missing") or []
-    if missing:
-        lines.append("Missing: " + ", ".join(missing))
+    unverified = [m for m in missing if form.get(m)]
+    if unverified:
+        lines.append("Unverified: " + ", ".join(unverified))
+    if [m for m in missing if not form.get(m)]:
+        lines.append("Missing: " + ", ".join(m for m in missing if not form.get(m)))
     return "\n".join(lines)
 
 

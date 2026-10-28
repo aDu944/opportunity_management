@@ -211,7 +211,7 @@ def engine_settings(settings):
     ooh = {lang: (settings.get("out_of_hours_text_" + lang) or "").strip().replace(BUSINESS_HOURS_PLACEHOLDER, hours[lang])
            for lang in ("ar", "en")}
     return {
-        "reopen_keywords": P.split_keywords(settings.get("menu_reopen_keywords") or "menu,القائمة"),
+        "reopen_keywords": P.split_keywords(settings.get("menu_reopen_keywords") or "menu,القائمة,back,رجوع"),
         "language_keywords": P.split_keywords(settings.get("menu_language_keywords") or "lang,اللغة"),
         "max_retries": cint(settings.get("form_max_retries")) or 3,
         "auto_resolve_hours": cint(settings.get("auto_resolve_menu_hours")) or 24,

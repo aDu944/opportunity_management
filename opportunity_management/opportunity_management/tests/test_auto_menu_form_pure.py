@@ -116,7 +116,13 @@ class TestFormFlow(unittest.TestCase):
         effects = run("form:oilgas-1:name", text("Ali"), retries=2)
         self.assertEqual(state(effects)["menu_state"], "form:oilgas-1:company")
         self.assertEqual(state(effects)["menu_form_json"]["missing"], ["name"])
+        self.assertEqual(state(effects)["menu_form_json"]["name"], "Ali")  # kept, flagged unverified
         self.assertEqual(state(effects)["menu_retries"], 0)
+        effects = run("form:oilgas-1:name", MEDIA, retries=2)
+        self.assertEqual(state(effects)["menu_form_json"]["name"], "")
+        self.assertIn("Unverified: name", F.summary({"name": "Ali", "missing": ["name"]}))
+        self.assertEqual(F.lead_fields({"name": "Ali", "missing": ["name"]})["lead_name"], "Ali")
+        self.assertEqual(state(run("form:oilgas-1:address", text("رجوع")))["menu_state"], "menu:root")
         custom = dict(SETTINGS, max_retries=1)
         self.assertEqual(state(run("form:oilgas-1:email", text("x"), settings=custom))["menu_state"],
                          "request:oilgas-1")

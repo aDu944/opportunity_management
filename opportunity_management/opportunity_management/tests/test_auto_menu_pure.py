@@ -32,7 +32,7 @@ def tree():
 
 TREE = tree()
 SETTINGS = {
-    "reopen_keywords": P.split_keywords("menu,القائمة"),
+    "reopen_keywords": P.split_keywords("menu,القائمة,back,رجوع"),
     "language_keywords": P.split_keywords("lang,اللغة"),
     "max_retries": 3, "auto_resolve_hours": 24, "in_hours": True,
     "hours_label": {"en": "Sat 9:00 AM – 3:00 PM", "ar": "السبت 9:00 ص – 3:00 م"},

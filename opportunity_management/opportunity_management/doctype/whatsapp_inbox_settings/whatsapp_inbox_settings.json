@@ -273,7 +273,7 @@
    "fieldname": "menu_reopen_keywords",
    "fieldtype": "Data",
    "label": "Main Menu Keywords",
-   "default": "menu,القائمة",
+   "default": "menu,القائمة,back,رجوع",
    "description": "Comma separated; typed alone they reopen the main menu."
   },
   {
