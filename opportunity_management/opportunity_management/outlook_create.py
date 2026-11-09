@@ -156,7 +156,15 @@ def _new_lead(data, abr):
     if email:
         existing = frappe.db.get_value("Lead", {"email_id": email}, "name")
         if existing:  # never two Leads for one address
+            if not _readable("Lead", existing):
+                frappe.throw(_("A lead with {0} already exists ({1}) and you don't have access "
+                               "to it").format(email, existing), OutlookError)
             return existing, False
+    # Unlike the WhatsApp flow, the Outlook form is open to every Opportunity creator,
+    # and some roles here may create Opportunities but not Leads.
+    if not frappe.has_permission("Lead", "create"):
+        frappe.throw(_("You are not permitted to create Leads; pick an existing customer or lead"),
+                     OutlookError)
     payload = {
         "doctype": "Lead",
         "lead_name": lead_name,
@@ -168,7 +176,7 @@ def _new_lead(data, abr):
     if abr and _has_abr_field("Lead"):
         payload["custom_abr"] = abr
     lead = frappe.get_doc({k: v for k, v in payload.items() if v is not None})
-    lead.insert(ignore_permissions=True)  # a CRM note of the email, as in the WhatsApp flow
+    lead.insert(ignore_permissions=True)  # create permission checked above
     return lead.name, True
 
 

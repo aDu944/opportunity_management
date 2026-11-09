@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Signing in</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    body { font: 14px/1.5 "Segoe UI", -apple-system, sans-serif; padding: 24px; color: #1f2328; background: #fff; }
+    @media (prefers-color-scheme: dark) { body { color: #e8eaed; background: #1b1d21; } }
+  </style>
+</head>
+<body>
+  <p id="msg">Finishing sign-in&hellip;</p>
+  <script>
+    // OAuth redirect target for the Outlook add-in. Hands the full URL
+    // (code + state, or error) back to the task pane, which checks the state
+    // and swaps the code for a token itself. Nothing is stored here.
+    (function () {
+      var msg = document.getElementById("msg");
+      var timer = setTimeout(function () {
+        msg.textContent = "This page only works inside the Outlook add-in sign-in window. You can close it.";
+      }, 4000);
+      if (!window.Office) return;
+      Office.onReady(function () {
+        try {
+          Office.context.ui.messageParent(JSON.stringify({ href: window.location.href }));
+          clearTimeout(timer);
+          msg.textContent = "Signed in. This window will close.";
+        } catch (e) {
+          clearTimeout(timer);
+          msg.textContent = "Could not reach the add-in (" + e.message + "). Close this window and try again.";
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

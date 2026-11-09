@@ -77,7 +77,7 @@ attachment copies) is deleted. Files saved on the Opportunity stay.
 | `opportunity_management/public/outlook/v3/` | The panel (`taskpane.html`, `app.js`, `auth.js`, `taskpane.css`), callback, icons, `manifest.xml` |
 | `opportunity_management/opportunity_management/tests/test_outlook_email_pure.py` | 20 bench-free tests |
 
-`v1/` stays in place so the Phase 0 manifest keeps working until it is replaced. (`v2` was replaced by `v3` before rollout; never edit a published folder.)
+`v1/` stays in place so the Phase 0 manifest keeps working until it is replaced. `v2` (the Phase 1 panel, already installed by users) also stays, unchanged, so old manifests keep working and a rollback never hits cached 404s. Never edit or delete a published folder.
 
 ## Deploying (self-hosted)
 
