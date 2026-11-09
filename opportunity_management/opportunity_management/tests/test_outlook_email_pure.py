@@ -145,6 +145,40 @@ class CommunicationValues(unittest.TestCase):
         self.assertEqual(v["subject"], "(no subject)")
 
 
+class CreateHelpers(unittest.TestCase):
+    def test_valid_abr(self):
+        self.assertTrue(P.valid_abr("OCB"))
+        self.assertTrue(P.valid_abr("A1"))
+        self.assertFalse(P.valid_abr("oc"))
+        self.assertFalse(P.valid_abr("O-C"))
+        self.assertFalse(P.valid_abr(""))
+        self.assertFalse(P.valid_abr("ABCDEFGHIJK"))
+
+    def test_suggest_abr(self):
+        self.assertEqual(P.suggest_abr("Oil Co Basra"), "OCB")
+        self.assertEqual(P.suggest_abr("basraoil"), "BASRA")
+        self.assertEqual(P.suggest_abr(""), "")
+
+    def test_company_from_domain(self):
+        self.assertEqual(P.company_from_domain("mail.basra-oil.com.iq"), "Basra Oil")
+        self.assertEqual(P.company_from_domain("sales.company.co.uk"), "Company")
+        self.assertEqual(P.company_from_domain("oilco.iq"), "Oilco")
+        self.assertEqual(P.company_from_domain("gmail.com"), "")
+
+    def test_new_lead_suggestion(self):
+        s = P.new_lead_suggestion("Ali.Hassan@basra-oil.com", "")
+        self.assertEqual(s, {"lead_name": "Ali Hassan", "company_name": "Basra Oil",
+                             "email_id": "ali.hassan@basra-oil.com", "abr": "BO"})
+        s = P.new_lead_suggestion("x@gmail.com", "Sara K")
+        self.assertEqual((s["lead_name"], s["company_name"], s["abr"]), ("Sara K", "", "SK"))
+
+    def test_title_from_subject(self):
+        self.assertEqual(P.title_from_subject("RE: Fwd: FW: RFQ valves"), "RFQ valves")
+        self.assertEqual(P.title_from_subject("Re[2]: Offer"), "Offer")
+        self.assertEqual(P.title_from_subject("Required: spares"), "Required: spares")
+        self.assertEqual(len(P.title_from_subject("x" * 300)), 140)
+
+
 class Misc(unittest.TestCase):
     def test_parse_iso_utc(self):
         self.assertEqual(P.parse_iso_utc("2026-11-09T12:30:00.000Z"), datetime(2026, 11, 9, 12, 30))

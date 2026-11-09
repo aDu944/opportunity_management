@@ -27,6 +27,7 @@
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   margin: 0;
@@ -86,10 +87,6 @@ button:disabled { opacity: .5; cursor: default; }
 .opp .why { font-size: 11px; color: var(--muted); margin-top: 2px; }
 .opp .actions { display: flex; flex-direction: column; gap: 4px; }
 
-.attach { margin-top: 10px; }
-.check { display: flex; gap: 6px; align-items: center; cursor: pointer; }
-.attach-list { list-style: none; margin: 4px 0 0 22px; padding: 0; font-size: 12px; color: var(--muted); }
-.attach-list .skip { text-decoration: line-through; }
 
 input[type=search] {
   width: 100%;
@@ -122,3 +119,40 @@ footer {
   box-shadow: 0 4px 14px rgba(0, 0, 0, .2);
 }
 .toast.error { background: var(--fail); color: #fff; }
+
+/* ── v3: attachment picker, create form ─────────────────────────────── */
+.attach-box { margin-top: 10px; }
+.attach-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.attach-head .title { font-weight: 600; font-size: 12px; }
+.checks { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; }
+.checks li { padding: 2px 0; }
+.checks label { display: flex; gap: 6px; align-items: baseline; cursor: pointer; font-size: 12px; }
+.checks .meta { color: var(--muted); white-space: nowrap; }
+.checks .name { word-break: break-all; }
+.checks li.skip label { cursor: default; color: var(--muted); }
+.wide { width: 100%; margin-top: 12px; padding: 8px 12px; }
+button.create { border-style: dashed; color: var(--accent); }
+.form-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.form-head h1 { margin: 0; }
+.field { display: block; margin-bottom: 10px; }
+.field .label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+.field input:not([type=checkbox]):not([type=radio]), .field select, .field textarea {
+  width: 100%;
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+}
+.field textarea { resize: vertical; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.choices { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.choices label {
+  display: flex; gap: 8px; align-items: flex-start; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: var(--card);
+}
+.choices input { margin-top: 3px; }
+.choices .sub-line { display: block; font-size: 11px; color: var(--muted); }
+.choices label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.sub { border-left: 3px solid var(--accent-soft); padding-left: 10px; margin-bottom: 6px; }

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Outlook add-in manifest - Phase 1 (link emails to ERPNext Opportunities).
-  Site: https://bms.alkhora.com. All URLs point at the v2 asset folder; a new
+  Outlook add-in manifest - v3 (link, create and assign Opportunities; tags).
+  Site: https://bms.alkhora.com. All URLs point at the v3 asset folder; a new
   asset version needs a new folder, these URLs updated and <Version> bumped.
   Same <Id> as the Phase 0 manifest, so installing this one replaces it.
 -->
@@ -11,13 +11,13 @@
            xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
            xsi:type="MailApp">
   <Id>f6dbff15-38d4-4d1e-9a47-f2a4bbb642ce</Id>
-  <Version>1.1.0.0</Version>
+  <Version>1.2.0.0</Version>
   <ProviderName>ALKHORA</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="ERPNext Opportunities"/>
-  <Description DefaultValue="Link Outlook emails and their attachments to ERPNext Opportunities."/>
-  <IconUrl DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v2/icon-64.png"/>
-  <HighResolutionIconUrl DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v2/icon-128.png"/>
+  <Description DefaultValue="Link Outlook emails and attachments to ERPNext Opportunities, or create and assign new ones."/>
+  <IconUrl DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v3/icon-64.png"/>
+  <HighResolutionIconUrl DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v3/icon-128.png"/>
   <SupportUrl DefaultValue="https://bms.alkhora.com"/>
   <AppDomains>
     <AppDomain>https://bms.alkhora.com</AppDomain>
@@ -33,12 +33,12 @@
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
-        <SourceLocation DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v2/taskpane.html"/>
+        <SourceLocation DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v3/taskpane.html"/>
         <RequestedHeight>250</RequestedHeight>
       </DesktopSettings>
     </Form>
   </FormSettings>
-  <Permissions>ReadItem</Permissions>
+  <Permissions>ReadWriteMailbox</Permissions>
   <Rule xsi:type="RuleCollection" Mode="Or">
     <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read"/>
   </Rule>
@@ -81,12 +81,12 @@
       </Hosts>
       <Resources>
         <bt:Images>
-          <bt:Image id="Icon.16x16" DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v2/icon-16.png"/>
-          <bt:Image id="Icon.32x32" DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v2/icon-32.png"/>
-          <bt:Image id="Icon.80x80" DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v2/icon-80.png"/>
+          <bt:Image id="Icon.16x16" DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v3/icon-16.png"/>
+          <bt:Image id="Icon.32x32" DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v3/icon-32.png"/>
+          <bt:Image id="Icon.80x80" DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v3/icon-80.png"/>
         </bt:Images>
         <bt:Urls>
-          <bt:Url id="Taskpane.Url" DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v2/taskpane.html"/>
+          <bt:Url id="Taskpane.Url" DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v3/taskpane.html"/>
         </bt:Urls>
         <bt:ShortStrings>
           <bt:String id="GroupLabel" DefaultValue="ERPNext"/>

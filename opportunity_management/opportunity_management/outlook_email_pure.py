@@ -296,6 +296,69 @@ def _escape(text):
     return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
+# ── creating an Opportunity from an email ───────────────────────────────────
+
+LEAD_SOURCE = "Email"
+_ABR_RE = re.compile(r"^[A-Z0-9]{1,10}$")
+_DOMAIN_NOISE = {"mail", "email", "info", "co", "com", "net", "org", "gov", "edu", "ltd", "llc"}
+
+
+def valid_abr(abr) -> bool:
+    """Lead/Customer abbreviation as it goes into the INQ naming series."""
+    return bool(_ABR_RE.match(str(abr or "")))
+
+
+def suggest_abr(text, max_len=5) -> str:
+    """Upper-case letters/digits from a company / domain label: 'Oil Co
+    Basra' -> 'OCB', 'basraoil' -> 'BASRA' (first `max_len` chars)."""
+    words = [w for w in re.split(r"[^A-Za-z0-9]+", str(text or "")) if w]
+    if not words:
+        return ""
+    if len(words) > 1:
+        abr = "".join(w[0] for w in words)
+    else:
+        abr = words[0]
+    return abr.upper()[:max_len]
+
+
+def company_from_domain(domain) -> str:
+    """'mail.basra-oil.com.iq' -> 'Basra Oil' (empty for public mail domains)."""
+    domain = (domain or "").lower().strip()
+    if not domain or is_public_domain(domain):
+        return ""
+    # The registrable name is the last meaningful label: sales.company.co.uk -> company.
+    labels = [l for l in domain.split(".") if l and l not in _DOMAIN_NOISE and len(l) > 2]
+    if not labels:
+        return ""
+    return " ".join(w.capitalize() for w in re.split(r"[-_]+", labels[-1]) if w)
+
+
+def new_lead_suggestion(sender_email, sender_name) -> dict:
+    """Prefill for 'New lead from sender'."""
+    addr = normalize_email(sender_email)
+    company = company_from_domain(email_domain(addr))
+    name = (sender_name or "").strip()
+    if not name or normalize_email(name) == addr:
+        name = addr.split("@")[0].replace(".", " ").replace("_", " ").title() if addr else ""
+    return {
+        "lead_name": name,
+        "company_name": company,
+        "email_id": addr,
+        "abr": suggest_abr(company or name),
+    }
+
+
+def title_from_subject(subject) -> str:
+    """Opportunity title from an email subject: reply/forward prefixes dropped."""
+    text = str(subject or "").strip()
+    while True:
+        stripped = re.sub(r"^\s*(re|fw|fwd|aw|wg|tr|rv)\s*(\[\d+\])?\s*:\s*", "", text, flags=re.I)
+        if stripped == text:
+            break
+        text = stripped
+    return text[:140]
+
+
 # ── attachments ──────────────────────────────────────────────────────────────
 
 _UNSAFE_NAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')
