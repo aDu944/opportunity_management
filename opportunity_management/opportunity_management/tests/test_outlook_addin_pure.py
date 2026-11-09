@@ -23,7 +23,7 @@ def _load():
 
 
 P = _load()
-CB = "https://bms.alkhora.com/assets/opportunity_management/outlook/v1/auth-callback.html"
+CB = "https://bms.alkhora.com/assets/opportunity_management/outlook/v2/auth-callback.html"
 
 
 class NormalizeSiteUrl(unittest.TestCase):
@@ -60,7 +60,7 @@ class ClientValues(unittest.TestCase):
         self.assertEqual(v["skip_authorization"], 1)
 
     def test_existing_uris_kept_without_duplicates(self):
-        old = "https://bms.alkhora.com/assets/opportunity_management/outlook/v0/auth-callback.html"
+        old = "https://bms.alkhora.com/assets/opportunity_management/outlook/v1/auth-callback.html"
         v = P.client_values("https://bms.alkhora.com", existing_redirects=f"{old} {CB}")
         self.assertEqual(v["redirect_uris"], f"{old} {CB}")
 

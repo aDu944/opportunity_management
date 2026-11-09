@@ -362,6 +362,15 @@ fixtures = [
             ]]
         ]
     },
+    # Outlook add-in: thread ID on linked emails. Also created by the
+    # setup_outlook_addin_phase1 patch (fixtures sync after post_model_sync).
+    {
+        "doctype": "Custom Field",
+        "filters": [
+            ["dt", "in", ["Communication"]],
+            ["fieldname", "in", ["custom_outlook_conversation_id"]]
+        ]
+    },
     {
         "doctype": "Role",
         "filters": [["name", "in", ["WhatsApp Agent", "Messenger Agent", "Messenger Manager"]]]

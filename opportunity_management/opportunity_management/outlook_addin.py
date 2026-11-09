@@ -46,9 +46,38 @@ def ensure_oauth_client() -> str:
     return doc.name
 
 
+CONVERSATION_FIELD = {
+    "Communication": [
+        {
+            "fieldname": "custom_outlook_conversation_id",
+            "fieldtype": "Data",
+            "length": 255,
+            "label": "Outlook Conversation ID",
+            "insert_after": "message_id",
+            "hidden": 1,
+            "read_only": 1,
+            "no_copy": 1,
+            "search_index": 1,
+            "description": "Outlook thread ID, set by the Outlook add-in when an email is "
+                           "linked; lets later emails in the thread suggest the same record.",
+        }
+    ]
+}
+
+
+def ensure_conversation_field():
+    from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+
+    create_custom_fields(CONVERSATION_FIELD, update=True)
+
+
 @frappe.whitelist(allow_guest=True, methods=["GET"])
 def get_config():
+    from frappe.core.api.file import get_max_file_size
+
     client_id = _find_client()
     if not client_id:
         frappe.throw("The Outlook add-in is not set up on this site yet (run bench migrate).")
-    return pure.public_config(_site_url(), client_id)
+    config = pure.public_config(_site_url(), client_id)
+    config["max_file_size"] = get_max_file_size()
+    return config

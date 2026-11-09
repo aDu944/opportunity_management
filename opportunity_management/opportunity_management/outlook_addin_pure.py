@@ -14,7 +14,7 @@ version folder (and the manifest + OAuth redirect URI move with it).
 from urllib.parse import urlparse
 
 APP_NAME = "Outlook Add-in"
-ASSET_VERSION = "v1"
+ASSET_VERSION = "v2"
 ASSET_ROOT = "/assets/opportunity_management/outlook"
 SCOPES = "all openid"
 CALLBACK_FILE = "auth-callback.html"

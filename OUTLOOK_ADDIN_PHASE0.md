@@ -38,8 +38,9 @@ The old redirect URI stays registered, so old manifests keep working.
 
 ## 1. Deploy
 
-1. Deploy this branch (`feature/outlook-addin-phase0`) to `bms.alkhora.com` the usual way
-   (merge into the deployed branch, then deploy on Frappe Cloud). The patch runs during migrate.
+1. Deploy this branch (`feature/outlook-addin-phase0`) to `bms.alkhora.com`. The site is
+   self-hosted (Hetzner, `/home/frappe/frappe-bench`, site `erp.local`, git remote `upstream`);
+   see "Deploying" in [OUTLOOK_ADDIN_PHASE1.md](OUTLOOK_ADDIN_PHASE1.md). The patch runs during migrate.
 2. Check that these work:
    - `https://bms.alkhora.com/api/method/opportunity_management.opportunity_management.outlook_addin.get_config`
      returns JSON with a `client_id`.
@@ -47,7 +48,7 @@ The old redirect URI stays registered, so old manifests keep working.
      loads (it will say "opened outside Outlook" — that is expected in a browser).
 3. In ERPNext, **OAuth Client** list → there is one called **Outlook Add-in**.
 
-If the client is missing, run in the Frappe Cloud console:
+If the client is missing, run in `bench --site erp.local console`:
 ```python
 from opportunity_management.opportunity_management.outlook_addin import ensure_oauth_client
 ensure_oauth_client(); frappe.db.commit()
@@ -67,6 +68,11 @@ Download the manifest:
 
 If "Add a custom add-in" is missing, your Microsoft 365 policy blocks custom add-ins:
 an admin must allow the **My Custom Apps** role for your account.
+
+Save the manifest with **Cmd/Ctrl+S** (browsers display XML instead of downloading it).
+Do **not** use "Add from URL": Microsoft's servers would fetch it, and Cloudflare's geo-block
+(IQ/JO/AE only) rejects them. "Installation failed" with a valid file usually means the same
+geo-block stopped Microsoft from fetching the icon URLs.
 
 ## 3. Run the test
 
