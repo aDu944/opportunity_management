@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ERPNext Opportunities</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <link rel="stylesheet" href="taskpane.css">
+</head>
+<body>
+  <header>
+    <h1>ERPNext Opportunities</h1>
+    <p class="sub">Phase 0 connection test</p>
+  </header>
+
+  <section class="card" id="account">
+    <div id="who" class="who">Not signed in</div>
+    <div class="buttons">
+      <button id="btn-signin" class="primary" disabled>Sign in to ERPNext</button>
+      <button id="btn-refresh" hidden>Test token refresh</button>
+      <button id="btn-signout" hidden>Sign out</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Checks</h2>
+    <ul id="checks"></ul>
+  </section>
+
+  <section class="card">
+    <h2>This email</h2>
+    <dl id="item"></dl>
+  </section>
+
+  <section class="card">
+    <h2>Report</h2>
+    <p class="hint">Copy this and send it back so we can review the results.</p>
+    <textarea id="report" readonly rows="8"></textarea>
+    <button id="btn-copy">Copy report</button>
+  </section>
+
+  <script src="taskpane.js"></script>
+</body>
+</html>

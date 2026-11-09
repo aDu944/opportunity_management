@@ -1,0 +1,77 @@
+:root {
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --text: #1f2328;
+  --muted: #5f6b7a;
+  --border: #dde1e6;
+  --accent: #0f6cbd;
+  --ok: #107c10;
+  --fail: #c50f1f;
+  --warn: #8a6100;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1d21;
+    --card: #25282d;
+    --text: #e8eaed;
+    --muted: #a3acb8;
+    --border: #3a3f46;
+    --accent: #4ea1f3;
+    --ok: #54b054;
+    --fail: #f1707b;
+    --warn: #e0b04b;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+}
+header h1 { font-size: 16px; margin: 0; }
+header .sub { margin: 2px 0 10px; color: var(--muted); }
+h2 { font-size: 13px; margin: 0 0 8px; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.who { font-weight: 600; margin-bottom: 8px; word-break: break-word; }
+.buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+button {
+  font: inherit;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .5; cursor: default; }
+#checks { list-style: none; margin: 0; padding: 0; }
+#checks li { display: flex; gap: 8px; padding: 3px 0; align-items: baseline; }
+#checks .mark { width: 14px; flex: none; font-weight: 700; }
+#checks .ok .mark { color: var(--ok); }
+#checks .fail .mark { color: var(--fail); }
+#checks .warn .mark { color: var(--warn); }
+#checks .pending .mark { color: var(--muted); }
+#checks .detail { color: var(--muted); word-break: break-word; }
+dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+dt { color: var(--muted); }
+dd { margin: 0; word-break: break-all; }
+.hint { color: var(--muted); margin: 0 0 6px; }
+textarea {
+  width: 100%;
+  font: 11px/1.4 ui-monospace, Menlo, Consolas, monospace;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px;
+  margin-bottom: 6px;
+}
