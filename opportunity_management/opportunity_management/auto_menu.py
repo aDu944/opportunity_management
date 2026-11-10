@@ -150,10 +150,10 @@ def run_menu(conversation, message, start=0):
         if not cint(start):
             if kind not in P.ACTIVE:
                 return frappe.db.commit()
-            if kind in (P.LANG, P.MENU) and _newer_inbound(conv.name, msg):
+            if kind in (P.LANG, P.MENU, P.AI) and _newer_inbound(conv.name, msg):
                 return frappe.db.commit()  # a burst: the latest message answers
         tree = load_tree(root_menu(settings))
-        effects = P.next_step(_ctx(conv, settings, start), _inbound(msg), tree, engine_settings(settings))
+        effects = P.next_step(_ctx(conv, settings, start), _inbound(msg), tree, engine_settings(settings, conv))
         # Release the row lock before talking to Meta. Holding it while the
         # outgoing row is inserted deadlocked against the next webhook
         # (which inserts its inbound row, then wants this row) on 2026-10-28.
@@ -219,20 +219,22 @@ def _escape_group(settings):
     return None
 
 
-def engine_settings(settings):
+def engine_settings(settings, conv=None):
+    """Engine settings; with `conv`, also its AI mode (ai_agent.engine_values)."""
+    from opportunity_management.opportunity_management import ai_agent
     from opportunity_management.opportunity_management.whatsapp_jobs import BUSINESS_HOURS_PLACEHOLDER
 
     hours = {lang: business_hours_label(settings, lang) for lang in ("ar", "en")}
     ooh = {lang: (settings.get("out_of_hours_text_" + lang) or "").strip().replace(BUSINESS_HOURS_PLACEHOLDER, hours[lang])
            for lang in ("ar", "en")}
-    return {
+    return dict(ai_agent.engine_values(conv) if conv is not None else {}, **{
         "reopen_keywords": P.split_keywords(settings.get("menu_reopen_keywords") or "menu,القائمة,back,رجوع"),
         "language_keywords": P.split_keywords(settings.get("menu_language_keywords") or "lang,اللغة"),
         "max_retries": cint(settings.get("form_max_retries")) or 3,
         "auto_resolve_hours": cint(settings.get("auto_resolve_menu_hours")) or 24,
         "in_hours": is_business_hours(settings=settings), "hours_label": hours, "ooh_text": ooh,
         "escape_group": _escape_group(settings),
-    }
+    })
 
 
 def load_tree(root):
@@ -299,6 +301,9 @@ def _apply(conv, effects, msg):
         try:
             if e["do"].startswith("send_"):
                 item = _send_effect(conv, e) if sending else None
+                if item and e.get("turn"):  # the AI's Live reply
+                    from opportunity_management.opportunity_management.ai_agent import link_sent
+                    link_sent(e["turn"], item)
                 if item and e.get("prompt"):
                     values.update({"menu_last_prompt_row": item.get("id"),
                                    "menu_last_prompt_id": item.get("message_id") or None})
@@ -314,6 +319,9 @@ def _apply(conv, effects, msg):
                 values["menu_auto_resolve_at"] = add_to_date(now, hours=e["hours"])
             elif e["do"] == "handoff":
                 values.update(_handoff(conv, e, msg, now))
+            elif e["do"] == "ai_turn":  # Shadow: a draft only; Live: the AI's effects
+                from opportunity_management.opportunity_management.ai_agent import run_turn
+                _apply(conv, run_turn(conv, msg, e), msg)
             frappe.db.commit()
         except Exception:
             frappe.db.rollback()

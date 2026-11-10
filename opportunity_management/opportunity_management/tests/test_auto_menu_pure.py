@@ -340,6 +340,78 @@ class TestMenuState(unittest.TestCase):
                          {"menu_state": "menu:nano", "menu_path": "1", "menu_language": ""})
 
 
+AI_SHADOW = dict(SETTINGS, ai_mode="shadow", ai_menus={"info", "nano"})
+AI_LIVE = dict(SETTINGS, ai_mode="live", ai_menus={"info", "nano"})
+
+
+class TestAiBranch(unittest.TestCase):
+    def test_off_or_other_menu_is_strict(self):
+        for settings, menu in ((dict(SETTINGS, ai_mode="off", ai_menus={"nano"}), "nano"), (AI_LIVE, "medical")):
+            effects = run("menu:" + menu, text("do you sell centrifuges?"), settings=settings)
+            self.assertFalse(of(effects, "ai_turn"))
+            self.assertEqual(state(effects)["menu_retries"], 1)
+
+    def test_shadow_keeps_menu_and_drafts(self):
+        strict = run("menu:nano", text("how much is XRD?"), path="1")
+        effects = run("menu:nano", text("how much is XRD?"), settings=AI_SHADOW, path="1")
+        self.assertEqual(effects[:-1], strict)  # today's behaviour, unchanged
+        turn = effects[-1]
+        self.assertEqual((turn["do"], turn["menu"], turn["mode"], turn["lang"]), ("ai_turn", "nano", "shadow", "en"))
+        self.assertEqual(turn["fallback"], strict)
+        # the escape still happens in Shadow
+        esc = run("menu:info", text("??"), settings=AI_SHADOW, retries=1)
+        self.assertTrue(of(esc, "handoff"))
+        self.assertTrue(of(esc, "ai_turn"))
+        # a digit, a tap and media are not free text
+        self.assertFalse(of(run("menu:nano", text("3"), settings=AI_SHADOW), "ai_turn"))
+        self.assertFalse(of(run("menu:nano", MEDIA, settings=AI_SHADOW), "ai_turn"))
+        self.assertFalse(of(run("menu:nano", tap("opt:root-4"), settings=AI_SHADOW), "ai_turn"))
+
+    def test_live_hands_free_text_to_the_ai(self):
+        effects = run("menu:nano", text("how much is XRD?"), settings=AI_LIVE, path="1", retries=1)
+        self.assertFalse(of(effects, "send_list"))
+        self.assertFalse(of(effects, "handoff"))  # no strike, no escape
+        self.assertEqual(state(effects), {"menu_state": "ai:nano"})
+        turn = of(effects, "ai_turn")[0]
+        self.assertEqual((turn["menu"], turn["mode"]), ("nano", "live"))
+        # the fallback is the strict menu's own answer (here: the escape on the 2nd strike)
+        self.assertTrue(of(turn["fallback"], "handoff"))
+        first = of(run("menu:nano", text("how much is XRD?"), settings=AI_LIVE), "ai_turn")[0]
+        self.assertTrue(of(first["fallback"], "send_list")[0]["body"].startswith(T.PLEASE_CHOOSE["en"]))
+        self.assertEqual(state(first["fallback"])["menu_state"], "menu:nano")
+
+    def test_ai_state(self):
+        self.assertEqual(P.parse_state("ai:nano"), ("ai", "nano", None))
+        self.assertTrue(P.owns("ai:nano", False))
+        self.assertEqual(P.takeover_values("ai:nano"), {"menu_state": "done"})
+        # free text, a digit naming no row, and media stay with the AI
+        for inbound in (text("and AFM?"), text("9"), MEDIA):
+            effects = run("ai:nano", inbound, settings=AI_LIVE)
+            self.assertEqual(of(effects, "ai_turn")[0]["mode"], "live")
+            self.assertEqual(state(effects)["menu_state"], "ai:nano")
+            self.assertFalse(of(effects, "send_list"))
+        # a digit naming a row of this list is a menu choice (Arabic digits too)
+        for typed in ("3", "٣"):
+            effects = run("ai:nano", text(typed), settings=AI_LIVE)
+            self.assertFalse(of(effects, "ai_turn"))
+            self.assertTrue(of(effects, "send_text"))  # option 3's reply
+            self.assertEqual(state(effects)["menu_state"], "menu:nano")
+        # keywords still work
+        self.assertEqual(state(run("ai:nano", text("menu"), settings=AI_LIVE))["menu_state"], "menu:root")
+        lang = run("ai:nano", text("lang"), settings=AI_LIVE)
+        self.assertEqual((state(lang)["menu_language"], state(lang)["menu_state"]), ("ar", "menu:nano"))
+        # a tap on the menu's list still works; the fixed rows too
+        self.assertEqual(of(run("ai:nano", tap("opt:nano-1"), settings=AI_LIVE), "send_text")[0]["text"],
+                         D._TESTS_EN)
+        self.assertEqual(state(run("ai:nano", tap("menu:root"), settings=AI_LIVE))["menu_state"], "menu:root")
+        # AI no longer live (off / budget / shadow): the strict menu takes over
+        for settings in (SETTINGS, AI_SHADOW):
+            effects = run("ai:nano", text("and AFM?"), settings=settings)
+            self.assertEqual(state(effects)["menu_state"], "menu:nano")
+            self.assertTrue(of(effects, "send_list"))
+        self.assertEqual(state(run("ai:gone", text("x"), settings=AI_LIVE))["menu_state"], "menu:root")
+
+
 class TestPayload(unittest.TestCase):
     def test_menu_kind_bodies(self):
         from opportunity_management.opportunity_management import whatsapp_payloads as WP
