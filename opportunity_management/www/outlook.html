@@ -1,0 +1,50 @@
+{% extends "templates/web.html" %}
+
+{% block page_content %}
+<style>
+  .om-wrap { max-width: 640px; margin: 24px auto; }
+  .om-head { display: flex; gap: 14px; align-items: center; margin-bottom: 18px; }
+  .om-head img { width: 56px; height: 56px; border-radius: 12px; }
+  .om-head h1 { font-size: 1.6rem; margin: 0; }
+  .om-head p { margin: 2px 0 0; color: var(--text-muted); }
+  .om-download { display: inline-block; padding: 10px 18px; border-radius: 8px; background: var(--primary);
+                 color: #fff !important; font-weight: 600; text-decoration: none !important; margin: 4px 0 20px; }
+  .om-steps { padding-left: 1.2em; }
+  .om-steps li { margin-bottom: 12px; }
+  .om-note { border-left: 3px solid var(--border-color); padding: 6px 12px; color: var(--text-muted); font-size: .92em; }
+  .om-wrap code { font-size: .9em; }
+</style>
+<div class="om-wrap">
+  <div class="om-head">
+    <img src="{{ icon_url }}" alt="">
+    <div>
+      <h1>ERPNext for Outlook</h1>
+      <p>Link emails to Opportunities, create and assign them, parse items, and put the Opportunity number in your replies.</p>
+    </div>
+  </div>
+
+  <a class="om-download" href="{{ manifest_url }}" download="erpnext-opportunities.xml">Download the add-in file</a>
+
+  <h3>Install (once)</h3>
+  <ol class="om-steps">
+    <li>Click <b>Download the add-in file</b> above and keep the file <code>erpnext-opportunities.xml</code>.</li>
+    <li>In Outlook, open the add-ins page:
+      <ul>
+        <li><b>New Outlook for Windows / Outlook on the web:</b> go to <a href="https://aka.ms/olksideload" target="_blank" rel="noopener">aka.ms/olksideload</a>.</li>
+        <li><b>Outlook for Mac:</b> <b>Get Add-ins</b> (the <b>&hellip;</b> menu on an email, or the toolbar).</li>
+      </ul>
+    </li>
+    <li>Choose <b>My add-ins</b> &rarr; <b>Custom Add-ins</b> &rarr; <b>Add a custom add-in</b> &rarr; <b>Add from file</b>, pick the downloaded file and confirm.</li>
+    <li>Open any email, click <b>ERPNext Opportunities</b> (under <b>Apps</b> or the <b>&hellip;</b> menu) and <b>Sign in to ERPNext</b> with your usual ERPNext account.</li>
+  </ol>
+
+  <h3>Good to know</h3>
+  <ul>
+    <li>Updates arrive automatically &mdash; you install this file only once.</li>
+    <li>When you reply or write an email, the same button lets you add the Opportunity number to the subject.</li>
+    <li>Use <b>Add from file</b>, not &ldquo;Add from URL&rdquo;.</li>
+  </ul>
+  <p class="om-note">Add-ins need the new Outlook for Windows, Outlook for Mac or Outlook on the web. If you don't see
+    &ldquo;Get Add-ins&rdquo; in classic Outlook, switch to the new Outlook.</p>
+</div>
+{% endblock %}

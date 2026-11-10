@@ -1,0 +1,161 @@
+<!-- Panel markup for asset v6; injected by app/taskpane.html (the stable loader). -->
+<main id="app">
+    <section id="view-loading" class="view">
+      <p class="muted">Loading&hellip;</p>
+    </section>
+
+    <section id="view-signin" class="view" hidden>
+      <div class="card center">
+        <img src="icon-64.png" alt="" width="40" height="40">
+        <h1>ERPNext Opportunities</h1>
+        <p class="muted">Sign in with your ERPNext account to link this email to an Opportunity.</p>
+        <button id="btn-signin" class="primary">Sign in to ERPNext</button>
+      </div>
+    </section>
+
+    <section id="view-noitem" class="view" hidden>
+      <p class="muted">Open an email to see its Opportunities.</p>
+    </section>
+
+    <!-- ── the open email ─────────────────────────────────────────── -->
+    <section id="view-email" class="view" hidden>
+      <div class="card email">
+        <div class="email-dir" id="email-dir"></div>
+        <div class="email-subject" id="email-subject"></div>
+        <div class="linked-banner" id="linked-banner" hidden></div>
+      </div>
+
+      <div id="linked-block" hidden>
+        <h2>Linked to</h2>
+        <ul class="opps" id="linked"></ul>
+      </div>
+
+      <div class="attach-box card" data-attach hidden></div>
+
+      <div id="suggest-block" hidden>
+        <h2>Suggested</h2>
+        <ul class="opps" id="suggestions"></ul>
+      </div>
+      <p id="no-suggestions" class="muted small" hidden>No matching Opportunities for these addresses. Search below or create one.</p>
+
+      <h2>Search</h2>
+      <input type="search" id="search" placeholder="Opportunity no., customer, tender, INQ&hellip;" autocomplete="off">
+      <ul class="opps" id="results"></ul>
+      <p id="search-empty" class="muted small" hidden>Nothing found.</p>
+
+      <button id="btn-create" class="wide create" hidden>+ Create Opportunity from this email</button>
+    </section>
+
+    <!-- ── compose: Opportunity number in the subject ─────────────── -->
+    <section id="view-compose" class="view" hidden>
+      <div class="card email">
+        <div class="email-dir">Subject</div>
+        <div class="email-subject" id="compose-subject"></div>
+      </div>
+      <p class="muted small">Add the Opportunity number to the subject so this conversation &mdash; and the
+        customer's replies &mdash; carry it in everyone's inbox.</p>
+      <div id="compose-suggest-block" hidden>
+        <h2>Suggested</h2>
+        <ul class="opps" id="compose-suggestions"></ul>
+      </div>
+      <h2>Search</h2>
+      <input type="search" id="compose-search" placeholder="Opportunity no., customer, tender, INQ&hellip;" autocomplete="off">
+      <ul class="opps" id="compose-results"></ul>
+      <p id="compose-empty" class="muted small" hidden>Nothing found.</p>
+    </section>
+
+    <!-- ── create + assign ───────────────────────────────────────── -->
+    <section id="view-create" class="view" hidden>
+      <div class="form-head">
+        <button id="create-back" class="link">&larr; Back</button>
+        <h1>New Opportunity</h1>
+      </div>
+
+      <div class="field">
+        <span class="label">Customer / Lead</span>
+        <ul class="choices" id="party-list"></ul>
+        <input type="search" id="party-search" placeholder="Search other customers and leads&hellip;" autocomplete="off">
+        <ul class="choices" id="party-results"></ul>
+      </div>
+
+      <div id="new-lead-fields" class="sub" hidden>
+        <label class="field"><span class="label">Lead name</span><input id="nl-name" maxlength="140"></label>
+        <label class="field"><span class="label">Company name</span><input id="nl-company" maxlength="140"></label>
+        <label class="field"><span class="label">Email</span><input id="nl-email" type="email" maxlength="140"></label>
+      </div>
+
+      <label class="field" id="abr-field" hidden>
+        <span class="label">Abbreviation <span class="muted">(goes into the INQ number)</span></span>
+        <input id="f-abr" maxlength="10" autocomplete="off">
+      </label>
+
+      <label class="field"><span class="label">Title</span><input id="f-title" maxlength="140"></label>
+
+      <div class="row2">
+        <label class="field"><span class="label">Company</span><select id="f-group"></select></label>
+        <label class="field"><span class="label">Naming series</span><select id="f-series"></select></label>
+      </div>
+      <div class="row2">
+        <label class="field"><span class="label">Tender no.</span><input id="f-tender" placeholder="optional" maxlength="60"></label>
+        <label class="field"><span class="label">Expected closing</span><input id="f-closing" type="date"></label>
+      </div>
+
+      <div class="field">
+        <span class="label">Responsible party <span class="muted" id="rp-count"></span></span>
+        <input type="search" id="rp-filter" placeholder="Filter responsible parties&hellip;" autocomplete="off">
+        <ul class="checks" id="rp-list"></ul>
+      </div>
+
+      <label class="field"><span class="label">Notes <span class="muted">(optional, added as a comment)</span></span>
+        <textarea id="f-notes" rows="2"></textarea></label>
+
+      <div class="attach-box card" data-attach hidden></div>
+
+      <label class="check-line" id="parse-after-wrap" hidden>
+        <input type="checkbox" id="parse-after" checked>
+        <span>Parse items after creating (email text and selected files)</span>
+      </label>
+
+      <button id="create-submit" class="primary wide">Create, assign &amp; link</button>
+    </section>
+
+    <!-- ── parse items ───────────────────────────────────────────── -->
+    <section id="view-parse" class="view" hidden>
+      <div class="form-head">
+        <button id="parse-back" class="link">&larr; Back</button>
+        <h1 id="parse-title">Parse items</h1>
+      </div>
+
+      <div id="parse-wait" class="card center">
+        <div class="spinner" id="parse-spinner"></div>
+        <p id="parse-status">Reading the files&hellip;</p>
+        <p class="muted small" id="parse-files"></p>
+        <p class="muted small">This can take a few minutes. Closing the pane does not stop it,
+          and parsing the same files again is quick.</p>
+      </div>
+
+      <div id="parse-review" hidden>
+        <h2>Review parsed lines</h2>
+        <p class="muted small" id="parse-summary"></p>
+        <div class="attach-head">
+          <span class="title" id="parse-count"></span>
+          <button id="parse-toggle" class="link"></button>
+        </div>
+        <ul class="checks parse-rows" id="parse-rows"></ul>
+        <div id="parse-extra" class="small"></div>
+        <button id="parse-add" class="primary wide">Add selected</button>
+      </div>
+    </section>
+  </main>
+
+  <input type="file" id="file-input" multiple hidden>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <footer>
+    <span id="who" class="muted small"></span>
+    <span>
+      <button id="btn-reload" class="link" title="Reload">Reload</button>
+      <button id="btn-signout" class="link" hidden>Sign out</button>
+    </span>
+  </footer>

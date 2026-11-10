@@ -11,8 +11,25 @@ def after_install():
     create_opportunity_custom_fields()
     create_workspace()
     setup_whatsapp_inbox()
+    setup_outlook_addin()
     frappe.db.commit()
     print("Opportunity Management app installed successfully!")
+
+
+def setup_outlook_addin():
+    """Create the Outlook add-in's OAuth Client (same call as the
+    setup_outlook_addin patch). Guarded so a failure never blocks install."""
+    from opportunity_management.opportunity_management.outlook_addin import (
+        ensure_conversation_field,
+        ensure_oauth_client,
+    )
+
+    try:
+        ensure_conversation_field()
+        print(f"✓ Outlook add-in: OAuth Client {ensure_oauth_client()}")
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Outlook add-in setup")
+        print(f"Warning: Outlook add-in setup failed: {e}")
 
 
 def setup_whatsapp_inbox():
