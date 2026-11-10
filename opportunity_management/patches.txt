@@ -25,3 +25,4 @@ opportunity_management.patches.setup_outlook_addin_v3
 opportunity_management.patches.setup_outlook_addin_v4
 opportunity_management.patches.setup_outlook_addin_v5
 opportunity_management.patches.seed_ai_settings
+opportunity_management.patches.update_ai_seed_v2

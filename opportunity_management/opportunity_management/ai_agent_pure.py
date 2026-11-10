@@ -363,11 +363,24 @@ def turn_values(response, source):
                 model=r.get("model") or None)
 
 
+def handoff_line(tools) -> str:
+    """"→ <group>: <summary>" for a recorded handoff call, else ""."""
+    hand = next((t for t in tools or [] if t.get("name") == "handoff"), None)
+    if not hand:
+        return ""
+    args = hand.get("input") or {}
+    return "→ {0}: {1}".format(args.get("group") or "?", str(args.get("summary") or "").strip()).strip(": ")
+
+
 def shadow_record(response, source="Shadow"):
-    """Turn values for a draft: only read-only tools count as executed."""
+    """Turn values for a draft: only read-only tools count as executed. A
+    handoff with no reply text shows as the handoff line, so graders and the
+    inbox see what the AI would have done instead of a blank."""
     values = turn_values(response, source)
     values["tools_json"] = [dict(t, executed=bool(t.get("executed")) and t.get("name") in READ_ONLY)
                             for t in values["tools_json"]]
+    if not values["draft"]:
+        values["draft"] = handoff_line(values["tools_json"])
     return values
 
 
