@@ -1,0 +1,217 @@
+{
+ "actions": [],
+ "creation": "2026-11-10 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "issingle": 1,
+ "field_order": [
+  "mode_tab",
+  "ai_mode",
+  "ai_menus",
+  "column_break_mode",
+  "live_allowlist",
+  "live_share_percent",
+  "limits_section",
+  "model",
+  "effort",
+  "max_output_tokens",
+  "column_break_limits",
+  "max_turns",
+  "history_messages",
+  "escape_group",
+  "budget_section",
+  "monthly_budget_usd",
+  "column_break_budget",
+  "replay_budget_usd",
+  "prompt_tab",
+  "disclosure_en",
+  "disclosure_ar",
+  "persona_en",
+  "persona_ar",
+  "knowledge_tab",
+  "knowledge_en",
+  "knowledge_ar"
+ ],
+ "fields": [
+  {
+   "fieldname": "mode_tab",
+   "fieldtype": "Tab Break",
+   "label": "Mode"
+  },
+  {
+   "fieldname": "ai_mode",
+   "fieldtype": "Select",
+   "label": "AI Mode",
+   "options": "Off\nShadow\nLive",
+   "default": "Off",
+   "description": "Off: nothing changes. Shadow: the menu behaves as before and the AI only drafts a suggested reply. Live: in AI menus the AI answers (allowlist / share below). Needs anthropic_api_key in site_config."
+  },
+  {
+   "fieldname": "ai_menus",
+   "fieldtype": "Data",
+   "label": "AI Menus",
+   "default": "info,nano",
+   "description": "WhatsApp Menu keys (comma separated) where the AI may answer free text."
+  },
+  {
+   "fieldname": "column_break_mode",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "live_allowlist",
+   "fieldtype": "Small Text",
+   "label": "Live Allowlist",
+   "description": "Phone numbers (one per line or comma) that always get Live behaviour."
+  },
+  {
+   "fieldname": "live_share_percent",
+   "fieldtype": "Int",
+   "label": "Live Share (%)",
+   "default": "0",
+   "description": "0–100: share of other chats (by phone hash) that get Live behaviour; the rest get Shadow drafts."
+  },
+  {
+   "fieldname": "limits_section",
+   "fieldtype": "Section Break",
+   "label": "Model and limits"
+  },
+  {
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model",
+   "default": "claude-opus-5-5"
+  },
+  {
+   "fieldname": "effort",
+   "fieldtype": "Select",
+   "label": "Effort",
+   "options": "low\nmedium\nhigh",
+   "default": "low"
+  },
+  {
+   "fieldname": "max_output_tokens",
+   "fieldtype": "Int",
+   "label": "Max Output Tokens",
+   "default": "800"
+  },
+  {
+   "fieldname": "column_break_limits",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "max_turns",
+   "fieldtype": "Int",
+   "label": "Max AI Replies per Session",
+   "default": "6",
+   "description": "After this many AI replies the chat is handed to the escape group."
+  },
+  {
+   "fieldname": "history_messages",
+   "fieldtype": "Int",
+   "label": "History Messages",
+   "default": "12"
+  },
+  {
+   "fieldname": "escape_group",
+   "fieldtype": "Link",
+   "label": "Escape Group",
+   "options": "WhatsApp Agent Group",
+   "default": "General information",
+   "description": "Handoff target on the reply cap, a refusal, or a handoff that names no team."
+  },
+  {
+   "fieldname": "budget_section",
+   "fieldtype": "Section Break",
+   "label": "Budget"
+  },
+  {
+   "fieldname": "monthly_budget_usd",
+   "fieldtype": "Currency",
+   "label": "Monthly Budget (USD)",
+   "default": "50",
+   "description": "When this month's Live + Shadow cost reaches it the AI is treated as Off. 0 = no spend."
+  },
+  {
+   "fieldname": "column_break_budget",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "replay_budget_usd",
+   "fieldtype": "Currency",
+   "label": "Replay Budget (USD)",
+   "default": "30",
+   "description": "Hard stop for one offline replay run (ai_replay.run_replay)."
+  },
+  {
+   "fieldname": "prompt_tab",
+   "fieldtype": "Tab Break",
+   "label": "Persona"
+  },
+  {
+   "fieldname": "disclosure_en",
+   "fieldtype": "Data",
+   "label": "Disclosure (English)",
+   "description": "First line of the first Live reply of a session."
+  },
+  {
+   "fieldname": "disclosure_ar",
+   "fieldtype": "Data",
+   "label": "Disclosure (Arabic)"
+  },
+  {
+   "fieldname": "persona_en",
+   "fieldtype": "Text",
+   "label": "Persona (English)"
+  },
+  {
+   "fieldname": "persona_ar",
+   "fieldtype": "Text",
+   "label": "Persona (Arabic)"
+  },
+  {
+   "fieldname": "knowledge_tab",
+   "fieldtype": "Tab Break",
+   "label": "Knowledge"
+  },
+  {
+   "fieldname": "knowledge_en",
+   "fieldtype": "Markdown Editor",
+   "label": "Knowledge (English)",
+   "description": "The ONLY facts the AI may use."
+  },
+  {
+   "fieldname": "knowledge_ar",
+   "fieldtype": "Markdown Editor",
+   "label": "Knowledge (Arabic)"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-10 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Opportunity Management",
+ "name": "WhatsApp AI Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "WhatsApp Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
