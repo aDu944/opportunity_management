@@ -1,0 +1,231 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-10 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "conversation",
+  "message",
+  "source",
+  "column_break_main",
+  "menu",
+  "language",
+  "model",
+  "effort",
+  "reply_section",
+  "stop_reason",
+  "draft",
+  "sent_message",
+  "tools_json",
+  "error",
+  "usage_section",
+  "input_tokens",
+  "cache_read_tokens",
+  "cache_write_tokens",
+  "output_tokens",
+  "column_break_usage",
+  "cost_usd",
+  "latency_ms",
+  "grade_section",
+  "grade",
+  "grade_notes",
+  "column_break_grade",
+  "graded_by",
+  "graded_on"
+ ],
+ "fields": [
+  {
+   "fieldname": "conversation",
+   "fieldtype": "Link",
+   "label": "Conversation",
+   "options": "WhatsApp Conversation",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Link",
+   "label": "Inbound Message",
+   "options": "WhatsApp Message"
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "label": "Source",
+   "options": "Replay\nShadow\nLive",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "menu",
+   "fieldtype": "Data",
+   "label": "Menu"
+  },
+  {
+   "fieldname": "language",
+   "fieldtype": "Data",
+   "label": "Language"
+  },
+  {
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model"
+  },
+  {
+   "fieldname": "effort",
+   "fieldtype": "Data",
+   "label": "Effort"
+  },
+  {
+   "fieldname": "reply_section",
+   "fieldtype": "Section Break",
+   "label": "Reply"
+  },
+  {
+   "fieldname": "stop_reason",
+   "fieldtype": "Data",
+   "label": "Stop Reason"
+  },
+  {
+   "fieldname": "draft",
+   "fieldtype": "Text",
+   "label": "Draft"
+  },
+  {
+   "fieldname": "sent_message",
+   "fieldtype": "Link",
+   "label": "Sent Message",
+   "options": "WhatsApp Message"
+  },
+  {
+   "fieldname": "tools_json",
+   "fieldtype": "JSON",
+   "label": "Tools"
+  },
+  {
+   "fieldname": "error",
+   "fieldtype": "Small Text",
+   "label": "Error"
+  },
+  {
+   "fieldname": "usage_section",
+   "fieldtype": "Section Break",
+   "label": "Usage"
+  },
+  {
+   "fieldname": "input_tokens",
+   "fieldtype": "Int",
+   "label": "Input Tokens"
+  },
+  {
+   "fieldname": "cache_read_tokens",
+   "fieldtype": "Int",
+   "label": "Cache Read Tokens"
+  },
+  {
+   "fieldname": "cache_write_tokens",
+   "fieldtype": "Int",
+   "label": "Cache Write Tokens"
+  },
+  {
+   "fieldname": "output_tokens",
+   "fieldtype": "Int",
+   "label": "Output Tokens"
+  },
+  {
+   "fieldname": "column_break_usage",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "cost_usd",
+   "fieldtype": "Float",
+   "label": "Cost (USD)",
+   "precision": "6",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "latency_ms",
+   "fieldtype": "Int",
+   "label": "Latency (ms)"
+  },
+  {
+   "fieldname": "grade_section",
+   "fieldtype": "Section Break",
+   "label": "Grade"
+  },
+  {
+   "fieldname": "grade",
+   "fieldtype": "Select",
+   "label": "Grade",
+   "options": "Pending\nCorrect\nWrong fact\nWrong department\nOver-promise\nBad language\nShould hand off\nUnnecessary handoff",
+   "default": "Pending",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "grade_notes",
+   "fieldtype": "Small Text",
+   "label": "Grade Notes"
+  },
+  {
+   "fieldname": "column_break_grade",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "graded_by",
+   "fieldtype": "Link",
+   "label": "Graded By",
+   "options": "User"
+  },
+  {
+   "fieldname": "graded_on",
+   "fieldtype": "Datetime",
+   "label": "Graded On"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-10 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Opportunity Management",
+ "name": "WhatsApp AI Turn",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "WhatsApp Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "WhatsApp Agent"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "conversation",
+ "track_changes": 0
+}

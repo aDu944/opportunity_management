@@ -12,11 +12,13 @@ State (`menu_state` on the conversation):
     menu:<key>                 a list is showing
     form:<option row>:<step>   collecting customer details (auto_menu_form_pure)
     request:<option row>       waiting for the request itself
+    ai:<key>                   the AI holds the chat inside menu <key> (auto_menu_ai_pure)
 
 Effects (dicts, key "do"): send_list, send_buttons, send_text (prompt=True
 marks the message as the one a tap must answer), send_location,
 send_attachment, set_state {values}, tag, note, create_lead {fields},
-auto_resolve_after {hours}, handoff {group, last_handler}.
+auto_resolve_after {hours}, handoff {group, last_handler}, ai_turn {menu, mode,
+lang, fallback}.
 
 Ids the customer's taps send back: lang:ar, lang:en, opt:<row>, menu:root,
 lang:toggle, form:individual, form:same_number, form:no_email, form:keep,
@@ -29,9 +31,10 @@ import re
 
 from opportunity_management.opportunity_management import auto_menu_texts as T
 from opportunity_management.opportunity_management import auto_menu_form_pure as F
+from opportunity_management.opportunity_management.auto_menu_ai_pure import AI, AiSteps
 
 LANG, MENU, FORM, REQUEST, DONE = "lang", "menu", "form", "request", "done"
-ACTIVE = (LANG, MENU, FORM, REQUEST)
+ACTIVE = (LANG, MENU, FORM, REQUEST, AI)
 NOW = "__now__"  # set_state placeholder the frappe side swaps for now_datetime()
 
 REPLY, SUBMENU, FORM_HANDOFF = "Reply", "Submenu", "Form then handoff"
@@ -65,7 +68,7 @@ def parse_state(state):
     if head == FORM:
         row, _, step = rest.rpartition(":")
         return (FORM, row, step) if row and step else ("", None, None)
-    if head in (MENU, REQUEST):
+    if head in (MENU, REQUEST, AI):
         return (head, rest, None) if rest else ("", None, None)
     if head in (LANG, DONE):
         return head, None, None
@@ -271,12 +274,14 @@ def next_step(ctx, inbound, tree, settings):
         flow.in_menu(key)
     elif kind == FORM:
         flow.in_form(key, step)
+    elif kind == AI:
+        flow.in_ai(key)
     else:
         flow.in_request(key)
     return flow.finish()
 
 
-class _Flow:
+class _Flow(AiSteps):
     def __init__(self, ctx, inbound, tree, settings):
         self.ctx, self.inbound, self.settings = ctx, inbound, settings
         self.menus = tree.get("menus") or {}
@@ -371,6 +376,8 @@ class _Flow:
             digit = parse_digit(self.inbound.get("text"))
             chosen = next((o for o in sorted_options(menu) if str(o.get("digit")) == digit), None) if digit else None
         if chosen is None:
+            if self.inbound.get("kind") == "text" and self.ai_turn(key):
+                return None
             return self.show(key, please=True)
         self.choose(key, chosen)
 
