@@ -27,3 +27,4 @@ opportunity_management.patches.setup_outlook_addin_v5
 opportunity_management.patches.seed_ai_settings
 opportunity_management.patches.seed_email_domain_rules
 opportunity_management.patches.setup_outlook_addin_v6
+opportunity_management.patches.update_ai_seed_v2

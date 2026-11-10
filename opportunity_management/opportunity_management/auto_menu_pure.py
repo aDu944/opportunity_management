@@ -443,8 +443,7 @@ class _Flow(AiSteps):
 
     def request_prompt(self, o):
         text = _text_of(o, "question", self.lang) or T.DEFAULT_QUESTION[self.lang]
-        self.effects.append({"do": "send_buttons", "body": text[:MAX_BODY],
-                             "buttons": [F.main_menu_button(self.lang)], "prompt": True})
+        self.effects.append({"do": "send_text", "text": F.with_back_hint(text, self.lang)[:MAX_BODY], "prompt": True})
 
     def to_main(self):
         return self.kw == "menu" or self.tap == T.MAIN_MENU_ID

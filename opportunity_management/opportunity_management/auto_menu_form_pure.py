@@ -107,28 +107,33 @@ def validate(step, inbound, phone=""):
     return False, None
 
 
-def main_menu_button(lang):
-    return {"id": T.MAIN_MENU_BUTTON["id"], "title": T.pick(T.MAIN_MENU_BUTTON["title"], lang)}
-
-
 def _buttons(step, lang, phone):
-    """The step's own buttons, then Main menu (always; ≤3 per Meta's limit)."""
+    """The step's own buttons only — no Main menu button: offered alone it
+    gets tapped instead of answered (see T.BACK_HINT)."""
     rows = []
     for button in T.FORM_BUTTONS.get(step, ()):
         if button["id"] == SAME_NUMBER_ID and not phone:
             continue  # WhatsApp with a real number only
         rows.append({"id": button["id"], "title": T.pick(button["title"], lang)})
-    rows.append(main_menu_button(lang))
     return rows
 
 
+def with_back_hint(body, lang) -> str:
+    return body + "\n\n" + T.pick(T.BACK_HINT, lang)
+
+
 def question(step, lang, phone="", hint=False):
-    """The send effect asking `step`; with `hint` the hint line leads."""
+    """The send effect asking `step`; with `hint` the hint line leads. A
+    step with its own button(s) is a button prompt; a typed-answer step is
+    plain text with the back hint as its footer."""
     body = T.pick(T.QUESTIONS.get(step, {}), lang)
     if hint:
         line = T.pick(T.HINTS.get(step) or T.TEXT_HINT, lang)
         body = line + "\n" + body
-    return {"do": "send_buttons", "body": body, "buttons": _buttons(step, lang, phone), "prompt": True}
+    buttons = _buttons(step, lang, phone)
+    if buttons:
+        return {"do": "send_buttons", "body": body, "buttons": buttons, "prompt": True}
+    return {"do": "send_text", "text": with_back_hint(body, lang), "prompt": True}
 
 
 def returning_prompt(lang, please=False):
@@ -136,7 +141,6 @@ def returning_prompt(lang, please=False):
     if please:
         body = T.pick(T.PLEASE_CHOOSE, lang) + "\n" + body
     buttons = [{"id": b["id"], "title": T.pick(b["title"], lang)} for b in T.RETURNING_BUTTONS]
-    buttons.append(main_menu_button(lang))
     return {"do": "send_buttons", "body": body, "buttons": buttons, "prompt": True}
 
 

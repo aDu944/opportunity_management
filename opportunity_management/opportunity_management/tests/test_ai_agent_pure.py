@@ -340,6 +340,11 @@ class TestShadow(unittest.TestCase):
                                     "save_customer_details": False})
         self.assertTrue(tools[1]["executed"])  # the input is not mutated
         self.assertEqual(P.shadow_record(response(), source="Replay")["source"], "Replay")
+        # a silent handoff shows as a line, not a blank draft
+        hand = [tool("tag_conversation", tag="Info"), tool("handoff", group="Oil & Gas", summary="Wants a pump quote.")]
+        self.assertEqual(P.shadow_record(response(text="", tools=hand))["draft"], "→ Oil & Gas: Wants a pump quote.")
+        self.assertEqual(P.shadow_record(response(text="", tools=[]))["draft"], "")
+        self.assertEqual(P.shadow_record(response(text="Hi", tools=hand))["draft"], "Hi")  # text wins
 
 
 class TestSeed(unittest.TestCase):

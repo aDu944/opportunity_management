@@ -24,6 +24,10 @@ LANG_TOGGLE_ID = "lang:toggle"
 # Reply button closing every form / request prompt (≤20 chars): a way out of
 # a half-filled form without knowing the typed keyword.
 MAIN_MENU_BUTTON = {"id": MAIN_MENU_ID, "title": MAIN_MENU}
+# Footer of every typed-answer prompt. A lone "Main menu" button under "What
+# is your full name?" was tapped by 45% of customers (2026-10-28 … 11-10), so
+# questions carry no button of their own; the way back is the typed keyword.
+BACK_HINT = {"ar": "للعودة إلى القائمة الرئيسية اكتب: رجوع", "en": "To return to the main menu, type: back"}
 
 # Strict-menu resend line, prepended to the prompt body.
 PLEASE_CHOOSE = {
