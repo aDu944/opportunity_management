@@ -23,7 +23,7 @@ def _load():
 
 
 P = _load()
-CB = "https://bms.alkhora.com/assets/opportunity_management/outlook/v5/auth-callback.html"
+CB = "https://bms.alkhora.com/assets/opportunity_management/outlook/app/auth-callback.html"
 
 
 class NormalizeSiteUrl(unittest.TestCase):
@@ -70,6 +70,12 @@ class ClientValues(unittest.TestCase):
 
 
 class PublicConfig(unittest.TestCase):
+    def test_loader_fields(self):
+        c = P.public_config("https://bms.alkhora.com", "abc123")
+        self.assertEqual(c["asset_version"], P.ASSET_VERSION)
+        self.assertEqual(c["asset_base"], f"/assets/opportunity_management/outlook/{P.ASSET_VERSION}/")
+        self.assertTrue(c["redirect_uri"].endswith("/outlook/app/auth-callback.html"))
+
     def test_endpoints(self):
         c = P.public_config("http://bms.alkhora.com", "abc123")
         self.assertEqual(c["client_id"], "abc123")

@@ -32,6 +32,7 @@ from opportunity_management.opportunity_management.outlook_api import (
     OutlookError,
     _contacts_parties,
     _json,
+    domain_rule_parties,
 )
 from opportunity_management.opportunity_management.whatsapp_api_opportunity import (
     _caller_company,
@@ -76,6 +77,9 @@ def _candidate_parties(people):
     found = []
     if not people:
         return found
+    # Email Domain Rules first: "always suggest this customer for @domain".
+    for pt, names in domain_rule_parties(people).items():
+        found += [(pt, n, "Company rule for this email domain") for n in sorted(names)]
     contacts = set(frappe.get_all("Contact Email",
                                   filters={"email_id": ["in", people], "parenttype": "Contact"},
                                   pluck="parent"))

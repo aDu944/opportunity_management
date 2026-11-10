@@ -28,11 +28,14 @@ CLOSED_STATUSES = frozenset({"Lost", "Closed", "Converted"})
 STATUS_DISPLAY = {"Converted": "Won"}  # same wording as api._STATUS_DISPLAY_ALIASES
 
 # Reason codes, strongest first. The panel shows REASON_LABELS.
-REASON_ORDER = ("linked", "thread", "reply", "contact_email", "contact", "lead", "domain")
+REASON_ORDER = ("linked", "subject", "thread", "reply", "domain_rule", "contact_email", "contact",
+                "lead", "domain")
 REASON_LABELS = {
     "linked": "This email is linked",
+    "subject": "Opportunity number in the subject",
     "thread": "Same email thread",
     "reply": "Reply to an email sent from ERPNext",
+    "domain_rule": "Company rule for this email domain",
     "contact_email": "Sender is the Opportunity's contact",
     "contact": "Sender's contact",
     "lead": "Sender's lead",
@@ -94,6 +97,20 @@ def counterparts(sender, to, cc, mailbox, own_domains=()):
     return out
 
 
+def normalize_domain(value) -> str:
+    """'@BadraProject.com ' / 'x@badraproject.com' -> 'badraproject.com'."""
+    text = str(value or "").strip().lower()
+    if "@" in text:
+        text = text.rsplit("@", 1)[1]
+    return text.strip(" .")
+
+
+def domain_matches(email_domain_, rule_domain) -> bool:
+    """A rule for badraproject.com also covers mail.badraproject.com."""
+    d, r = normalize_domain(email_domain_), normalize_domain(rule_domain)
+    return bool(d and r) and (d == r or d.endswith("." + r))
+
+
 def company_domains(addresses):
     """Distinct non-public domains of the given addresses."""
     out = []
@@ -105,6 +122,52 @@ def company_domains(addresses):
 
 
 # ── message IDs ──────────────────────────────────────────────────────────────
+
+# Opportunity numbers as this site names them (three series):
+#   INQ-577-IC-2041-26, INQ-301-IC-0-26, INQ-001-BGCI--24, INQ-574-MthU-3-26,
+#   INQ-556-OTI-SIU -RIG-202-26, INQ-287-PNS-PCIHBV 2026 MRP 6135-26, ER-040-26, FB-001-26
+# i.e. a prefix and sequence, anything (spaces, hyphens, mixed case) and a
+# two-digit year at the end. Every possible end is a candidate; the server
+# keeps only names that exist.
+_OPP_START = re.compile(r"\b(?:INQ|ER|FB)-\d{2,4}", re.I)
+_YEAR_END = re.compile(r"-\d{2}(?![\dA-Za-z])")
+_BRACKETED = re.compile(r"\[([^\[\]]{3,80})\]")
+MAX_SUBJECT_REFS = 20
+MAX_REF_LEN = 80
+
+
+def subject_refs(subject):
+    """Opportunity-number candidates in an email subject: anything in
+    [brackets] (what the add-in writes) first, then INQ-/ER-/FB- shaped
+    stretches ending at each possible "-YY"."""
+    text = str(subject or "")
+    out = []
+
+    def add(cand):
+        cand = cand.strip()
+        if cand and cand not in out:
+            out.append(cand)
+
+    for cand in _BRACKETED.findall(text):
+        add(cand)
+    for start in _OPP_START.finditer(text):
+        window = text[start.start():start.start() + MAX_REF_LEN]
+        window = re.split(r"[\[\]\n\r]", window, maxsplit=1)[0]
+        seq_end = start.end() - start.start()
+        for end in _YEAR_END.finditer(window, seq_end - 3 if seq_end > 3 else 0):
+            if end.end() > seq_end:
+                add(window[:end.end()])
+    return out[:MAX_SUBJECT_REFS]
+
+
+def subject_with_ref(subject, ref):
+    """Append " [ref]" to a subject unless it already carries that ref."""
+    subject = str(subject or "").rstrip()
+    tag = f"[{ref}]"
+    if tag.lower() in subject.lower():
+        return subject
+    return f"{subject} {tag}" if subject else tag
+
 
 def normalize_message_id(mid) -> str:
     """Frappe's stored form: surrounding whitespace and angle brackets removed."""

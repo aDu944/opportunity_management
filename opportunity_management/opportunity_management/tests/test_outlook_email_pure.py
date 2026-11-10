@@ -227,6 +227,48 @@ class EmailText(unittest.TestCase):
         self.assertEqual(P.email_text(), "")
 
 
+class SubjectAndDomainRules(unittest.TestCase):
+    def test_subject_refs_real_shapes(self):
+        cases = {
+            "RE: TENDER #2041 [INQ-577-IC-2041-26]": "INQ-577-IC-2041-26",
+            "Fw: INQ-556-OTI-SIU -RIG-202-26 offer": "INQ-556-OTI-SIU -RIG-202-26",
+            "quote ER-040-26 pls": "ER-040-26",
+            "INQ-287-PNS-PCIHBV 2026 MRP 6135-26": "INQ-287-PNS-PCIHBV 2026 MRP 6135-26",
+            "inq-574-MthU-3-26": "inq-574-MthU-3-26",
+            "INQ-001-BGCI--24 x": "INQ-001-BGCI--24",
+            "FB-001-26": "FB-001-26",
+            "INQ-301-IC-0-26": "INQ-301-IC-0-26",
+        }
+        for subject, want in cases.items():
+            self.assertIn(want, P.subject_refs(subject), subject)
+
+    def test_subject_refs_two_numbers_and_none(self):
+        refs = P.subject_refs("INQ-301-IC-0-26 / ER-039-26")
+        self.assertIn("INQ-301-IC-0-26", refs)
+        self.assertIn("ER-039-26", refs)
+        self.assertEqual(P.subject_refs("Offer for valves 2026"), [])
+        self.assertEqual(P.subject_refs(None), [])
+
+    def test_subject_with_ref(self):
+        self.assertEqual(P.subject_with_ref("RE: RFQ", "INQ-577-IC-2041-26"), "RE: RFQ [INQ-577-IC-2041-26]")
+        self.assertEqual(P.subject_with_ref("RE: RFQ [inq-577-ic-2041-26]", "INQ-577-IC-2041-26"),
+                         "RE: RFQ [inq-577-ic-2041-26]")
+        self.assertEqual(P.subject_with_ref("", "ER-040-26"), "[ER-040-26]")
+
+    def test_domain_rules(self):
+        self.assertEqual(P.normalize_domain(" @BadraProject.com "), "badraproject.com")
+        self.assertEqual(P.normalize_domain("tenders@badraproject.com"), "badraproject.com")
+        self.assertTrue(P.domain_matches("badraproject.com", "badraproject.com"))
+        self.assertTrue(P.domain_matches("mail.badraproject.com", "@badraproject.com"))
+        self.assertFalse(P.domain_matches("notbadraproject.com", "badraproject.com"))
+        self.assertFalse(P.domain_matches("", "badraproject.com"))
+
+    def test_subject_and_rule_rank_high(self):
+        merged = P.merge_candidates([("A", "contact"), ("B", "domain_rule"), ("C", "subject")])
+        rows = [{"name": n, "status": "Open", "modified": "2026-11-01"} for n in "ABC"]
+        self.assertEqual([r["name"] for r in P.rank(rows, merged)], ["C", "B", "A"])
+
+
 class Misc(unittest.TestCase):
     def test_parse_iso_utc(self):
         self.assertEqual(P.parse_iso_utc("2026-11-09T12:30:00.000Z"), datetime(2026, 11, 9, 12, 30))

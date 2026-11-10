@@ -162,6 +162,30 @@ def _reply_opps(ids):
     return opps
 
 
+DOMAIN_RULE = "Email Domain Rule"
+
+
+def domain_rule_parties(people):
+    """{party doctype: {names}} from active Email Domain Rules matching the
+    addresses' domains (sub-domains included)."""
+    out = {}
+    domains = {P.email_domain(a) for a in people or []} - {""}
+    if not domains or not frappe.db.table_exists(DOMAIN_RULE):
+        return out
+    for rule in frappe.get_all(DOMAIN_RULE, filters={"is_active": 1},
+                               fields=["domain", "party_type", "party"]):
+        if rule.party and any(P.domain_matches(d, rule.domain) for d in domains):
+            out.setdefault(rule.party_type, set()).add(rule.party)
+    return out
+
+
+def _subject_opps(subject):
+    refs = P.subject_refs(subject)
+    if not refs:
+        return []
+    return frappe.get_all(OPP, filters={"name": ["in", refs]}, pluck="name")
+
+
 def _add_party_matches(found, parties, reason):
     for doctype, names in parties.items():
         for opp in _party_opps(doctype, names):
@@ -172,9 +196,11 @@ def _add_party_matches(found, parties, reason):
 
 @frappe.whitelist(methods=["GET", "POST"])
 def lookup(sender=None, to=None, cc=None, mailbox=None, message_id=None, conversation_id=None,
-           headers=None):
+           headers=None, subject=None):
     """Opportunities for the open email, strongest match first. `headers` is
-    the raw internet header block (only In-Reply-To / References are read)."""
+    the raw internet header block (only In-Reply-To / References are read);
+    an Opportunity number in the `subject` (e.g. "[ER-022-26]") is the
+    strongest match after an existing link."""
     to, cc = _json(to, []), _json(cc, [])
     people = P.counterparts(sender, to, cc, mailbox)
     mid = P.normalize_message_id(message_id)
@@ -190,12 +216,16 @@ def lookup(sender=None, to=None, cc=None, mailbox=None, message_id=None, convers
         for opp in _comm_opps(thread):
             found.append((opp, "thread"))
 
+    for opp in _subject_opps(subject):
+        found.append((opp, "subject"))
+
     replied_to = P.reference_ids(P.header_value(headers, "In-Reply-To"),
                                  P.header_value(headers, "References"))
     for opp in _reply_opps(replied_to):
         found.append((opp, "reply"))
 
     if people:
+        _add_party_matches(found, domain_rule_parties(people), "domain_rule")
         if frappe.get_meta(OPP).has_field("contact_email"):
             for opp in frappe.get_all(OPP, filters={"contact_email": ["in", people]},
                                       pluck="name", limit=MAX_CANDIDATES):

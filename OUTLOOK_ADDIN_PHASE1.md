@@ -11,6 +11,29 @@ The panel now lets a user, from any email in Outlook:
 
 The pane can be **pinned** and follows the user from email to email.
 
+## v6 additions (install once from here on)
+
+- **Install once, auto-update** — the manifest now lives in the stable folder
+  `public/outlook/app/` (`manifest.xml`, `taskpane.html` loader, `auth-callback.html`, icons). The loader
+  asks `get_config` for `asset_version` and loads `outlook/<version>/` (`body.html`, `taskpane.css`,
+  `auth.js`, `app.js`). A new version = a new folder + bumping `ASSET_VERSION`; nobody reinstalls.
+  **Files in `app/` are never edited after publishing** (year-long edge cache); if the manifest itself
+  must change (new permission / button), that is a new stable folder and one more install.
+- **Share page** — `https://bms.alkhora.com/outlook` (`www/outlook.html`): a download button for the
+  stable manifest and the install steps. Send colleagues this link.
+- **Opportunity number in the subject** — in a reply / forward / new email, the same button opens the
+  panel in compose mode: suggested Opportunities (thread, recipients, domain rules) or search, then
+  **Add to subject** appends `[INQ-577-IC-2041-26]` once. Customers' replies keep it, and the lookup now
+  treats a number in the subject as the strongest match (`INQ-` / `ER-` / `FB-` names, mixed case,
+  spaces and extra hyphens included; only names that exist count).
+- **Email Domain Rule** (new DocType) — "emails from this domain always suggest this Customer/Lead",
+  shown with its reason ("Company rule for this email domain"), not hiding other candidates. Seeded:
+  `badraproject.com` → **IC LLC Badra Petroleum** (Ahmed, 2026-11-10). Sub-domains match; public mail
+  domains are refused. Sales Managers can add more under *Email Domain Rule*.
+- **Tags** — Outlook categories don't exist on IMAP mailboxes (one.com). The pane now probes once and
+  skips tagging quietly there, and never claims "tagged" when it wasn't. A **✓ Linked to …** line under
+  the subject shows the link at a glance instead.
+
 ## v5 additions
 
 - **Parse the email text** — "Include the email text when parsing items" (on by default) sends the
@@ -121,10 +144,10 @@ host `https://bms.alkhora.com`, git remote **`upstream`** (fetch refspec tracks 
 cd /home/frappe/frappe-bench
 bench --site erp.local backup
 cd apps/opportunity_management
-git fetch upstream feature/outlook-addin-phase1:feature/outlook-addin-phase1
-git checkout feature/outlook-addin-phase1
+git fetch upstream feature/outlook-addin:feature/outlook-addin
+git checkout feature/outlook-addin
 cd /home/frappe/frappe-bench
-bench --site erp.local migrate     # expect "Outlook add-in v5: OAuth Client ... has the v5 redirect"
+bench --site erp.local migrate     # expect "Outlook add-in v6: ... stable app/ redirect" and "Email Domain Rule badraproject.com -> ..."
 bench build --app opportunity_management
 bench --site erp.local clear-cache
 sudo supervisorctl restart frappe-bench-web:
@@ -135,7 +158,7 @@ clear-cache / restart. The custom field and the extra redirect URI are harmless 
 
 ## Install / update in Outlook
 
-Download `https://bms.alkhora.com/assets/opportunity_management/outlook/v5/manifest.xml`
+Open `https://bms.alkhora.com/outlook` and click **Download the add-in file** (stable manifest `outlook/app/manifest.xml`)
 (Cmd/Ctrl+S), then **Add from file** as in Phase 0. It has the same add-in ID, so it replaces
 the Phase 0 test add-in (if Outlook complains, remove the old one first). Sign-in carries over.
 

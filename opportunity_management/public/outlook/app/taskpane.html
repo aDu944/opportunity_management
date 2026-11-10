@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ERPNext Opportunities</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    body { margin: 0; padding: 16px; font: 13px/1.45 "Segoe UI", -apple-system, sans-serif; color: #1f2328; background: #f5f6f8; }
+    @media (prefers-color-scheme: dark) { body { color: #e8eaed; background: #1b1d21; } }
+    #om-boot button { margin-top: 8px; font: inherit; padding: 5px 12px; border-radius: 6px; border: 1px solid #8a8f98; background: transparent; color: inherit; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="om-boot"><p id="om-boot-msg">Loading&hellip;</p></div>
+  <script>
+    /*
+     * STABLE LOADER - the Outlook manifest points here. This file is never
+     * edited once published (Cloudflare caches /assets for a year): it asks
+     * ERPNext which panel version is current and loads that version's folder
+     * (body.html, taskpane.css, auth.js, app.js). Shipping a new version is a
+     * new folder + bumping ASSET_VERSION on the server; nobody reinstalls.
+     */
+    (function () {
+      var CONFIG_URL = "/api/method/opportunity_management.opportunity_management.outlook_addin.get_config";
+      var VERSION_RE = /^[A-Za-z0-9_-]{1,20}$/;
+
+      function say(text, retry) {
+        var box = document.getElementById("om-boot");
+        if (!box) return;
+        box.innerHTML = "";
+        var p = document.createElement("p");
+        p.textContent = text;
+        box.appendChild(p);
+        if (retry) {
+          var b = document.createElement("button");
+          b.textContent = "Try again";
+          b.onclick = function () { window.location.reload(); };
+          box.appendChild(b);
+        }
+      }
+
+      function getText(url) {
+        return fetch(url, { credentials: "omit" }).then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status + " for " + url);
+          return r.text();
+        });
+      }
+
+      function loadScript(src) {
+        return new Promise(function (resolve, reject) {
+          var s = document.createElement("script");
+          s.src = src;
+          s.onload = resolve;
+          s.onerror = function () { reject(new Error("could not load " + src)); };
+          document.body.appendChild(s);
+        });
+      }
+
+      getText(CONFIG_URL).then(function (text) {
+        var cfg = (JSON.parse(text) || {}).message || {};
+        if (!VERSION_RE.test(cfg.asset_version || "")) throw new Error("ERPNext did not say which version to load");
+        var base = "/assets/opportunity_management/outlook/" + cfg.asset_version + "/";
+        window.OM_BOOT = { config: cfg, base: base };
+        var css = document.createElement("link");
+        css.rel = "stylesheet";
+        css.href = base + "taskpane.css";
+        document.head.appendChild(css);
+        return getText(base + "body.html").then(function (html) {
+          document.body.innerHTML = html;
+          return loadScript(base + "auth.js");
+        }).then(function () {
+          return loadScript(base + "app.js");
+        });
+      }).catch(function (e) {
+        say("Couldn't load the add-in from ERPNext (" + e.message + "). Check your connection and try again.", true);
+      });
+    })();
+  </script>
+</body>
+</html>
