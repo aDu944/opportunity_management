@@ -1710,6 +1710,33 @@ def register_fcm_token(token, app_version=None, platform=None):
 def create_offline_checkin(employee, log_type, time, latitude=None, longitude=None,
                           accuracy=None, punch_geolocation=None, outside_zone=0,
                           outside_zone_reason=None):
+    """See _create_offline_checkin. A rejection is written to Error Log
+    ("Offline check-in rejected") before it is re-raised: the app retries a
+    queued punch silently, so without this the reason is visible nowhere
+    (one phone retried the same refused punch ~100 times a day, Nov 2026).
+    """
+    try:
+        return _create_offline_checkin(employee, log_type, time, latitude, longitude,
+                                       accuracy, punch_geolocation, outside_zone,
+                                       outside_zone_reason)
+    except Exception as e:
+        try:
+            frappe.db.rollback()
+            frappe.log_error(
+                title="Offline check-in rejected",
+                message=f"user={frappe.session.user} employee={employee} log_type={log_type} "
+                        f"time={time} lat={latitude} lon={longitude} outside_zone={outside_zone}\n"
+                        f"{type(e).__name__}: {e}",
+            )
+            frappe.db.commit()
+        except Exception:
+            pass
+        raise
+
+
+def _create_offline_checkin(employee, log_type, time, latitude=None, longitude=None,
+                            accuracy=None, punch_geolocation=None, outside_zone=0,
+                            outside_zone_reason=None):
     """Create an Employee Checkin while preserving the supplied [time].
 
     The default Employee Checkin `time` field has permlevel=1 in HRMS, which
