@@ -6,9 +6,12 @@ the same way the desk's "Parse Items from File" button does
 A parse can run for minutes, longer than Cloudflare lets one request live
 (~100 s), so it runs as a background job and the task pane polls:
 
-* `start_parse(opportunity, files)` – `files` are File records already
-  attached to the Opportunity (the pane saves the chosen attachments first);
-  queues the job and returns a parse id;
+* `start_parse(opportunity, files, communication, include_body)` – `files`
+  are File records already attached to the Opportunity (the pane saves the
+  chosen attachments first); with `include_body` the linked email's text is
+  sent too, as "email.txt" (text/plain) — the agents host reads it once it
+  supports text, and lists it under "skipped" before that; queues the job
+  and returns a parse id;
 * `get_parse(parse_id)`             – queued / running / done (+ result) / failed;
 * `add_parsed_items(...)`           – the rows the user ticked in the review list
   are APPENDED to the items (never replacing), the title is set only when
@@ -29,7 +32,13 @@ from frappe import _
 
 from opportunity_management.opportunity_management import opportunity_pure as OP
 from opportunity_management.opportunity_management import outlook_email_pure as P
-from opportunity_management.opportunity_management.outlook_api import OPP, OutlookError, _get_opp, _json
+from opportunity_management.opportunity_management.outlook_api import (
+    OPP,
+    OutlookError,
+    _comm_linked_to,
+    _get_opp,
+    _json,
+)
 
 PARSE_METHOD = "alkhora_erp.opportunity_parse.parse_files"
 CACHE_PREFIX = "outlook_parse:"
@@ -71,17 +80,30 @@ def _require_parse_access(opp):
         frappe.throw(_("You are not permitted to edit Opportunity {0}").format(opp), OutlookError)
 
 
+def _email_text(communication):
+    c = frappe.db.get_value("Communication", communication,
+                            ["subject", "sender", "recipients", "cc", "communication_date", "content"],
+                            as_dict=True) or {}
+    return P.email_text(subject=c.get("subject"), sender=c.get("sender"),
+                        recipients=c.get("recipients"), cc=c.get("cc"),
+                        date=str(c.get("communication_date") or ""), html_body=c.get("content"))
+
+
 @frappe.whitelist(methods=["POST"])
-def start_parse(opportunity=None, files=None):
+def start_parse(opportunity=None, files=None, communication=None, include_body=0):
     opp = _get_opp(opportunity)
     _require_parse_access(opp)
     _parser()
     names = list(dict.fromkeys(_json(files, [])))
-    if not names:
-        frappe.throw(_("Pick at least one PDF, image, Excel or Word attachment to parse"), OutlookError)
+    include_body = frappe.utils.cint(include_body)
+    if include_body and (not communication or not _comm_linked_to(communication, opp)):
+        frappe.throw(_("That email is not linked to Opportunity {0}").format(opp), OutlookError)
+    if not names and not include_body:
+        frappe.throw(_("Pick the email text or at least one PDF, image, Excel or Word file to parse"),
+                     OutlookError)
     rows = frappe.get_all("File", filters={"name": ["in", names], "attached_to_doctype": OPP,
                                            "attached_to_name": opp},
-                          fields=["name", "file_name", "file_size"])
+                          fields=["name", "file_name", "file_size"]) if names else []
     if len(rows) != len(names):
         frappe.throw(_("Some files are not attached to Opportunity {0}").format(opp), OutlookError)
     unreadable = [r.file_name for r in rows if not P.parse_kind(r.file_name)]
@@ -94,23 +116,30 @@ def start_parse(opportunity=None, files=None):
                      .format(round(total / 1048576, 1), P.PARSE_MAX_BYTES // 1048576), OutlookError)
 
     parse_id = frappe.generate_hash(length=20)
+    labels = ([P.EMAIL_TEXT_FILENAME] if include_body else []) + [r.file_name for r in rows]
     _store(parse_id, {"status": "queued", "user": frappe.session.user, "opportunity": opp,
-                      "files": [r.file_name for r in rows]})
+                      "files": labels})
     frappe.enqueue(
         "opportunity_management.opportunity_management.outlook_parse.run_parse",
         queue="long", timeout=JOB_TIMEOUT, enqueue_after_commit=True,
         parse_id=parse_id, opportunity=opp, files=names,
+        communication=communication if include_body else None,
     )
     return {"parse_id": parse_id}
 
 
-def run_parse(parse_id, opportunity, files):
+def run_parse(parse_id, opportunity, files, communication=None):
     """Background job (runs as the user who started it)."""
     state = _load(parse_id) or {"user": frappe.session.user, "opportunity": opportunity}
     state["status"] = "running"
     _store(parse_id, state)
     try:
         payload = []
+        if communication:
+            text = _email_text(communication)
+            if text:
+                payload.append({"filename": P.EMAIL_TEXT_FILENAME, "content_type": "text/plain",
+                                "data_b64": base64.b64encode(text.encode("utf-8")).decode("ascii")})
         for name in files:
             f = frappe.get_doc("File", name)
             content = f.get_content()

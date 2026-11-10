@@ -199,6 +199,34 @@ class ParseHelpers(unittest.TestCase):
         self.assertEqual(P.merge_notes(None), "")
 
 
+class EmailText(unittest.TestCase):
+    HTML = ("<html><head><style>p{color:red}</style></head><body>"
+            "<p>Dear Sir,</p><p>Please quote:</p>"
+            "<table><tr><th>Item</th><th>Qty</th></tr>"
+            "<tr><td>Gate valve 6&quot; 300#</td><td>12</td></tr>"
+            "<tr><td>Gasket&nbsp;6in</td><td>24</td></tr></table>"
+            "<ul><li>Delivery DDP Basra</li></ul><!-- tracking --><br><br><br>Regards</body></html>")
+
+    def test_html_to_text(self):
+        text = P.html_to_text(self.HTML)
+        self.assertNotIn("color:red", text)
+        self.assertNotIn("tracking", text)
+        self.assertIn('Gate valve 6" 300# | 12', text)
+        self.assertIn("Gasket 6in | 24", text)
+        self.assertIn("- Delivery DDP Basra", text)
+        self.assertNotIn("\n\n\n", text)
+        self.assertTrue(text.startswith("Dear Sir,"))
+        self.assertTrue(text.endswith("Regards"))
+
+    def test_email_text(self):
+        t = P.email_text(subject="RFQ", sender="ali@oilco.iq", recipients="as@alkhora.com",
+                         date="2026-11-09 12:15", html_body="<p>Hi</p>")
+        self.assertEqual(t, "From: ali@oilco.iq\nTo: as@alkhora.com\nDate: 2026-11-09 12:15\n"
+                            "Subject: RFQ\n\nHi")
+        self.assertEqual(len(P.email_text(html_body="x" * 200, limit=50)), 50)
+        self.assertEqual(P.email_text(), "")
+
+
 class Misc(unittest.TestCase):
     def test_parse_iso_utc(self):
         self.assertEqual(P.parse_iso_utc("2026-11-09T12:30:00.000Z"), datetime(2026, 11, 9, 12, 30))

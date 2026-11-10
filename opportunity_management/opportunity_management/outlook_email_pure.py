@@ -381,6 +381,47 @@ def parse_kind(filename):
     return _PARSE_KINDS.get(name[dot:]) if dot != -1 else None
 
 
+EMAIL_TEXT_FILENAME = "email.txt"
+EMAIL_TEXT_MAX_CHARS = 100_000
+
+_DROP_BLOCKS = re.compile(r"<(style|script|head|title)\b[^>]*>.*?</\1\s*>", re.I | re.S)
+_COMMENTS = re.compile(r"<!--.*?-->", re.S)
+_BREAKS = re.compile(r"<\s*(br|/p|/div|/tr|/li|/h[1-6]|/table|/blockquote)\b[^>]*>", re.I)
+_CELLS = re.compile(r"<\s*/(td|th)\s*>", re.I)
+_BULLETS = re.compile(r"<\s*li\b[^>]*>", re.I)
+_TAGS = re.compile(r"<[^>]+>")
+
+
+def html_to_text(html_text) -> str:
+    """Email HTML -> readable plain text for the parser: paragraphs and table
+    rows on their own lines, cells separated by " | ", tags and styles gone."""
+    import html as _html
+
+    text = str(html_text or "")
+    text = _DROP_BLOCKS.sub(" ", _COMMENTS.sub(" ", text))
+    text = _CELLS.sub(" | ", text)
+    text = _BULLETS.sub("\n- ", text)
+    text = _BREAKS.sub("\n", text)
+    text = _html.unescape(_TAGS.sub(" ", text)).replace("\xa0", " ")
+    lines = []
+    for line in text.split("\n"):
+        line = re.sub(r"[ \t]+", " ", line).strip()
+        line = re.sub(r"^(\|\s*)+|(\s*\|)+$", "", line).strip()
+        if line or (lines and lines[-1]):
+            lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def email_text(subject="", sender="", recipients="", cc="", date="", html_body="",
+               limit=EMAIL_TEXT_MAX_CHARS) -> str:
+    """The email as the parser reads it: a short header block, then the body."""
+    head = [f"{k}: {v}" for k, v in (("From", sender), ("To", recipients), ("Cc", cc),
+                                      ("Date", date), ("Subject", subject)) if v]
+    body = html_to_text(html_body)
+    text = "\n".join(head) + ("\n\n" if head and body else "") + body
+    return text[:limit]
+
+
 def merge_notes(existing, *parts):
     """Append each non-empty part to `existing` unless it is already in it
     (the desk's dedupe), separated by blank lines."""

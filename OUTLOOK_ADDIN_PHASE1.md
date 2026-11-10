@@ -11,6 +11,19 @@ The panel now lets a user, from any email in Outlook:
 
 The pane can be **pinned** and follows the user from email to email.
 
+## v5 additions
+
+- **Parse the email text** — "Include the email text when parsing items" (on by default) sends the
+  linked email as `email.txt` (text/plain: From/To/Cc/Date/Subject, then the body as text, tables
+  kept as `cell | cell` rows) along with the chosen files. Reading it needs the agents-host change
+  (text support in `maya._blocks_for`); until that is live the parser lists `email.txt` under
+  "skipped" and the pane says only the files were parsed. **Parse items** works with the email
+  text alone (no attachments needed).
+- **Add files from your computer** — "+ Add files from your computer" in the files box (email view
+  and create form). Those files are saved to the **Opportunity only** (`outlook_api.add_file`,
+  needs write access), can be ticked for parsing like attachments, and stay in the list while you
+  stay on the same email.
+
 ## v4 additions
 
 - **Responsible party** — the create form's assignee list is now every **Responsible Party**
@@ -92,11 +105,12 @@ attachment copies) is deleted. Files saved on the Opportunity stay.
 | `opportunity_management/patches/setup_outlook_addin_v3.py` | v3 redirect URI, conversation field, Lead Source "Email" |
 | `opportunity_management/opportunity_management/outlook_parse.py` | `start_parse` (background job), `get_parse`, `add_parsed_items` |
 | `opportunity_management/patches/setup_outlook_addin_v4.py` | v4 redirect URI |
+| `opportunity_management/patches/setup_outlook_addin_v5.py` | v5 redirect URI |
 | `opportunity_management/opportunity_management/outlook_create.py` | `create_defaults`, `search_parties`, `create_opportunity_from_email` |
-| `opportunity_management/public/outlook/v4/` | The panel (`taskpane.html`, `app.js`, `auth.js`, `taskpane.css`), callback, icons, `manifest.xml` |
+| `opportunity_management/public/outlook/v5/` | The panel (`taskpane.html`, `app.js`, `auth.js`, `taskpane.css`), callback, icons, `manifest.xml` |
 | `opportunity_management/opportunity_management/tests/test_outlook_email_pure.py` | 20 bench-free tests |
 
-`v1/` stays in place so the Phase 0 manifest keeps working until it is replaced. `v2` and `v3` (already installed by users) also stay, unchanged, so old manifests keep working and a rollback never hits cached 404s. Never edit or delete a published folder.
+`v1/` stays in place so the Phase 0 manifest keeps working until it is replaced. `v2`, `v3` and `v4` (published, possibly installed) also stay, unchanged, so old manifests keep working and a rollback never hits cached 404s. Never edit or delete a published folder.
 
 ## Deploying (self-hosted)
 
@@ -110,7 +124,7 @@ cd apps/opportunity_management
 git fetch upstream feature/outlook-addin-phase1:feature/outlook-addin-phase1
 git checkout feature/outlook-addin-phase1
 cd /home/frappe/frappe-bench
-bench --site erp.local migrate     # expect "Outlook add-in v4: OAuth Client ... has the v4 redirect"
+bench --site erp.local migrate     # expect "Outlook add-in v5: OAuth Client ... has the v5 redirect"
 bench build --app opportunity_management
 bench --site erp.local clear-cache
 sudo supervisorctl restart frappe-bench-web:
@@ -121,7 +135,7 @@ clear-cache / restart. The custom field and the extra redirect URI are harmless 
 
 ## Install / update in Outlook
 
-Download `https://bms.alkhora.com/assets/opportunity_management/outlook/v4/manifest.xml`
+Download `https://bms.alkhora.com/assets/opportunity_management/outlook/v5/manifest.xml`
 (Cmd/Ctrl+S), then **Add from file** as in Phase 0. It has the same add-in ID, so it replaces
 the Phase 0 test add-in (if Outlook complains, remove the old one first). Sign-in carries over.
 

@@ -14,6 +14,7 @@ token (see outlook_addin.py), so every call runs as the signed-in user:
                     link instead of a duplicate;
 * `add_attachment`– one attachment, saved privately on the Communication and on
                     the Opportunity (Frappe shares the stored file by hash);
+* `add_file`      – a file from the user's computer, saved on the Opportunity only;
 * `unlink_email`  – undo a wrong link.
 
 Linking needs read access to the Opportunity (like adding a comment).
@@ -291,50 +292,74 @@ def link_email(opportunity=None, email=None):
     return {"status": status, "communication": comm.name, "opportunity": _opp_row(opp)}
 
 
-@frappe.whitelist(methods=["POST"])
-def add_attachment(communication=None, opportunity=None, filename=None, content_b64=None):
-    """Save one attachment privately on the Communication and the Opportunity.
-    Re-sending the same file is a no-op (matched by content hash)."""
+def _decode_upload(filename, content_b64):
     from frappe.core.api.file import get_max_file_size
-    from frappe.core.doctype.file.utils import get_content_hash
 
-    opp = _get_opp(opportunity)
-    if not communication or not _comm_linked_to(communication, opp):
-        frappe.throw(_("That email is not linked to Opportunity {0}").format(opp), OutlookError)
     try:
         content = base64.b64decode(content_b64 or "", validate=True)
     except (binascii.Error, ValueError):
         frappe.throw(_("Attachment data is not valid base64"), OutlookError)
     if not content:
-        frappe.throw(_("Attachment is empty"), OutlookError)
+        frappe.throw(_("{0} is empty").format(filename or _("Attachment")), OutlookError)
     limit = get_max_file_size()
     if len(content) > limit:
         frappe.throw(_("{0} is larger than the {1} MB upload limit")
                      .format(filename, limit // (1024 * 1024)), OutlookError)
+    return content
 
+
+def _save_file(doctype, docname, name, content, digest):
+    """Private File on the document unless the same bytes are already there."""
+    existing = frappe.db.get_value("File", {"attached_to_doctype": doctype,
+                                            "attached_to_name": docname,
+                                            "content_hash": digest}, "name")
+    if existing:
+        return {"doctype": doctype, "status": "already", "file": existing}
+    f = frappe.get_doc({
+        "doctype": "File",
+        "file_name": name,
+        "attached_to_doctype": doctype,
+        "attached_to_name": docname,
+        "is_private": 1,
+        "content": content,
+    })
+    f.insert(ignore_permissions=True)
+    return {"doctype": doctype, "status": "saved", "file": f.name, "file_url": f.file_url}
+
+
+@frappe.whitelist(methods=["POST"])
+def add_attachment(communication=None, opportunity=None, filename=None, content_b64=None):
+    """Save one email attachment privately on the Communication and the
+    Opportunity. Re-sending the same file is a no-op (matched by content hash)."""
+    from frappe.core.doctype.file.utils import get_content_hash
+
+    opp = _get_opp(opportunity)
+    if not communication or not _comm_linked_to(communication, opp):
+        frappe.throw(_("That email is not linked to Opportunity {0}").format(opp), OutlookError)
+    content = _decode_upload(filename, content_b64)
     name = P.safe_filename(filename)
     digest = get_content_hash(content)
-    saved = []
-    for doctype, docname in (("Communication", communication), (OPP, opp)):
-        existing = frappe.db.get_value("File", {"attached_to_doctype": doctype,
-                                                "attached_to_name": docname,
-                                                "content_hash": digest}, "name")
-        if existing:
-            saved.append({"doctype": doctype, "status": "already", "file": existing})
-            continue
-        f = frappe.get_doc({
-            "doctype": "File",
-            "file_name": name,
-            "attached_to_doctype": doctype,
-            "attached_to_name": docname,
-            "is_private": 1,
-            "content": content,
-        })
-        f.insert(ignore_permissions=True)
-        saved.append({"doctype": doctype, "status": "saved", "file": f.name, "file_url": f.file_url})
+    saved = [_save_file(dt, dn, name, content, digest)
+             for dt, dn in (("Communication", communication), (OPP, opp))]
     frappe.db.set_value("Communication", communication, "has_attachment", 1, update_modified=False)
-    opp_file = next((s["file"] for s in saved if s["doctype"] == OPP), None)
-    return {"file_name": name, "saved": saved, "opportunity_file": opp_file}
+    return {"file_name": name, "saved": saved, "opportunity_file": saved[1]["file"]}
+
+
+@frappe.whitelist(methods=["POST"])
+def add_file(opportunity=None, filename=None, content_b64=None):
+    """Attach a file that is not part of the email (picked from the user's
+    computer in the pane) to the Opportunity only. Attaching to a record is
+    editing it, so this needs write access (linking an email needs read)."""
+    from frappe.core.doctype.file.utils import get_content_hash
+
+    opp = _get_opp(opportunity)
+    if not frappe.has_permission(OPP, "write", doc=opp):
+        frappe.throw(_("You are not permitted to add files to Opportunity {0}").format(opp),
+                     OutlookError)
+    content = _decode_upload(filename, content_b64)
+    name = P.safe_filename(filename)
+    saved = _save_file(OPP, opp, name, content, get_content_hash(content))
+    return {"file_name": name, "saved": [saved], "opportunity_file": saved["file"]}
 
 
 @frappe.whitelist(methods=["POST"])

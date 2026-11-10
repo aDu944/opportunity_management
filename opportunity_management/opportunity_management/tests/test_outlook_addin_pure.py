@@ -23,7 +23,7 @@ def _load():
 
 
 P = _load()
-CB = "https://bms.alkhora.com/assets/opportunity_management/outlook/v4/auth-callback.html"
+CB = "https://bms.alkhora.com/assets/opportunity_management/outlook/v5/auth-callback.html"
 
 
 class NormalizeSiteUrl(unittest.TestCase):
