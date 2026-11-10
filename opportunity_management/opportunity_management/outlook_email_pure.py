@@ -359,6 +359,39 @@ def title_from_subject(subject) -> str:
     return text[:140]
 
 
+# ── item parsing (alkhora_erp.opportunity_parse.parse_files) ─────────────────
+
+# What the parser on the agents host reads (maya._blocks_for): PDF, images,
+# and text pulled from .xlsx/.xlsm/.docx. Old .xls/.doc are refused there.
+PARSE_MAX_BYTES = 15 * 1024 * 1024  # parse_files' MAX_TOTAL_BYTES, all files together
+_PARSE_KINDS = {
+    ".pdf": ("pdf", "application/pdf"),
+    ".jpg": ("image", "image/jpeg"), ".jpeg": ("image", "image/jpeg"),
+    ".png": ("image", "image/png"), ".webp": ("image", "image/webp"), ".gif": ("image", "image/gif"),
+    ".xlsx": ("sheet", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    ".xlsm": ("sheet", "application/vnd.ms-excel.sheet.macroEnabled.12"),
+    ".docx": ("doc", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+}
+
+
+def parse_kind(filename):
+    """(kind, mime) when the parser can read the file, else None."""
+    name = str(filename or "").lower().split("?")[0]
+    dot = name.rfind(".")
+    return _PARSE_KINDS.get(name[dot:]) if dot != -1 else None
+
+
+def merge_notes(existing, *parts):
+    """Append each non-empty part to `existing` unless it is already in it
+    (the desk's dedupe), separated by blank lines."""
+    text = (existing or "").strip()
+    for part in parts:
+        part = (part or "").strip()
+        if part and part not in text:
+            text = f"{text}\n\n{part}" if text else part
+    return text
+
+
 # ── attachments ──────────────────────────────────────────────────────────────
 
 _UNSAFE_NAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')

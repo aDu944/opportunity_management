@@ -11,6 +11,23 @@ The panel now lets a user, from any email in Outlook:
 
 The pane can be **pinned** and follows the user from email to email.
 
+## v4 additions
+
+- **Responsible party** — the create form's assignee list is now every **Responsible Party**
+  record (by its display name), exactly what the Opportunity's own field offers — including
+  people with no ERPNext user. The caller's own record is pre-selected.
+- **Parse items** — like the desk's **Parse Items from File** (`alkhora_erp.opportunity_parse.parse_files`,
+  Maya on the agents host). From a linked Opportunity (**Parse items**) or right after creating
+  one (checkbox), the selected PDF / image / .xlsx / .xlsm / .docx attachments (max 15 MB together;
+  .xls/.doc are refused by the parser) are saved to the Opportunity and parsed **in the background**
+  (`outlook_parse.py`: a parse can take minutes, longer than Cloudflare's ~100 s request limit;
+  the pane polls). Then **Review parsed lines**: tick the lines to keep (low-confidence lines are
+  flagged), **Add selected** appends them to the items (never replaces), sets the title only if
+  empty, and appends conditions + notes to the tender notes without duplicates. Unlike the desk
+  form, the Opportunity is saved (permissions enforced). Needs Opportunity **create** (the parser's
+  own check) and **write** on that Opportunity. The email body itself is not parsed — the parser
+  does not accept plain text yet (an agents-host change).
+
 ## v3 additions
 
 - **Create & assign** — "+ Create Opportunity from this email" opens a form: Customer / Lead
@@ -73,11 +90,13 @@ attachment copies) is deleted. Files saved on the Opportunity stay.
 | `opportunity_management/opportunity_management/outlook_addin.py` | + `ensure_conversation_field()`, `get_config()` now returns `max_file_size` |
 | `opportunity_management/patches/setup_outlook_addin_phase1.py` | Creates the conversation field; adds the current redirect URI to the OAuth Client |
 | `opportunity_management/patches/setup_outlook_addin_v3.py` | v3 redirect URI, conversation field, Lead Source "Email" |
+| `opportunity_management/opportunity_management/outlook_parse.py` | `start_parse` (background job), `get_parse`, `add_parsed_items` |
+| `opportunity_management/patches/setup_outlook_addin_v4.py` | v4 redirect URI |
 | `opportunity_management/opportunity_management/outlook_create.py` | `create_defaults`, `search_parties`, `create_opportunity_from_email` |
-| `opportunity_management/public/outlook/v3/` | The panel (`taskpane.html`, `app.js`, `auth.js`, `taskpane.css`), callback, icons, `manifest.xml` |
+| `opportunity_management/public/outlook/v4/` | The panel (`taskpane.html`, `app.js`, `auth.js`, `taskpane.css`), callback, icons, `manifest.xml` |
 | `opportunity_management/opportunity_management/tests/test_outlook_email_pure.py` | 20 bench-free tests |
 
-`v1/` stays in place so the Phase 0 manifest keeps working until it is replaced. `v2` (the Phase 1 panel, already installed by users) also stays, unchanged, so old manifests keep working and a rollback never hits cached 404s. Never edit or delete a published folder.
+`v1/` stays in place so the Phase 0 manifest keeps working until it is replaced. `v2` and `v3` (already installed by users) also stay, unchanged, so old manifests keep working and a rollback never hits cached 404s. Never edit or delete a published folder.
 
 ## Deploying (self-hosted)
 
@@ -91,7 +110,7 @@ cd apps/opportunity_management
 git fetch upstream feature/outlook-addin-phase1:feature/outlook-addin-phase1
 git checkout feature/outlook-addin-phase1
 cd /home/frappe/frappe-bench
-bench --site erp.local migrate     # expect "Outlook add-in Phase 1: ..." and "Outlook add-in v3: ..."
+bench --site erp.local migrate     # expect "Outlook add-in v4: OAuth Client ... has the v4 redirect"
 bench build --app opportunity_management
 bench --site erp.local clear-cache
 sudo supervisorctl restart frappe-bench-web:
@@ -102,7 +121,7 @@ clear-cache / restart. The custom field and the extra redirect URI are harmless 
 
 ## Install / update in Outlook
 
-Download `https://bms.alkhora.com/assets/opportunity_management/outlook/v3/manifest.xml`
+Download `https://bms.alkhora.com/assets/opportunity_management/outlook/v4/manifest.xml`
 (Cmd/Ctrl+S), then **Add from file** as in Phase 0. It has the same add-in ID, so it replaces
 the Phase 0 test add-in (if Outlook complains, remove the old one first). Sign-in carries over.
 

@@ -22,3 +22,4 @@ opportunity_management.patches.seed_auto_menu
 opportunity_management.patches.setup_outlook_addin
 opportunity_management.patches.setup_outlook_addin_phase1
 opportunity_management.patches.setup_outlook_addin_v3
+opportunity_management.patches.setup_outlook_addin_v4

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Outlook add-in manifest - v4 (link, create and assign Opportunities, parse items; tags).
+  Site: https://bms.alkhora.com. All URLs point at the v4 asset folder; a new
+  asset version needs a new folder, these URLs updated and <Version> bumped.
+  Same <Id> as the Phase 0 manifest, so installing this one replaces it.
+-->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
+           xsi:type="MailApp">
+  <Id>f6dbff15-38d4-4d1e-9a47-f2a4bbb642ce</Id>
+  <Version>1.3.0.0</Version>
+  <ProviderName>ALKHORA</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="ERPNext Opportunities"/>
+  <Description DefaultValue="Link Outlook emails and attachments to ERPNext Opportunities, or create and assign new ones."/>
+  <IconUrl DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v4/icon-64.png"/>
+  <HighResolutionIconUrl DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v4/icon-128.png"/>
+  <SupportUrl DefaultValue="https://bms.alkhora.com"/>
+  <AppDomains>
+    <AppDomain>https://bms.alkhora.com</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Mailbox"/>
+  </Hosts>
+  <Requirements>
+    <Sets>
+      <Set Name="Mailbox" MinVersion="1.1"/>
+    </Sets>
+  </Requirements>
+  <FormSettings>
+    <Form xsi:type="ItemRead">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v4/taskpane.html"/>
+        <RequestedHeight>250</RequestedHeight>
+      </DesktopSettings>
+    </Form>
+  </FormSettings>
+  <Permissions>ReadWriteMailbox</Permissions>
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read"/>
+  </Rule>
+  <DisableEntityHighlighting>false</DisableEntityHighlighting>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1" xsi:type="VersionOverridesV1_1">
+      <Requirements>
+        <bt:Sets DefaultMinVersion="1.5">
+          <bt:Set Name="Mailbox"/>
+        </bt:Sets>
+      </Requirements>
+      <Hosts>
+        <Host xsi:type="MailHost">
+          <DesktopFormFactor>
+            <ExtensionPoint xsi:type="MessageReadCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="msgReadGroup">
+                  <Label resid="GroupLabel"/>
+                  <Control xsi:type="Button" id="msgReadOpenPaneButton">
+                    <Label resid="TaskpaneButton.Label"/>
+                    <Supertip>
+                      <Title resid="TaskpaneButton.Label"/>
+                      <Description resid="TaskpaneButton.Tooltip"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16x16"/>
+                      <bt:Image size="32" resid="Icon.32x32"/>
+                      <bt:Image size="80" resid="Icon.80x80"/>
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="Taskpane.Url"/>
+                      <SupportsPinning>true</SupportsPinning>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+          </DesktopFormFactor>
+        </Host>
+      </Hosts>
+      <Resources>
+        <bt:Images>
+          <bt:Image id="Icon.16x16" DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v4/icon-16.png"/>
+          <bt:Image id="Icon.32x32" DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v4/icon-32.png"/>
+          <bt:Image id="Icon.80x80" DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v4/icon-80.png"/>
+        </bt:Images>
+        <bt:Urls>
+          <bt:Url id="Taskpane.Url" DefaultValue="https://bms.alkhora.com/assets/opportunity_management/outlook/v4/taskpane.html"/>
+        </bt:Urls>
+        <bt:ShortStrings>
+          <bt:String id="GroupLabel" DefaultValue="ERPNext"/>
+          <bt:String id="TaskpaneButton.Label" DefaultValue="ERPNext Opportunities"/>
+        </bt:ShortStrings>
+        <bt:LongStrings>
+          <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Link this email to an ERPNext Opportunity."/>
+        </bt:LongStrings>
+      </Resources>
+    </VersionOverrides>
+  </VersionOverrides>
+</OfficeApp>

@@ -179,6 +179,26 @@ class CreateHelpers(unittest.TestCase):
         self.assertEqual(len(P.title_from_subject("x" * 300)), 140)
 
 
+class ParseHelpers(unittest.TestCase):
+    def test_parse_kind(self):
+        self.assertEqual(P.parse_kind("RFQ.PDF"), ("pdf", "application/pdf"))
+        self.assertEqual(P.parse_kind("scan.jpeg")[0], "image")
+        self.assertEqual(P.parse_kind("boq.xlsx")[0], "sheet")
+        self.assertEqual(P.parse_kind("spec.docx")[0], "doc")
+        self.assertIsNone(P.parse_kind("old.xls"))   # refused by the parser
+        self.assertIsNone(P.parse_kind("old.doc"))
+        self.assertIsNone(P.parse_kind("drawings.zip"))
+        self.assertIsNone(P.parse_kind("noext"))
+
+    def test_merge_notes(self):
+        self.assertEqual(P.merge_notes("", "Delivery 8 weeks", None), "Delivery 8 weeks")
+        self.assertEqual(P.merge_notes("Old", "Delivery 8 weeks", "Check P/N"),
+                         "Old\n\nDelivery 8 weeks\n\nCheck P/N")
+        self.assertEqual(P.merge_notes("Old\n\nDelivery 8 weeks", "Delivery 8 weeks", ""),
+                         "Old\n\nDelivery 8 weeks")
+        self.assertEqual(P.merge_notes(None), "")
+
+
 class Misc(unittest.TestCase):
     def test_parse_iso_utc(self):
         self.assertEqual(P.parse_iso_utc("2026-11-09T12:30:00.000Z"), datetime(2026, 11, 9, 12, 30))

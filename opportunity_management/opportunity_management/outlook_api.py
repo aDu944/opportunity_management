@@ -316,9 +316,11 @@ def add_attachment(communication=None, opportunity=None, filename=None, content_
     digest = get_content_hash(content)
     saved = []
     for doctype, docname in (("Communication", communication), (OPP, opp)):
-        if frappe.db.exists("File", {"attached_to_doctype": doctype, "attached_to_name": docname,
-                                     "content_hash": digest}):
-            saved.append({"doctype": doctype, "status": "already"})
+        existing = frappe.db.get_value("File", {"attached_to_doctype": doctype,
+                                                "attached_to_name": docname,
+                                                "content_hash": digest}, "name")
+        if existing:
+            saved.append({"doctype": doctype, "status": "already", "file": existing})
             continue
         f = frappe.get_doc({
             "doctype": "File",
@@ -329,9 +331,10 @@ def add_attachment(communication=None, opportunity=None, filename=None, content_
             "content": content,
         })
         f.insert(ignore_permissions=True)
-        saved.append({"doctype": doctype, "status": "saved", "file_url": f.file_url})
+        saved.append({"doctype": doctype, "status": "saved", "file": f.name, "file_url": f.file_url})
     frappe.db.set_value("Communication", communication, "has_attachment", 1, update_modified=False)
-    return {"file_name": name, "saved": saved}
+    opp_file = next((s["file"] for s in saved if s["doctype"] == OPP), None)
+    return {"file_name": name, "saved": saved, "opportunity_file": opp_file}
 
 
 @frappe.whitelist(methods=["POST"])

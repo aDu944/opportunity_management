@@ -3,7 +3,9 @@ Outlook add-in: create and assign an Opportunity from the open email.
 
 Same rules as "Create opportunity" in the WhatsApp inbox
 (whatsapp_api_opportunity), whose helpers are reused for the naming series,
-company group, the caller's Company and the responsible parties:
+company group and the caller's Company. "Assign to" offers every Responsible
+Party record, exactly what the Opportunity's own field offers (no filter
+there either), including people with no ERPNext user:
 
 * `create_defaults` – what the create form is prefilled with: Customer / Lead
                       candidates from the email's addresses, a "new lead from
@@ -34,8 +36,6 @@ from opportunity_management.opportunity_management.outlook_api import (
 from opportunity_management.opportunity_management.whatsapp_api_opportunity import (
     _caller_company,
     _options,
-    _responsible_parties,
-    _rp_rows,
 )
 
 PARTY_TYPES = ("Customer", "Lead")
@@ -100,6 +100,36 @@ def _candidate_parties(people):
     return out
 
 
+def _all_responsible_parties():
+    """Every Responsible Party, as the Opportunity field's picker lists them:
+    [{name, label, user, selected}] with the caller's own record selected."""
+    rows = frappe.get_all("Responsible Party",
+                          fields=["name", "display_name", "user_id", "email", "employee"],
+                          order_by="display_name asc", limit_page_length=1000)
+    emps = [r.employee for r in rows if r.employee and not r.user_id]
+    emp_users = dict(frappe.get_all("Employee", filters={"name": ["in", emps]},
+                                    fields=["name", "user_id"], as_list=True)) if emps else {}
+    me = (frappe.session.user or "").lower()
+    out = []
+    for r in rows:
+        user = r.user_id or emp_users.get(r.employee) or r.email or ""
+        out.append({"name": r.name, "label": r.display_name or r.name, "user": user,
+                    "selected": bool(me and user.lower() == me)})
+    return out
+
+
+def _rp_rows(names):
+    """Child rows for Opportunity.custom_responsible_party from Responsible Party names."""
+    wanted = list(dict.fromkeys(OP.parse_list(names)))
+    if not wanted:
+        frappe.throw(_("Assign it to at least one responsible party"), OutlookError)
+    known = set(frappe.get_all("Responsible Party", filters={"name": ["in", wanted]}, pluck="name"))
+    unknown = [n for n in wanted if n not in known]
+    if unknown:
+        frappe.throw(_("Unknown responsible party: {0}").format(", ".join(unknown)), OutlookError)
+    return [{"responsible_party": n} for n in wanted]
+
+
 # ── endpoints ────────────────────────────────────────────────────────────────
 
 @frappe.whitelist(methods=["GET", "POST"])
@@ -110,10 +140,7 @@ def create_defaults(sender=None, sender_name=None, to=None, cc=None, mailbox=Non
 
     series, series_default = _options(OPP, "naming_series")
     groups, _unused = _options(OPP, "custom_company")
-    me = frappe.session.user
-    rps = _responsible_parties()
-    for p in rps:
-        p["selected"] = p["user"] == me
+    rps = _all_responsible_parties()
     return {
         "parties": parties,
         "new_lead": P.new_lead_suggestion(sender, sender_name)
@@ -221,8 +248,7 @@ def create_opportunity_from_email(
     if abr and not P.valid_abr(abr):
         frappe.throw(_("Abbreviation must be 1-10 letters or digits"), OutlookError)
 
-    users = OP.parse_list(responsible_parties) or [frappe.session.user]
-    rp_rows = _rp_rows(users, _responsible_parties())
+    rp_rows = _rp_rows(responsible_parties)
 
     lead_created = False
     if new_lead:
