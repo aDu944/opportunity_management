@@ -1,17 +1,21 @@
 """
 Voice notes reach Meta as uploaded media (`audio.id`), not as a link.
 
-Since early November 2026 every voice note sent by link ends, a few seconds
-later, in a `failed` status from Meta: error 131053 "Audio file uploaded
-with mimetype as audio/ogg; codecs=opus, however on processing it is of type
-application/octet-stream" — although the file Meta downloaded (nginx: 200,
-full length, `facebookexternalhit`) is a valid mono Ogg/Opus and the very
-same pipeline delivered on 31 Oct. Uploading the bytes ourselves to
-`/{phone_id}/media` with an explicit `type` makes Meta validate the file at
-once — the agent sees the reason in the inbox instead of a late failed
-tick — and is the path Meta recommends for performance. The link remains
-the fallback when the upload cannot happen (no File, network error), so a
-send never gets worse than before.
+Context (15 Nov 2026): voice notes recorded in the web inbox failed a few
+seconds after sending with Meta error 131053 "...on processing it is of type
+application/octet-stream". Test sends to a staff phone proved the cause: the
+Ogg/Opus carried the browser recording's source tags (`handler_name=Core
+Media Audio`, `creation_time`), and Meta's processing rejects such a file,
+by link and by media id alike; the same audio re-encoded with
+`-map_metadata -1` (see whatsapp_audio.voice_ogg_args) is delivered. The
+media-id path stays because Meta recommends it and it removes the public
+fetch through Cloudflare from the equation; it does NOT surface a processing
+failure early (that still arrives as a `failed` status). The link remains
+the fallback when the upload cannot happen (no File, network error).
+
+Separately: a `.m4a` sent by link fails because nginx serves it as
+`audio/x-m4a`, which Meta does not accept (it wants `audio/mp4`); the
+inbox never sends the m4a to Meta, it is the iPhone-playable copy only.
 
 Pure helpers (`media_mime`, `media_endpoint`, `upload_fields`,
 `media_id_from`) are tested bench-free in `tests/test_whatsapp_voice_upload_pure.py`.
