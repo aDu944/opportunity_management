@@ -358,9 +358,7 @@ fixtures = [
                 "custom_read_at",
                 "custom_error",
                 "custom_channel",
-                "custom_referral",
-                "custom_deleted_at",
-                "custom_deleted_by"
+                "custom_referral"
             ]]
         ]
     },
