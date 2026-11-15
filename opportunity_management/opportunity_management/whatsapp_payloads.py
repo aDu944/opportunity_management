@@ -431,3 +431,41 @@ def decorate_item(item, row_get):
     item["external"] = kind == "external" or (kind == "echo" and bool(payload.get("external")))
     item["external_category"] = str(payload.get("category") or "") if item["external"] else ""
     return item
+
+
+# ── delete message (whatsapp_api_delete) ─────────────────────────────────────
+
+# ThreadItem defaults; a note carries them too.
+DELETED_BLANK = {"deleted": 0, "deleted_at": None, "deleted_by": None, "deleted_by_name": ""}
+
+# What a tombstone hides. Status, timestamps, sender, reply anchor and
+# reactions stay so the bubble keeps its place and its audit line.
+_TOMBSTONE_CLEARED = {
+    "text": "", "caption": "", "media_url": None, "media_mime": "", "media_size": None,
+    "audio_url": None, "audio_duration": None, "location": None, "contacts": None,
+    "options": None, "reply_to_text": "", "is_sticker": False, "referral": None,
+}
+
+
+def tombstone(item, deleted_at, deleted_by, deleted_by_name):
+    """Blank `item`'s content in place and mark it deleted; returns it."""
+    item.update(_TOMBSTONE_CLEARED)
+    item.update({
+        "deleted": 1,
+        "deleted_at": str(deleted_at)[:19] if deleted_at else None,
+        "deleted_by": deleted_by or None,
+        "deleted_by_name": deleted_by_name or "",
+    })
+    return item
+
+
+def mark_deleted(item, row_get, names=None, lookup=None):
+    """Tombstone `item` when the row has `custom_deleted_at`. `names` is a
+    page's {user: full name}; `lookup(users)` resolves one missing from it."""
+    deleted_at = row_get("custom_deleted_at")
+    if not deleted_at:
+        return item
+    by = row_get("custom_deleted_by") or None
+    if by and (names is None or by not in names):
+        names = lookup([by]) if lookup else {}
+    return tombstone(item, deleted_at, by, (names or {}).get(by) or by or "")

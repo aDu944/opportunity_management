@@ -162,6 +162,25 @@ WHATSAPP_MESSAGE_CUSTOM_FIELDS = {
             "description": "Meta's reason for a failed status callback.",
         },
         {
+            # Team-side soft delete (whatsapp_api_delete): the row stays as a
+            # tombstone; Meta cannot recall a delivered message.
+            "fieldname": "custom_deleted_at",
+            "label": "Deleted At",
+            "fieldtype": "Datetime",
+            "insert_after": "custom_error",
+            "read_only": 1,
+            "no_copy": 1,
+        },
+        {
+            "fieldname": "custom_deleted_by",
+            "label": "Deleted By",
+            "fieldtype": "Link",
+            "options": "User",
+            "insert_after": "custom_deleted_at",
+            "read_only": 1,
+            "no_copy": 1,
+        },
+        {
             # "Messenger" for Messenger rows (inbox_channels); empty = WhatsApp.
             # The override keys every Messenger side effect on it.
             "fieldname": "custom_channel",

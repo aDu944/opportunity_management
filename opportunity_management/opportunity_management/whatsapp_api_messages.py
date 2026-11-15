@@ -17,6 +17,7 @@ from frappe.utils import cint, now_datetime
 
 from opportunity_management.opportunity_management import inbox_referrals as IR
 from opportunity_management.opportunity_management import whatsapp_hooks
+from opportunity_management.opportunity_management.whatsapp_api_delete import deleted_updates_since
 from opportunity_management.opportunity_management import whatsapp_reactions as R
 from opportunity_management.opportunity_management import whatsapp_serializers as S
 from opportunity_management.opportunity_management.whatsapp_identity import display_label, has_phone
@@ -135,6 +136,8 @@ def get_messages(conversation, before=None, after=None, limit=None, around=None)
         "has_more": has_more,
         "has_newer": bool(after) and has_more,
         "reaction_updates": updates,
+        # Rows already on the client that were deleted since (whatsapp_api_delete).
+        "deleted_updates": deleted_updates_since(conversation, after) if after else [],
     }
 
 

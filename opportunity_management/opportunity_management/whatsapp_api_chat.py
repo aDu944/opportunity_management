@@ -163,6 +163,7 @@ def messages_around(conversation, around, limit):
         "has_more": len(old_m) > older_n or len(old_n) > older_n,
         "has_newer": len(new_m) > newer_n or len(new_n) > newer_n,
         "reaction_updates": [],
+        "deleted_updates": [],
     }
 
 

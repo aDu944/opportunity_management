@@ -19,7 +19,7 @@ from frappe.utils import get_datetime, now_datetime
 from opportunity_management.opportunity_management import ad_referrals as AR
 from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management import auto_menu_pure as AMP, whatsapp_flags as FL
-from opportunity_management.opportunity_management.whatsapp_payloads import decorate_item
+from opportunity_management.opportunity_management.whatsapp_payloads import DELETED_BLANK, decorate_item, mark_deleted
 from opportunity_management.opportunity_management.whatsapp_identity import (
     clean_username,
     display_label,
@@ -317,14 +317,10 @@ def conv_rows(rows):
 # ── ThreadItem ───────────────────────────────────────────────────────────────
 
 _THREAD_ITEM_BLANK = {
-    "kind": "message",
-    "direction": "",
-    "text": "",
-    "content_type": "",
-    "media_url": None,
-    "media_mime": "",
-    "media_private": 0,
-    "caption": "",
+    "kind": "message", "direction": "",
+    "text": "", "content_type": "",
+    "media_url": None, "media_mime": "",
+    "media_private": 0, "caption": "",
     "status": "",
     "message_id": None,
     "reply_to_message_id": None,
@@ -340,14 +336,13 @@ _THREAD_ITEM_BLANK = {
     # Legacy: see whatsapp_reactions.set_item_reactions.
     "reaction": "",
     "is_sticker": False,
-    "audio_url": None,
-    "audio_duration": None,
-    "read": 1,
-    "unread": False,
+    "audio_url": None, "audio_duration": None,
+    "read": 1, "unread": False,
     "media_size": None,
     # The message's channel; "" on an internal note.
     "channel": "",
     "referral": None,  # the ad / post / link it came from (ad_referrals)
+    **DELETED_BLANK,  # deleted / deleted_at / deleted_by / deleted_by_name
 }
 
 
@@ -429,7 +424,7 @@ def message_item(row, reply_texts=None, sender_names=None, sizes=None):
         item["audio_duration"] = _int_or_none(_g(row, "custom_audio_duration")) or None
     if content_type in MEDIA_LABELS and not item["text"]:
         item["text"] = MEDIA_LABELS[content_type]
-    return item
+    return mark_deleted(item, lambda field: _g(row, field), sender_names, _full_names)
 
 
 def note_item(row, author_names=None):
@@ -477,17 +472,20 @@ def thread_items(messages=None, notes=None):
     reply_ids = sorted({_g(m, "reply_to_message_id") for m in messages if _g(m, "reply_to_message_id")})
     reply_texts = {}
     if reply_ids:
+        fields = ["message_id", "custom_body_text", "message"]
+        if frappe.db.has_column("WhatsApp Message", "custom_deleted_at"):
+            fields.append("custom_deleted_at")
         for r in frappe.get_all(
-            "WhatsApp Message",
-            filters={"message_id": ["in", reply_ids]},
-            fields=["message_id", "custom_body_text", "message"],
-            limit_page_length=0,
+            "WhatsApp Message", filters={"message_id": ["in", reply_ids]}, fields=fields, limit_page_length=0
         ):
+            if r.get("custom_deleted_at"):
+                continue  # a deleted original quotes nothing (whatsapp_api_delete)
             reply_texts[r["message_id"]] = (
                 r.get("custom_body_text") or strip_html(r.get("message"))
             )[:160]
 
-    people = [_g(m, "custom_sent_by") for m in messages] + [_g(n, "author") for n in notes]
+    people = [_g(m, f) for m in messages for f in ("custom_sent_by", "custom_deleted_by")]
+    people += [_g(n, "author") for n in notes]
     names = _full_names(people)
 
     sizes = _media_sizes([_g(m, "attach") for m in messages])

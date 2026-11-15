@@ -32,6 +32,8 @@ OPTIONAL_MESSAGE_FIELDS = (
     "custom_read_at", "custom_error", "buttons",
     # Messenger channel (inbox_channels); ad referral (inbox_referrals).
     "custom_channel", "custom_referral",
+    # Team-side soft delete (whatsapp_api_delete).
+    "custom_deleted_at", "custom_deleted_by",
 )
 
 
