@@ -104,9 +104,10 @@ def probe_duration(path) -> int:
 def voice_ogg_args(ffmpeg, source, out):
     """Outbound voice note: WhatsApp renders `audio.voice` only for Ogg/Opus
     mono, so the recording (AAC .m4a from the app, .webm from Desk) is
-    re-encoded at speech bitrate."""
+    re-encoded at speech bitrate. Source tags (a browser recording carries
+    `handler_name=Core Media Audio`) are dropped: Meta needs none of them."""
     return [
-        ffmpeg, "-nostdin", "-y", "-i", source, "-vn",
+        ffmpeg, "-nostdin", "-y", "-i", source, "-vn", "-map_metadata", "-1",
         "-c:a", "libopus", "-b:a", "32k", "-ac", "1", "-ar", "48000", out,
     ]
 

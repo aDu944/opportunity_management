@@ -131,6 +131,17 @@ def _inbox_kind(doc) -> str:
     )
 
 
+def _voice_media_id(doc) -> str:
+    """Meta media id of the uploaded voice note; "" sends the link instead
+    (see whatsapp_voice_upload for why the upload comes first)."""
+    try:
+        from opportunity_management.opportunity_management.whatsapp_voice_upload import upload_media
+
+        return upload_media(doc.get("whatsapp_account"), doc.get("attach")) or ""
+    except Exception:
+        return ""
+
+
 def _send_inbox_kind(doc, kind):
     from frappe_whatsapp.utils import format_number
     from opportunity_management.opportunity_management.whatsapp_payloads import (
@@ -138,12 +149,14 @@ def _send_inbox_kind(doc, kind):
         message_body,
     )
 
-    link = None
+    link = media_id = None
     if kind == "voice":
         link = doc.attach if str(doc.attach or "").startswith("http") else get_url(doc.attach)
+        media_id = _voice_media_id(doc)
     reply_to = doc.reply_to_message_id if doc.is_reply else None
     data = message_body(
-        kind, format_number(doc.to), load_payload(doc.custom_payload), link=link, reply_to=reply_to
+        kind, format_number(doc.to), load_payload(doc.custom_payload),
+        link=link, reply_to=reply_to, media_id=media_id,
     )
     # A hidden-number customer's BSUID must travel in `recipient`, not `to`.
     apply_recipient = getattr(_upstream, "apply_recipient", None)

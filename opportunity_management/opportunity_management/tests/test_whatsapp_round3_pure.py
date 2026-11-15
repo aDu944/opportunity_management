@@ -295,7 +295,7 @@ class TestVoiceArgs(unittest.TestCase):
     def test_ogg_opus_mono(self):
         self.assertEqual(
             audio.voice_ogg_args("ffmpeg", "in.m4a", "out.ogg"),
-            ["ffmpeg", "-nostdin", "-y", "-i", "in.m4a", "-vn", "-c:a", "libopus",
+            ["ffmpeg", "-nostdin", "-y", "-i", "in.m4a", "-vn", "-map_metadata", "-1", "-c:a", "libopus",
              "-b:a", "32k", "-ac", "1", "-ar", "48000", "out.ogg"],
         )
 

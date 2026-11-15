@@ -294,9 +294,11 @@ def custom_kind(content_type, is_voice, payload) -> str:
     return ""
 
 
-def message_body(kind, to, payload, link=None, reply_to=None) -> dict:
+def message_body(kind, to, payload, link=None, reply_to=None, media_id=None) -> dict:
     """The `/messages` body for a location / contacts / voice send. `to` is
-    already formatted; upstream's `apply_recipient` runs on it afterwards."""
+    already formatted; upstream's `apply_recipient` runs on it afterwards.
+    A voice note goes by `media_id` (uploaded first, see
+    whatsapp_voice_upload) and only by `link` when there is none."""
     data = {"messaging_product": "whatsapp", "to": to}
     if kind == "location":
         data["type"] = "location"
@@ -306,7 +308,7 @@ def message_body(kind, to, payload, link=None, reply_to=None) -> dict:
         data["contacts"] = contacts_meta(payload["contacts"])
     elif kind == "voice":
         data["type"] = "audio"
-        data["audio"] = {"link": link}
+        data["audio"] = {"id": media_id} if media_id else {"link": link}
         if payload.get("voice"):
             # Voice-note rendering; Meta requires Ogg/Opus mono for it.
             data["audio"]["voice"] = True
