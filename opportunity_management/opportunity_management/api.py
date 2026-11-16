@@ -1575,13 +1575,49 @@ def submit_missed_checkin_leave(user=None):
     if checkin_exempt.is_exempt_employee(emp_id):
         return {"skipped": "exempt"}
 
-    # Reuse the same server-side path as the auto-late flow. Time is now
-    # (server-local Baghdad time).
+    # Time is now (server-local Baghdad time), shared by the punch and the leave.
+    now_dt = frappe.utils.now_datetime()
+    checkin = _record_missed_checkin_punch(emp_id, now_dt)
+    # Reuse the same server-side path as the auto-late flow.
     from opportunity_management.opportunity_management.api import (
         submit_late_checkin_leave,
     )
-    now_dt = frappe.utils.now_datetime()
-    return submit_late_checkin_leave(emp_id, str(now_dt))
+    result = submit_late_checkin_leave(emp_id, str(now_dt))
+    if checkin:
+        result = dict(result or {})
+        result["checkin"] = checkin
+    return result
+
+
+def _record_missed_checkin_punch(emp_id, now_dt):
+    """Record the IN behind a "Submit late check-in" tap while the check-in
+    window is still open (see `checkin_window_pure`): app builds before
+    1.0.7 showed that button instead of Check in to anyone past 09:15, so
+    the leave was filed but the day had no punch. Returns the Employee
+    Checkin name, or None when nothing was recorded."""
+    from opportunity_management.opportunity_management import checkin_window_pure as W
+
+    try:
+        settings = frappe.get_single("ESS Mobile Settings")
+        win = W.window(settings.get)
+    except Exception:
+        win = None
+    has_in_today = bool(frappe.db.exists("Employee Checkin", {
+        "employee": emp_id,
+        "log_type": "IN",
+        "time": [">=", now_dt.strftime("%Y-%m-%d 00:00:00")],
+    }))
+    if not W.record_punch(now_dt.hour, win, has_in_today):
+        return None
+    doc = frappe.get_doc({
+        "doctype": "Employee Checkin",
+        "employee": emp_id,
+        "log_type": "IN",
+        "time": now_dt.strftime("%Y-%m-%d %H:%M:%S"),
+    })
+    doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+    return doc.name
 
 
 @frappe.whitelist()
