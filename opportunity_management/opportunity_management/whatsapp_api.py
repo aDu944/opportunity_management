@@ -5,7 +5,9 @@ The whitelisted contract for the WhatsApp team inbox (plan §1.7).
 `/api/method/opportunity_management.opportunity_management.whatsapp_api.<name>`
 and must keep doing so; the implementations live in
 `whatsapp_api_inbox`, `whatsapp_api_messages`, `whatsapp_api_reactions`,
-`whatsapp_api_send`, `whatsapp_api_chat` and `whatsapp_api_crm`, with
+`whatsapp_api_send`, `whatsapp_api_chat`, `whatsapp_api_crm`,
+`whatsapp_api_counts`, `whatsapp_api_inbox_actions` and
+`whatsapp_api_opportunity_actions`, with
 shared access checks and helpers in `whatsapp_api_common`.
 
 Re-exporting is safe with Frappe's dispatcher: `frappe.handler.execute_cmd`
@@ -47,6 +49,17 @@ from opportunity_management.opportunity_management.whatsapp_api_inbox import (  
     remove_tag,
     set_status,
     unassign,
+)
+
+from opportunity_management.opportunity_management.whatsapp_api_counts import (  # noqa: F401
+    get_sidebar_counts,
+)
+
+from opportunity_management.opportunity_management.whatsapp_api_inbox_actions import (  # noqa: F401
+    delete_tag,
+    mark_unread,
+    rename_tag,
+    save_quick_reply,
 )
 
 from opportunity_management.opportunity_management.whatsapp_api_messages import (  # noqa: F401
@@ -103,6 +116,11 @@ from opportunity_management.opportunity_management.whatsapp_api_opportunity impo
     parse_attachments_into_opportunity,
 )
 
+from opportunity_management.opportunity_management.whatsapp_api_opportunity_actions import (  # noqa: F401
+    set_opportunity_status,
+    unlink_opportunity,
+)
+
 # The endpoint names of plan §1.7 + §5, plus `react` and the round-3 additions
 # (wa_round3_contract.md). Anything not listed here is not
 # part of the contract.
@@ -124,6 +142,12 @@ __all__ = [
     "add_tag",
     "remove_tag",
     "mark_read",
+    # web Team Inbox: sidebar counts + right-click actions
+    "get_sidebar_counts",
+    "mark_unread",
+    "save_quick_reply",
+    "rename_tag",
+    "delete_tag",
     # thread
     "get_messages",
     "send_message",
@@ -159,6 +183,8 @@ __all__ = [
     "get_opportunity_defaults",
     "create_opportunity_from_conversation",
     "parse_attachments_into_opportunity",
+    "set_opportunity_status",
+    "unlink_opportunity",
     # analytics
     "get_inbox_stats",
 ]

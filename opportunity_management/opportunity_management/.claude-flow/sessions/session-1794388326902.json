@@ -1,0 +1,14 @@
+{
+  "id": "session-1794388326902",
+  "startedAt": "2026-11-11T09:12:06.902Z",
+  "cwd": "/Users/adu94/opportunity_management/opportunity_management/opportunity_management",
+  "context": {},
+  "metrics": {
+    "edits": 0,
+    "commands": 0,
+    "tasks": 0,
+    "errors": 0
+  },
+  "endedAt": "2026-11-11T22:16:43.756Z",
+  "duration": 47076883
+}

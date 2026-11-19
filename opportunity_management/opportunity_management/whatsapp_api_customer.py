@@ -20,6 +20,7 @@ from opportunity_management.opportunity_management import ai_agent as AI
 from opportunity_management.opportunity_management import auto_menu as AM
 from opportunity_management.opportunity_management import customer_info_pure as P
 from opportunity_management.opportunity_management import inbox_channels as IC
+from opportunity_management.opportunity_management import inbox_sidebar as SB
 from opportunity_management.opportunity_management import whatsapp_api_opportunity as O
 from opportunity_management.opportunity_management import whatsapp_serializers as S
 from opportunity_management.opportunity_management.whatsapp_api_common import (
@@ -93,7 +94,8 @@ def _crm_record(doctype, name, state):
 def _opportunities(conv, state):
     """Open opportunities of the linked party / contact, plus the one the
     conversation itself is linked to (whatever its status). Permission-aware
-    (`get_list`), so a caller without Opportunity read gets []."""
+    (`get_list`), so a caller without Opportunity read gets []. The linked
+    row is kept in `state` for the Opportunity card (no second read)."""
     or_filters = []
     for value in (conv.customer, conv.lead):
         if value:
@@ -111,7 +113,8 @@ def _opportunities(conv, state):
     fields = ["name", "status"] + [
         f for f in ("title", "expected_closing", "opportunity_amount", "currency", "modified")
         if meta.has_field(f) or f == "modified"
-    ]
+    ] + SB.card_fields()
+    state["opportunity_fields"] = fields
     try:
         rows = frappe.get_list(
             "Opportunity", or_filters=or_filters, fields=fields,
@@ -122,6 +125,8 @@ def _opportunities(conv, state):
         return []
     out = []
     for row in rows:
+        if row["name"] == conv.opportunity:
+            state["linked_opportunity"] = row
         if row["name"] != conv.opportunity and not P.is_open_opportunity(row.get("status")):
             continue
         out.append({
@@ -145,8 +150,7 @@ def _attachments_count(conv):
         return 0
 
 
-def _crm(conv):
-    state = {"restricted": False}
+def _crm(conv, state):
     lead = _crm_record("Lead", conv.lead, state)
     return {
         "contact": _crm_record("Contact", conv.contact, state),
@@ -249,6 +253,12 @@ def get_customer_info(conversation):
 
     counts = _message_stats(conv)
     others, conversations_count = _other_conversations(conv)
+    crm_state = {"restricted": False}
+    crm = _crm(conv, crm_state)
+    card = None
+    if conv.opportunity and "opportunity_fields" in crm_state:  # read permitted
+        card = SB.opportunity_card(conv, crm_state.get("linked_opportunity"),
+                                   crm_state["opportunity_fields"], _iso)
     stats = {
         "first_contact_at": _iso(conv.get("first_contact_at")),
         "last_inbound_at": _iso(conv.get("last_inbound_at")),
@@ -288,7 +298,9 @@ def get_customer_info(conversation):
         "stats": stats,
         "handling": handling,
         "ad": ad_block,
-        "crm": _crm(conv),
+        "crm": crm,
+        # The linked Opportunity for the drawer card, or None (inbox_sidebar).
+        "opportunity_card": card,
         "other_conversations": others,
         "menu": AM.info_block(conv),  # auto menu: state, path, language, form answers
         "ai": AI.info_block(conv),  # latest AI draft / reply: turn, text, source, created

@@ -30,7 +30,7 @@ from opportunity_management.opportunity_management import whatsapp_jobs
 from opportunity_management.opportunity_management import whatsapp_message_extras as X
 from opportunity_management.opportunity_management import inbox_referrals as R
 from opportunity_management.opportunity_management.whatsapp_chat_state import (
-    NO_STATE,
+    NO_STATE, apply_state,
     muted_users,
     states_by_user,
 )
@@ -438,7 +438,7 @@ def publish_inbox_event(event, conv, item=None, extra=None):
     socket.io room, and `user=` is the only room Frappe gives us that a Desk
     client is guaranteed to have joined.
     """
-    payload = {"event": event, "conversation": S.conv_row(conv)}
+    payload = {"event": event, "conversation": S.conv_row(conv, state=NO_STATE)}
     if item is not None:
         payload["item"] = item
     if extra:
@@ -448,11 +448,11 @@ def publish_inbox_event(event, conv, item=None, extra=None):
     recipients = set(IC.channel_users(IC.conv_channel(conv)))
     if IC.reaches_assignee(conv):  # Messenger: only while they hold a Messenger role
         recipients.add(conv.get("assigned_to"))
-    # pinned / muted are per user: each recipient gets their own flags.
+    # pinned / muted / marked_unread are per user: each recipient gets their own.
     states = states_by_user(conv.name)
     for user in recipients:
         try:
-            row = dict(payload["conversation"], **states.get(user, NO_STATE))
+            row = apply_state(payload["conversation"], states.get(user, NO_STATE))
             frappe.publish_realtime("whatsapp_inbox", dict(payload, conversation=row), user=user)
         except Exception:
             continue

@@ -19,6 +19,7 @@ from frappe.utils import get_datetime, now_datetime
 from opportunity_management.opportunity_management import ad_referrals as AR
 from opportunity_management.opportunity_management import inbox_channels as IC
 from opportunity_management.opportunity_management import auto_menu_pure as AMP, whatsapp_flags as FL
+from opportunity_management.opportunity_management import inbox_sidebar as SB, whatsapp_chat_state as CS
 from opportunity_management.opportunity_management.whatsapp_payloads import decorate_item
 from opportunity_management.opportunity_management.whatsapp_identity import (
     clean_username,
@@ -187,11 +188,12 @@ def _guess_mime(file_url):
 def conv_row(conv, tags=None, assignee_name=None, now=None, images=None, state=None, flagger_name=None):
     """Serialize one conversation. `tags` / `assignee_name` / `images` /
     `state` / `flagger_name` are injectable so `conv_rows()` can resolve a
-    whole page in a few queries. `state` is the session user's {pinned, muted}."""
+    whole page in a few queries. `state` is the session user's {pinned, muted,
+    marked_unread}, applied last (CS.apply_state)."""
     if isinstance(conv, str):
         conv = frappe.get_doc("WhatsApp Conversation", conv)
     if state is None:
-        state = _own_state(conv)
+        state = CS.own_state(conv)
 
     name = _g(conv, "name")
     assigned_to = _g(conv, "assigned_to") or None
@@ -240,6 +242,7 @@ def conv_row(conv, tags=None, assignee_name=None, now=None, images=None, state=N
         "lead": _g(conv, "lead") or None,
         "customer": _g(conv, "customer") or None,
         "opportunity": _g(conv, "opportunity") or None,
+        **SB.conv_fields(conv, _g),  # opportunity_status / _stage / _closing / _title
         "customer_language": _g(conv, "customer_language", "") or "",
         # There is no WhatsApp profile photo to be had (plan §1.6); this is the
         # linked CRM record's image, or None when nothing is linked.
@@ -249,9 +252,6 @@ def conv_row(conv, tags=None, assignee_name=None, now=None, images=None, state=N
         # while the customer is still waiting — the two mean different things.
         "first_response_seconds": _int_or_none(_g(conv, "first_response_seconds")),
         "is_blocked": bool(_g(conv, "is_blocked", 0)),
-        # The CALLER's flags (publish_inbox_event re-stamps each recipient's).
-        "pinned": bool(state.get("pinned")),
-        "muted": bool(state.get("muted")),
         "channel": channel,
         "caps": IC.caps_for(channel),
         "ad": AR.public_ad(_g(conv, "ad_referral")),  # latest ad / post / link
@@ -266,21 +266,9 @@ def conv_row(conv, tags=None, assignee_name=None, now=None, images=None, state=N
         row["avatar_url"] = row["avatar_url"] or _g(conv, "avatar_url") or None
     else:
         row["window_mode"] = IC.STANDARD if row["window_open"] else IC.CLOSED
-    return row
-
-
-def _own_state(conv):
-    """The session user's pin / mute: from the list query's join columns
-    when present, else one lookup."""
-    if isinstance(conv, dict) and "pinned" in conv:
-        return {"pinned": bool(_int_or_none(conv.get("pinned"))),
-                "muted": bool(_int_or_none(conv.get("muted")))}
-    from opportunity_management.opportunity_management.whatsapp_chat_state import state_for
-
-    try:
-        return state_for(_g(conv, "name"), frappe.session.user)
-    except Exception:
-        return {}
+    # The CALLER's pinned / muted / marked_unread (publish_inbox_event
+    # re-stamps each recipient's own onto a stateless row).
+    return CS.apply_state(row, state)
 
 
 def conv_rows(rows):
@@ -292,13 +280,12 @@ def conv_rows(rows):
     tag_map = _tags_for(names)
     name_map = _full_names([_g(r, f) for r in rows for f in ("assigned_to", "flagged_by")])
     images = _avatar_map(rows)
+    SB.fill_opportunity(rows, _g)  # list_conversations already joined them in
     now = now_datetime()
     if isinstance(rows[0], dict) and "pinned" in rows[0]:
-        state_of = _own_state  # list_conversations joined them in
+        state_of = CS.own_state  # list_conversations joined them in
     else:
-        from opportunity_management.opportunity_management.whatsapp_chat_state import states_for
-
-        states = states_for(names, frappe.session.user)
+        states = CS.states_for(names, frappe.session.user)
         state_of = lambda r: states.get(_g(r, "name"), {})  # noqa: E731
     return [
         conv_row(

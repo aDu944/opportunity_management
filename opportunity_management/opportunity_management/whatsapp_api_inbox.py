@@ -11,7 +11,8 @@ from frappe import _
 from frappe.utils import add_to_date, cint, now_datetime
 
 from opportunity_management.opportunity_management import auto_menu as AM, inbox_channels as IC
-from opportunity_management.opportunity_management import inbox_referrals as IR
+from opportunity_management.opportunity_management import inbox_referrals as IR, inbox_sidebar as SB
+from opportunity_management.opportunity_management import inbox_sidebar_pure as SBP
 from opportunity_management.opportunity_management import whatsapp_assign_rules as AR
 from opportunity_management.opportunity_management import whatsapp_chat_state as CS
 from opportunity_management.opportunity_management import whatsapp_flags as FL
@@ -107,6 +108,7 @@ def list_conversations(
     limit_start=0,
     limit_page_length=None,
     channel=None,
+    opportunity=None,
 ):
     """Paged conversation list.
 
@@ -121,6 +123,9 @@ def list_conversations(
 
     `channel` ("WhatsApp" | "Messenger") narrows to one channel; omitted = all
     of the caller's channels (inbox_channels).
+
+    `opportunity`: any | none | Open | Quotation | Converted | Closed (=
+    Closed or Lost), on top of the scope (inbox_sidebar_pure.opportunity_clause).
     """
     _require_inbox_access()
     start, length = _paging(limit_start, limit_page_length)
@@ -135,13 +140,11 @@ def list_conversations(
         clauses.append(channel_clause)
 
     scope = (scope or "all").lower()
-    if scope == "mine":
-        clauses.append("c.assigned_to = %(me)s")
-        clauses.append("c.status != 'Resolved'")
+    if scope == "mine":  # scope fragments shared with get_sidebar_counts
+        clauses.extend(SBP.MINE_CLAUSES)
         params["me"] = frappe.session.user
     elif scope == "unassigned":
-        clauses.append("(c.assigned_to IS NULL OR c.assigned_to = '')")
-        clauses.append("c.status != 'Resolved'")
+        clauses.extend(SBP.UNASSIGNED_CLAUSES)
     elif scope == "groups":
         clauses.extend(GR.scope_clauses(params, frappe.session.user))
     elif scope == "menu":  # managers: chats stuck in the auto menu > 24h (auto_menu)
@@ -149,7 +152,7 @@ def list_conversations(
     elif scope in CS.SCOPE_CLAUSES:  # waiting | flagged — queues, own ORDER BY
         clauses.extend(CS.SCOPE_CLAUSES[scope])
     elif scope == "resolved":
-        clauses.append("c.status = 'Resolved'")
+        clauses.extend(SBP.RESOLVED_CLAUSES)
     elif scope == "expired":
         # Same rule as ConvRow.window_open (serializers.window_seconds_remaining):
         # open while now - last_inbound_at < 24h, so expired is the complement.
@@ -163,6 +166,7 @@ def list_conversations(
     if status:
         clauses.append("c.status = %(status)s")
         params["status"] = status
+    SB.add_opportunity_filter(clauses, params, opportunity)
 
     wanted_tags = _tag_list(tags)
     if tag and tag not in wanted_tags:
@@ -213,9 +217,10 @@ def list_conversations(
                c.last_message_preview, c.last_message_direction, c.unread_count,
                c.contact, c.lead, c.customer, c.opportunity, c.customer_language,
                c.notes_count, c.first_response_seconds, c.wa_username, c.wa_user_id,
-               c.is_blocked, {AM.list_select("c")}{GR.list_select("c")}{IC.list_select("c")}{IR.list_select("c")}{FL.list_select("c")}{state_select}
+               c.is_blocked, {SB.list_select()}{AM.list_select("c")}{GR.list_select("c")}{IC.list_select("c")}{IR.list_select("c")}{FL.list_select("c")}{state_select}
         FROM `tabWhatsApp Conversation` c
         {state_join}
+        {SB.LIST_JOIN}
         WHERE {where}
         ORDER BY {order_by}
         LIMIT %(limit)s OFFSET %(start)s
@@ -472,6 +477,7 @@ def mark_read(conversation):
         "WhatsApp Conversation", conv.name, "unread_count", 0, update_modified=False
     )
     conv.unread_count = 0
+    CS.clear_unread(conv.name, frappe.session.user)  # the caller's own mark_unread
 
     if cint(get_inbox_settings().get("auto_read_receipt")) and newest and IC.conv_channel(conv) == IC.MESSENGER:
         IC.mark_seen(conv)

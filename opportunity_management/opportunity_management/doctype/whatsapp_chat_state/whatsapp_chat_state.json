@@ -10,7 +10,8 @@
   "user",
   "column_break_flags",
   "pinned",
-  "muted"
+  "muted",
+  "marked_unread"
  ],
  "fields": [
   {
@@ -51,11 +52,19 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Muted"
+  },
+  {
+   "default": "0",
+   "description": "Marked unread by this user (cleared when they open the conversation).",
+   "fieldname": "marked_unread",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Marked Unread"
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-10-05 12:00:00.000000",
+ "modified": "2026-11-19 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Opportunity Management",
  "name": "WhatsApp Chat State",
