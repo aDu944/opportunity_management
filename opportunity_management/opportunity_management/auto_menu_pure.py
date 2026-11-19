@@ -21,7 +21,7 @@ auto_resolve_after {hours}, handoff {group, last_handler}, ai_turn {menu, mode,
 lang, fallback}.
 
 Ids the customer's taps send back: lang:ar, lang:en, opt:<row>, menu:root,
-lang:toggle, form:individual, form:same_number, form:no_email, form:keep,
+lang:toggle, form:same_number, form:no_email, form:keep,
 form:update.
 """
 

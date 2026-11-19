@@ -2,7 +2,8 @@
 The customer-details form of the WhatsApp auto menu — pure (no frappe).
 
 State `form:<option row>:<step>`; the answers live in `menu_form_json`:
-    {"name", "company", "individual", "address", "mobile", "email", "missing": [...]}
+    {"name", "company", "address", "mobile", "email", "missing": [...]}
+    (`individual` may still be present in forms saved before 2026-11-19).
 
     steps_for(option)                         ["name", "company", ...]
     validate(step, inbound, phone)            (ok, value)
@@ -24,7 +25,6 @@ FULL_STEPS = ("name", "company", "address", "mobile", "email")
 SHORT_STEPS = ("name", "company")
 CONFIRM = "confirm"
 
-INDIVIDUAL_ID = "form:individual"
 SAME_NUMBER_ID = "form:same_number"
 NO_EMAIL_ID = "form:no_email"
 KEEP_ID = "form:keep"
@@ -87,8 +87,7 @@ def validate(step, inbound, phone=""):
             return True, text
         return False, None
     if step == "company":
-        if _tap(inbound, INDIVIDUAL_ID):
-            return True, ""
+        # Mandatory: a typed name only, no skip button.
         return (True, text[:MAX_TEXT]) if text else (False, None)
     if step == "address":
         return (True, text[:MAX_TEXT]) if text else (False, None)
@@ -167,8 +166,6 @@ def answer(form, step, inbound, phone, retries, max_retries):
     ok, value = validate(step, inbound, phone)
     if ok:
         form[step] = value
-        if step == "company":
-            form["individual"] = value == ""
         form["missing"] = missing
         return form, 0, True
     retries = int(retries or 0) + 1

@@ -29,8 +29,11 @@ class TestValidate(unittest.TestCase):
 
     def test_company(self):
         self.assertEqual(F.validate("company", text("ACME Ltd")), (True, "ACME Ltd"))
-        self.assertEqual(F.validate("company", {"kind": "tap", "text": "form:individual", "fresh": True}), (True, ""))
-        self.assertEqual(F.validate("company", {"kind": "tap", "text": "form:individual", "fresh": False}), (False, None))
+        # Mandatory since 2026-11-19: the old Individual button is no longer an answer.
+        self.assertEqual(F.validate("company", {"kind": "tap", "text": "form:individual", "fresh": True}), (False, None))
+        self.assertEqual(F.validate("company", text("")), (False, None))
+        self.assertNotIn("company", T.FORM_BUTTONS)
+        self.assertTrue(F.question("company", "en", hint=True)["text"].startswith(T.HINTS["company"]["en"]))
         self.assertEqual(F.validate("company", MEDIA), (False, None))
 
     def test_mobile(self):
@@ -132,7 +135,7 @@ class TestFormFlow(unittest.TestCase):
     def test_full_form(self):
         form = {}
         steps = [
-            ("name", text("Ali Hassan")), ("company", tap("form:individual")), ("address", text("Baghdad, Mansour")),
+            ("name", text("Ali Hassan")), ("company", text("ACME Ltd")), ("address", text("Baghdad, Mansour")),
             ("mobile", tap("form:same_number")), ("email", tap("form:no_email")),
         ]
         for i, (step, answer) in enumerate(steps):
@@ -142,7 +145,8 @@ class TestFormFlow(unittest.TestCase):
                 self.assertEqual(state(effects)["menu_state"], "form:oilgas-1:" + steps[i + 1][0])
         self.assertEqual(state(effects)["menu_state"], "request:oilgas-1")
         lead = of(effects, "create_lead")[0]["fields"]
-        self.assertEqual(lead, {"lead_name": "Ali Hassan", "city": "Baghdad, Mansour", "mobile_no": PHONE})
+        self.assertEqual(lead, {"lead_name": "Ali Hassan", "company_name": "ACME Ltd",
+                                "city": "Baghdad, Mansour", "mobile_no": PHONE})
         self.assertIn("Mobile: " + PHONE, of(effects, "note")[0]["text"])
         self.assertTrue(of(effects, "send_text")[-1]["prompt"])
 

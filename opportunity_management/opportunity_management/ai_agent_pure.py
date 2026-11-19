@@ -206,7 +206,7 @@ def tool_specs():
                         "Call it before asking for details the customer may already have given us."},
         {"name": "save_customer_details", "strict": True, "input_schema": _schema({
             "name": _string("Full name, first and last."),
-            "company": _string("Company or organisation; empty string for an individual."),
+            "company": _string("Company or organisation name; required, ask for it when missing."),
             "address": _string("City and area; empty string when not given."),
             "mobile": _string("Mobile number, 10-15 digits; empty string to use this chat's number."),
             "email": _string("Email address; empty string when none."),
@@ -244,9 +244,7 @@ def check_customer_details(args, phone=""):
             errors.append(error)
 
     check("name", "name: full name (first and last) is required")
-    company = str(args.get("company") or "").strip()
-    form["individual"] = not company
-    form["company"] = company[:F.MAX_TEXT]
+    check("company", "company: company or organisation name is required")
     if str(args.get("address") or "").strip():
         check("address", "address: invalid")
     if str(args.get("mobile") or "").strip():

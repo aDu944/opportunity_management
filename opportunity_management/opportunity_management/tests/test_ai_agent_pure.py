@@ -196,10 +196,14 @@ class TestTools(unittest.TestCase):
 
     def test_customer_details_reuse_form_rules(self):
         ok, form, errors = P.check_customer_details(
-            {"name": "Ali Hassan", "company": "", "address": "Baghdad, Mansour", "mobile": "",
+            {"name": "Ali Hassan", "company": "ACME Ltd", "address": "Baghdad, Mansour", "mobile": "",
              "email": "Ali@Example.com"}, "9647701234567")
         self.assertTrue(ok, errors)
-        self.assertEqual((form["individual"], form["mobile"], form["email"]), (True, "9647701234567", "ali@example.com"))
+        self.assertEqual((form["company"], form["mobile"], form["email"]), ("ACME Ltd", "9647701234567", "ali@example.com"))
+        ok, _form, errors = P.check_customer_details(
+            {"name": "Ali Hassan", "company": "", "address": "", "mobile": "", "email": ""}, "9647701234567")
+        self.assertFalse(ok)
+        self.assertEqual([e.split(":")[0] for e in errors], ["company"])
         ok, _form, errors = P.check_customer_details(
             {"name": "Ali", "company": "X", "address": "", "mobile": "12", "email": "nope"}, "")
         self.assertFalse(ok)

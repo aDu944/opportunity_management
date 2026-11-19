@@ -52,17 +52,22 @@ HINTS = {
         "ar": "يرجى كتابة الاسم الكامل (الاسم واللقب).",
         "en": "Please enter your full name (first and last).",
     },
+    "company": {
+        "ar": "اسم الشركة أو الجهة مطلوب، يرجى كتابته.",
+        "en": "The company or organisation name is required, please type it.",
+    },
     "mobile": {
         "ar": "يرجى إدخال رقم صحيح مكوّن من 10 إلى 15 رقماً.",
         "en": "Please enter a valid number, 10 to 15 digits.",
     },
     "email": {"ar": "يرجى إدخال بريد إلكتروني صحيح.", "en": "Please enter a valid email address."},
 }
-# Company / address only fail on a non-text answer (photo, sticker...).
+# Address only fails on a non-text answer (photo, sticker...).
 TEXT_HINT = {"ar": "يرجى كتابة الإجابة نصاً.", "en": "Please type your answer."}
 
+# Company has no button: the name is mandatory (an "Individual" skip was
+# removed 2026-11-19 so every lead names a company or organisation).
 FORM_BUTTONS = {
-    "company": [{"id": "form:individual", "title": {"ar": "شخصي", "en": "Individual"}}],
     "mobile": [{"id": "form:same_number", "title": {"ar": "نفس هذا الرقم", "en": "Same as this number"}}],
     "email": [{"id": "form:no_email", "title": {"ar": "لا يوجد", "en": "No email"}}],
 }
