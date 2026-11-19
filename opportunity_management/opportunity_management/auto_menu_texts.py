@@ -62,6 +62,23 @@ HINTS = {
     },
     "email": {"ar": "يرجى إدخال بريد إلكتروني صحيح.", "en": "Please enter a valid email address."},
 }
+# Answers that are a message, not a name or a company. Lead 00069 (19 Nov)
+# was named "توجد هاي الماده ام لا" with company "شكرا": the customer kept
+# asking about a product while the form asked who they were. A token from
+# this set anywhere in the answer, or a question mark, means "re-ask".
+MESSAGE_MARKERS = frozenset("""
+هل شنو شلون وين ليش بكم ماذا كيف متى ممكن يمكن احتاج محتاج نحتاج اريد أريد ابي ابغى
+عندكم عدكم يمكم لديكم متوفر متوفرة متوفرات متوفره توجد يوجد اكو سعر السعر اسعار عرض
+مرحبا السلام هلو اهلا شكرا شكراً شكرًا صباح مساء تحية
+hi hello hey thanks thank please pls need want looking available availability price
+quote quotation how what where when can could would do does have offer order buy
+send supply this that the for from with
+""".split())
+# Whole answers that are small talk, never a company name.
+FILLER_ANSWERS = frozenset("""
+شكرا شكراً شكرًا تمام نعم لا اوك اوكي ماكو مافي يوجد لايوجد ok okay k yes no none
+thanks hi hello hey
+""".split())
 # Address only fails on a non-text answer (photo, sticker...).
 TEXT_HINT = {"ar": "يرجى كتابة الإجابة نصاً.", "en": "Please type your answer."}
 

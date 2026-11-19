@@ -26,12 +26,25 @@ class TestValidate(unittest.TestCase):
         self.assertEqual(F.validate("name", text("علي حسن")), (True, "علي حسن"))
         self.assertEqual(F.validate("name", text("Ali")), (False, None))
         self.assertEqual(F.validate("name", MEDIA), (False, None))
+        # Real answers that became Lead names in Nov 2026: questions, not names.
+        for bad in ("توجد هاي الماده ام لا", "محتاج هذني متوفرات يمكم",
+                    "معك مهندس جاسم من شركة steel head متوفرة عدكم هذه المضخة",
+                    "د.صادق كاظم لفته صاحب شركة علوم المستقبل", "Do you have pumps?",
+                    "Ali Hassan 0770", "hi Ali Hassan"):
+            self.assertEqual(F.validate("name", text(bad)), (False, None), bad)
+        for good in ("رائد جبار جليل", "Sally Jawad", "Hevi Ali", "منظر اسعد عبد الوهاب",
+                     "Muhammad Uwais Khan", "عَلي حَسن"):
+            self.assertTrue(F.validate("name", text(good))[0], good)
 
     def test_company(self):
         self.assertEqual(F.validate("company", text("ACME Ltd")), (True, "ACME Ltd"))
         # Mandatory since 2026-11-19: the old Individual button is no longer an answer.
         self.assertEqual(F.validate("company", {"kind": "tap", "text": "form:individual", "fresh": True}), (False, None))
         self.assertEqual(F.validate("company", text("")), (False, None))
+        for bad in ("شكرا", "ok", "Thanks", "لا", "هل عندكم مضخات؟", "ممكن السعر"):
+            self.assertEqual(F.validate("company", text(bad)), (False, None), bad)
+        for good in ("Nyco", "فان للاسمنت", "Umm Qasr Northern Cement", "MESO Company LTD"):
+            self.assertTrue(F.validate("company", text(good))[0], good)
         self.assertNotIn("company", T.FORM_BUTTONS)
         self.assertTrue(F.question("company", "en", hint=True)["text"].startswith(T.HINTS["company"]["en"]))
         self.assertEqual(F.validate("company", MEDIA), (False, None))

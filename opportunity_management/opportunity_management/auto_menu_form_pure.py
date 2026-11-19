@@ -31,6 +31,7 @@ KEEP_ID = "form:keep"
 UPDATE_ID = "form:update"
 
 MAX_TEXT = 140
+MAX_NAME_WORDS = 4  # Arabic names run to four words; a longer answer is a message
 MIN_MOBILE, MAX_MOBILE = 10, 15
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$")
 # Arabic-Indic and Eastern Arabic-Indic digits → ASCII.
@@ -69,6 +70,29 @@ def _tap(inbound, wanted) -> bool:
     )
 
 
+_WORD_JUNK = re.compile(r"[^\w\u0600-\u06FF]+")
+
+
+def _words(text) -> list:
+    """Lower-cased tokens with punctuation and tashkeel stripped."""
+    text = re.sub(r"[\u064B-\u0652\u0640]", "", str(text or ""))
+    return [w for w in _WORD_JUNK.sub(" ", text.lower()).split() if w]
+
+
+def looks_like_message(text) -> bool:
+    """A question or request typed where a name or company was asked."""
+    text = str(text or "")
+    if "?" in text or "\u061f" in text:
+        return True
+    return any(w in T.MESSAGE_MARKERS for w in _words(text))
+
+
+def is_filler(text) -> bool:
+    """"thanks", "ok", "no"... as the whole answer."""
+    words = _words(text)
+    return bool(words) and all(w in T.FILLER_ANSWERS for w in words)
+
+
 def clean_mobile(text) -> str:
     """Digits of a typed number, or "" when it is not 10–15 digits."""
     raw = _MOBILE_JUNK.sub("", to_ascii_digits(text))
@@ -83,12 +107,16 @@ def validate(step, inbound, phone=""):
     text = _text(inbound)
     if step == "name":
         words = [w for w in text.split(" ") if w]
-        if len(words) >= 2 and len(text) <= MAX_TEXT:
+        if (2 <= len(words) <= MAX_NAME_WORDS and len(text) <= MAX_TEXT
+                and not any(ch.isdigit() for ch in text) and not looks_like_message(text)):
             return True, text
         return False, None
     if step == "company":
-        # Mandatory: a typed name only, no skip button.
-        return (True, text[:MAX_TEXT]) if text else (False, None)
+        # Mandatory: a typed name only, no skip button; small talk and
+        # questions re-ask (lead 00069's company was "شكرا").
+        if text and not is_filler(text) and not looks_like_message(text):
+            return True, text[:MAX_TEXT]
+        return False, None
     if step == "address":
         return (True, text[:MAX_TEXT]) if text else (False, None)
     if step == "mobile":
