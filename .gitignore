@@ -5,3 +5,6 @@ __pycache__/
 opportunity_management/firebase_service_account.json
 *.egg-info/
 **/public/dist/
+
+# local AI tooling state, never part of the app
+.claude-flow/
