@@ -8,24 +8,11 @@ at request time, means deploying a new build is `git pull` only — no web
 restart — unlike a `website_redirects` entry, which is fixed at import.
 """
 
-import os
+from opportunity_management.opportunity_management.inbox_version import current_index  # noqa: F401
 
 import frappe
 
 no_cache = 1
-ASSET_BASE = "/assets/opportunity_management/inbox"
-
-
-def current_index():
-    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    try:
-        with open(os.path.join(here, "public", "inbox", "CURRENT")) as fh:
-            version = fh.read().strip()
-    except OSError:
-        version = ""
-    if not version or "/" in version or ".." in version:
-        return f"{ASSET_BASE}/index.html"
-    return f"{ASSET_BASE}/{version}/index.html"
 
 
 def get_context(context):

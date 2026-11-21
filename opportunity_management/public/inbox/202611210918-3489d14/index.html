@@ -3,7 +3,7 @@
 <head>
   <!-- Served from /assets/opportunity_management/inbox/ (set by
        `flutter build web --base-href …`, see tool/build_inbox_web.sh). -->
-  <base href="/assets/opportunity_management/inbox/202611191857-407ce08/">
+  <base href="/assets/opportunity_management/inbox/202611210918-3489d14/">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
@@ -36,7 +36,24 @@
   <!-- Web Push settings, un-versioned next to the build folders (see
        web/firebase-config.js); `?b=` is the build version, set by
        tool/build_inbox_web.sh so a new build re-reads it past the cache. -->
-  <script src="../firebase-config.js?b=202611191857-407ce08"></script>
+  <!-- Stale-build guard: /assets is cached for a year, so a tab restored on
+       an old build's URL would keep that UI forever. Ask the server which
+       build is current and, if this is not it, go through /inbox again. -->
+  <script>
+    (function () {
+      var m = location.pathname.match(/\/inbox\/([^\/]+)\/index\.html$/);
+      if (!m) return;
+      fetch('/api/method/opportunity_management.opportunity_management.inbox_version.current_inbox_version',
+            { cache: 'no-store', credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          var v = j && j.message;
+          if (v && v !== m[1]) location.replace('/inbox' + location.hash);
+        })
+        .catch(function () {});
+    })();
+  </script>
+  <script src="../firebase-config.js?b=202611210918-3489d14"></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
