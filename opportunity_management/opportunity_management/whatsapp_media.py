@@ -113,6 +113,11 @@ def privatize_message_media(name, attach):
         file_doc.save(ignore_permissions=True)
     new_url = file_doc.file_url
     frappe.db.set_value(MSG, name, {"attach": new_url, "custom_media_private": 1}, update_modified=False)
+    # A duplicate picture shares its content hash; Frappe re-points the sibling
+    # Files on save, so their messages must follow (whatsapp_media_repair).
+    from opportunity_management.opportunity_management import whatsapp_media_repair as MR
+
+    MR.realign_siblings(file_doc)
     return new_url
 
 
@@ -228,4 +233,11 @@ def privatize_pending(limit=50):
             frappe.log_error(
                 frappe.get_traceback(), f"WhatsApp inbox: inbound privatize failed for {row['name']}"
             )
+    # Heal rows whose attach no File owns any more (duplicate pictures).
+    from opportunity_management.opportunity_management import whatsapp_media_repair as MR
+
+    try:
+        done += len(MR._apply(MR._drifted(limit), dry_run=0))
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "WhatsApp inbox: attachment realign sweep failed")
     return done

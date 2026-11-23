@@ -390,13 +390,10 @@ def _apply_message_to_conversation(conv, doc, incoming, body_text):
 # ── media ────────────────────────────────────────────────────────────────────
 
 def _privatize_inbound_media(doc):
-    """frappe_whatsapp saves inbound media as a **public** File, i.e. anyone
-    with the URL can read a customer's photo. Flip it private on arrival.
-
-    Frappe serves /private/files/… only to users who pass
-    `File.has_permission`, which delegates to the attached
-    `WhatsApp Message` — satisfied by the Agent/Manager read DocPerm.
-    """
+    """frappe_whatsapp saves inbound media as a **public** File; flip it
+    private on arrival. Frappe serves /private/files/… to users who pass
+    `File.has_permission` → the attached `WhatsApp Message` (Agent/Manager
+    read). A duplicate picture's siblings are realigned (whatsapp_media_repair)."""
     if not doc.get("attach"):
         return
     if cint(doc.get("custom_media_private")):
@@ -420,13 +417,13 @@ def _privatize_inbound_media(doc):
         new_url = file_doc.file_url
 
     frappe.db.set_value(
-        "WhatsApp Message",
-        doc.name,
-        {"attach": new_url, "custom_media_private": 1},
-        update_modified=False,
+        "WhatsApp Message", doc.name, {"attach": new_url, "custom_media_private": 1}, update_modified=False,
     )
     doc.attach = new_url
     doc.custom_media_private = 1
+    from opportunity_management.opportunity_management import whatsapp_media_repair as MR
+
+    MR.realign_siblings(file_doc)
 
 
 # ── notifications ────────────────────────────────────────────────────────────
