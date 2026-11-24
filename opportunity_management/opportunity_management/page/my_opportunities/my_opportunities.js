@@ -15,6 +15,14 @@ frappe.pages['my-opportunities'].on_page_load = function(wrapper) {
         load_opportunities(page);
     }, 'primary');
 
+    // A shop request opens as a summary (show_shop_request), not as an Opportunity here.
+    $(wrapper).on('click', '.shop-request-link', function(e) {
+        e.preventDefault();
+        const rfq = $(this).data('rfq');
+        const opp = (page.opportunities || []).find(o => o.is_shop && o.shop_rfq === rfq);
+        if (opp) show_shop_request(opp);
+    });
+
     // Add hide overdue filter
     page.add_field({
         fieldname: 'hide_overdue',
@@ -83,7 +91,8 @@ function load_opportunities(page) {
     frappe.call({
         method: 'opportunity_management.opportunity_management.api.get_my_opportunities',
         args: {
-            include_completed: is_completed
+            include_completed: is_completed,
+            include_shop: 1
         },
         freeze: true,
         freeze_message: 'Loading opportunities...',
@@ -323,12 +332,16 @@ function render_opportunities(page) {
         html += `
             <tr data-urgency="${opp.urgency}" style="${rowStyle}">
                 <td>
+                    ${opp.is_shop ? `
+                    <a class="shop-request-link" data-rfq="${opp.shop_rfq}" style="display:block; padding:12px; border-left:4px solid ${rowBorder}; border-radius:10px 0 0 10px; color:#1f2937; cursor:pointer;">
+                        ${opp.shop_rfq}<span class="badge" style="background: #2E6BE6; color: white; margin-left: 6px;">Shop</span>
+                    </a>` : `
                     <a href="/app/opportunity/${opp.opportunity}" target="_blank" style="display:block; padding:12px; border-left:4px solid ${rowBorder}; border-radius:10px 0 0 10px; color:#1f2937;">
                         ${opp.opportunity}
-                    </a>
+                    </a>`}
                 </td>
-                <td style="padding:12px;">${tenderNo}</td>
-                <td style="padding:12px;">${tenderTitle}</td>
+                <td style="padding:12px;">${opp.is_shop ? (opp.customer_reference || 'N/A') : tenderNo}</td>
+                <td style="padding:12px;">${opp.is_shop ? 'ALKHORA Shop request' : tenderTitle}</td>
                 <td style="padding:12px;">${opp.customer || 'N/A'}</td>
                 ${statusColumn}
                 <td style="padding:12px;">${opp.closing_date || 'Not set'}</td>
@@ -339,10 +352,14 @@ function render_opportunities(page) {
                 </td>
                 ${page.current_tab === 'open' ? `
                 <td style="padding:12px;">
+                    ${opp.is_shop ? `
+                    <a class="btn btn-xs btn-default shop-request-link" data-rfq="${opp.shop_rfq}" style="cursor: pointer;">
+                        Details
+                    </a>` : `
                     <a onclick="create_quotation('${opp.opportunity}')" 
                        class="btn btn-xs btn-success" style="cursor: pointer;">
                         Create Quotation
-                    </a>
+                    </a>`}
                 </td>
                 ` : ''}
             </tr>
@@ -392,3 +409,40 @@ window.create_quotation = function(opportunity_name) {
     };
     frappe.new_doc("Quotation");
 };
+
+// A request from the ALKHORA shop (is_shop rows, see shop_requests.py): kept in the shop's own ERPNext, so it
+// opens here as a summary, not as an Opportunity. The people assigned got it by email, with its files.
+function show_shop_request(opp) {
+    const esc = (v) => frappe.utils.escape_html(v === null || v === undefined ? '' : String(v));
+    const items = opp.items || [];
+    const parts = items.map(i => `
+        <tr>
+            <td style="white-space: nowrap;">${esc(i.qty)} ${esc(i.uom)}</td>
+            <td style="white-space: nowrap;">${esc(i.item_code)}</td>
+            <td>${esc(i.description || i.item_name)}</td>
+        </tr>`).join('');
+    const people = (opp.assignees || []).map(a => esc(a.employee || a.user)).join(', ');
+    const d = new frappe.ui.Dialog({
+        title: `${opp.shop_rfq} · ALKHORA Shop request`,
+        size: 'large',
+        fields: [{ fieldtype: 'HTML', fieldname: 'body' }]
+    });
+    d.fields_dict.body.$wrapper.html(`
+        <table class="table table-sm" style="margin-bottom: 16px;">
+            <tr><th style="width: 32%;">Customer</th><td>${esc(opp.customer)}</td></tr>
+            ${opp.customer_reference ? `<tr><th>Customer's reference</th><td>${esc(opp.customer_reference)}</td></tr>` : ''}
+            <tr><th>Closing date</th><td>${esc(opp.closing_date || 'Not set')}${opp.closing_date && opp.urgency !== 'completed' ? ` (${esc(opp.status_label)})` : ''}</td></tr>
+            <tr><th>Stage</th><td>${esc(opp.status)}</td></tr>
+            <tr><th>Assigned to</th><td>${people || '—'}</td></tr>
+        </table>
+        <h6 style="font-weight: 600;">Parts requested (${items.length})</h6>
+        <table class="table table-sm table-bordered">
+            <thead><tr><th>Qty</th><th>Part number</th><th>Description</th></tr></thead>
+            <tbody>${parts || '<tr><td colspan="3">None listed.</td></tr>'}</tbody>
+        </table>
+        <p class="text-muted small" style="margin-top: 12px;">
+            This request is kept in the ALKHORA shop, not in this ERP. Everyone assigned got it by email with its files:
+            reply to that email with prices and questions, keeping ${esc(opp.shop_rfq)} in the subject.
+        </p>`);
+    d.show();
+}

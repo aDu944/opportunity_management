@@ -11,6 +11,7 @@ from frappe import _
 from frappe.utils import nowdate, getdate, date_diff, flt, cint
 from datetime import datetime
 from opportunity_management.opportunity_management import notification_utils
+from opportunity_management.opportunity_management import shop_requests
 from opportunity_management.opportunity_management import checkin_exempt
 
 
@@ -126,7 +127,7 @@ def _is_user_assigned(user, doc):
 
 
 @frappe.whitelist()
-def get_my_opportunities(user=None, include_completed=False, search=None):
+def get_my_opportunities(user=None, include_completed=False, search=None, include_shop=0):
     """
     Get opportunity tasks for the current user.
 
@@ -134,6 +135,8 @@ def get_my_opportunities(user=None, include_completed=False, search=None):
         user: Optional - user email (defaults to current user)
         include_completed: Boolean - if True, show only completed opportunities (Closed/Lost/Converted)
                                      if False, show only open opportunities
+        include_shop: 1 to list the ALKHORA shop's requests assigned to the user too (shop_requests.py),
+                      marked is_shop. Off by default: a caller must know a shop row opens no Opportunity here.
 
     Returns a list of opportunities with their assignments and closing dates.
     """
@@ -152,7 +155,11 @@ def get_my_opportunities(user=None, include_completed=False, search=None):
     # manager view. Previously this auto-routed Sales Managers to the team
     # view, which made every team opportunity show up under their "Mine"
     # tab (including ones assigned to their direct reports).
-    return get_personal_opportunities(user, include_completed, search=search)
+    rows = get_personal_opportunities(user, include_completed, search=search)
+    if cint(include_shop):
+        shop_rows = _apply_status_display(shop_requests.personal_rows(user, include_completed, search=search))
+        rows = shop_requests.merge(rows, shop_rows, include_completed)
+    return rows
 
 
 def get_personal_opportunities(user, include_completed=False, search=None):
@@ -879,7 +886,22 @@ def get_opportunity_details(opportunity_name):
 
 
 @frappe.whitelist()
-def get_team_opportunities(team=None, include_completed=False, search=None):
+def get_team_opportunities(team=None, include_completed=False, search=None, include_shop=0):
+    """
+    The team's opportunities (see _company_team_opportunities), and with include_shop=1 the ALKHORA shop's
+    requests assigned to anyone in the team (shop_requests.py), marked is_shop.
+    """
+    include_completed = bool(cint(include_completed))
+    if not team:
+        team = frappe.db.get_value("Employee", {"user_id": frappe.session.user, "status": "Active"}, "department")
+    result = _company_team_opportunities(team, include_completed, search)
+    if cint(include_shop):
+        shop_rows = _apply_status_display(shop_requests.team_rows(team, include_completed, search=search))
+        result["opportunities"] = shop_requests.merge(result["opportunities"], shop_rows, include_completed)
+    return result
+
+
+def _company_team_opportunities(team=None, include_completed=False, search=None):
     """
     Get opportunities for a team with their assignees.
 
