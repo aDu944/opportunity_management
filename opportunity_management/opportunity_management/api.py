@@ -898,6 +898,7 @@ def get_team_opportunities(team=None, include_completed=False, search=None, incl
     if cint(include_shop):
         shop_rows = _apply_status_display(shop_requests.team_rows(team, include_completed, search=search))
         result["opportunities"] = shop_requests.merge(result["opportunities"], shop_rows, include_completed)
+        result["employee_stats"] = shop_requests.add_to_employee_stats(result["employee_stats"], team)
     return result
 
 

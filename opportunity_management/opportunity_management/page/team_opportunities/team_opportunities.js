@@ -282,6 +282,7 @@ function render_employee_cards(page) {
                     <p style="margin: 0 0 10px 0; opacity: 0.9; font-size: 12px;">${dept}</p>
                     <div style="font-size: 28px; font-weight: 700; margin-bottom: 5px;">${employee.open_opportunities}</div>
                     <p style="margin: 0; opacity: 0.9; font-size: 12px;">Open Opportunities</p>
+                    ${employee.shop_open ? `<p style="margin: 4px 0 0 0; opacity: 0.9; font-size: 12px;">incl. ${employee.shop_open} from the shop</p>` : ''}
                 </div>
             </div>
         `;

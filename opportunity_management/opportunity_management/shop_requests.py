@@ -282,3 +282,44 @@ def merge(rows, shop_rows, include_completed=False):
 
         merged.sort(key=open_key)
     return merged
+
+
+def add_to_employee_stats(stats, team=None):
+    """The team member cards with the shop's requests counted in, by the cards' own rule: open, with a closing
+    date that has not passed, once for each person assigned. Each card also says how many are the shop's
+    (shop_open). Someone with only shop requests gets a card too, if they are in the team."""
+    if not enabled():
+        return stats
+    counts = {}
+    for row in team_rows(team, False):
+        days = row.get("days_remaining")
+        if days is None or days < 0:
+            continue
+        for person in row["assignees"]:
+            user = person.get("user")
+            if not user or "@" not in user:
+                continue
+            if team and team != "All Teams" and person.get("department") != team:
+                continue
+            if user not in counts:
+                counts[user] = {"count": 0, "department": person.get("department"), "name": person.get("employee")}
+            counts[user]["count"] += 1
+    if not counts:
+        return stats
+    cards = [dict(card) for card in stats]
+    by_user = {card["user"]: card for card in cards}
+    for user, found in counts.items():
+        card = by_user.get(user)
+        if card is None:
+            card = {
+                "user": user,
+                "employee_name": frappe.db.get_value("User", user, "full_name") or found["name"] or user,
+                "department": found["department"],
+                "open_opportunities": 0,
+            }
+            cards.append(card)
+        card["open_opportunities"] = (card.get("open_opportunities") or 0) + found["count"]
+        card["shop_open"] = found["count"]
+    cards.sort(key=lambda card: card["open_opportunities"], reverse=True)
+    return cards
+
