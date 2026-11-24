@@ -119,6 +119,13 @@ def people():
         for email in (employee.get("user_id"), employee.get("prefered_email"), employee.get("company_email")):
             if email:
                 index.setdefault(email.strip().lower(), info)
+    # Shown by their Users' full names, in English, as this ERP's own rows name people (Ahmed, 2026-11-24); the
+    # Responsible Party's display name (Arabic) only for someone with no User.
+    users = sorted({info["user"] for info in index.values() if info.get("user")})
+    full_names = {u.name: u.full_name for u in frappe.get_all("User", filters={"name": ["in", users]}, fields=["name", "full_name"])} if users else {}
+    for info in index.values():
+        if full_names.get(info.get("user")):
+            info["name"] = full_names[info["user"]]
     return index
 
 
